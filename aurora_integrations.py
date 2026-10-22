@@ -35,6 +35,8 @@ def _flatpak_obs_settings() -> dict:
         if path.stat().st_size > 64_000:
             return {}
         data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return {}
         port = int(data.get("server_port", 4455))
         if not 1 <= port <= 65535:
             return {}
@@ -379,9 +381,18 @@ def play_spotify_track(query: str, client_id: str) -> str:
         return "Não consegui falar com o Spotify agora; nada foi iniciado."
 
 
-def _read_exact(stream: socket.socket, count: int) -> bytes:
+def _set_request_timeout(stream: socket.socket, deadline: float | None) -> None:
+    if deadline is not None:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("O OBS excedeu o tempo total de resposta.")
+        stream.settimeout(remaining)
+
+
+def _read_exact(stream: socket.socket, count: int, deadline: float | None = None) -> bytes:
     chunks = bytearray()
     while len(chunks) < count:
+        _set_request_timeout(stream, deadline)
         part = stream.recv(count - len(chunks))
         if not part:
             raise ConnectionError("OBS encerrou a conexão WebSocket.")
@@ -389,7 +400,7 @@ def _read_exact(stream: socket.socket, count: int) -> bytes:
     return bytes(chunks)
 
 
-def _ws_send(stream: socket.socket, payload: dict) -> None:
+def _ws_send(stream: socket.socket, payload: dict, deadline: float | None = None) -> None:
     data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
     mask = secrets.token_bytes(4)
     length = len(data)
@@ -404,22 +415,23 @@ def _ws_send(stream: socket.socket, payload: dict) -> None:
         header.extend(length.to_bytes(8, "big"))
     header.extend(mask)
     header.extend(byte ^ mask[index % 4] for index, byte in enumerate(data))
+    _set_request_timeout(stream, deadline)
     stream.sendall(header)
 
 
-def _ws_receive(stream: socket.socket) -> dict:
+def _ws_receive(stream: socket.socket, deadline: float | None = None) -> dict:
     while True:
-        first, second = _read_exact(stream, 2)
+        first, second = _read_exact(stream, 2, deadline)
         opcode = first & 0x0F
         length = second & 0x7F
         if length == 126:
-            length = int.from_bytes(_read_exact(stream, 2), "big")
+            length = int.from_bytes(_read_exact(stream, 2, deadline), "big")
         elif length == 127:
-            length = int.from_bytes(_read_exact(stream, 8), "big")
+            length = int.from_bytes(_read_exact(stream, 8, deadline), "big")
         if length > 2_000_000:
             raise ValueError("Mensagem WebSocket excede o limite local.")
-        mask = _read_exact(stream, 4) if second & 0x80 else b""
-        data = _read_exact(stream, length)
+        mask = _read_exact(stream, 4, deadline) if second & 0x80 else b""
+        data = _read_exact(stream, length, deadline)
         if mask:
             data = bytes(byte ^ mask[index % 4] for index, byte in enumerate(data))
         if opcode == 0x8:
@@ -429,6 +441,7 @@ def _ws_receive(stream: socket.socket) -> dict:
             mask_out = secrets.token_bytes(4)
             pong.extend(mask_out)
             pong.extend(byte ^ mask_out[index % 4] for index, byte in enumerate(data))
+            _set_request_timeout(stream, deadline)
             stream.sendall(pong)
             continue
         if opcode != 0x1:
@@ -455,16 +468,21 @@ def obs_record(action: str, password: str = "", host: str = "127.0.0.1", port: i
         port = obs_settings["server_port"]
     password = password or obs_settings.get("server_password", "")
     try:
+        deadline = time.monotonic() + OBS_REQUEST_TIMEOUT
         stream = socket.create_connection((host, int(port)), timeout=OBS_REQUEST_TIMEOUT)
         with stream:
-            stream.settimeout(OBS_REQUEST_TIMEOUT)
+            _set_request_timeout(stream, deadline)
             key = base64.b64encode(secrets.token_bytes(16)).decode("ascii")
             stream.sendall(("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\n"
                             "Connection: Upgrade\r\nSec-WebSocket-Version: 13\r\n"
                             f"Sec-WebSocket-Key: {key}\r\n\r\n").encode("ascii"))
             response = bytearray()
             while b"\r\n\r\n" not in response and len(response) < 16_384:
-                response.extend(stream.recv(1))
+                _set_request_timeout(stream, deadline)
+                part = stream.recv(1)
+                if not part:
+                    raise ConnectionError("O OBS encerrou a conexão durante o handshake WebSocket.")
+                response.extend(part)
             headers = bytes(response).split(b"\r\n")
             if b" 101 " not in headers[0]:
                 raise ConnectionError("O OBS não aceitou o WebSocket local.")
@@ -473,7 +491,7 @@ def obs_record(action: str, password: str = "", host: str = "127.0.0.1", port: i
             expected = base64.b64encode(hashlib.sha1((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()).digest()).decode()
             if not secrets.compare_digest(accept, expected):
                 raise ConnectionError("A resposta do WebSocket local não passou na validação.")
-            hello = _ws_receive(stream)
+            hello = _ws_receive(stream, deadline)
             if hello.get("op") != 0:
                 raise ConnectionError("O OBS respondeu com um protocolo inesperado.")
             data = hello.get("d", {})
@@ -485,15 +503,15 @@ def obs_record(action: str, password: str = "", host: str = "127.0.0.1", port: i
                 secret = base64.b64encode(hashlib.sha256((password + auth["salt"]).encode()).digest()).decode()
                 identify["authentication"] = base64.b64encode(
                     hashlib.sha256((secret + auth["challenge"]).encode()).digest()).decode()
-            _ws_send(stream, {"op": 1, "d": identify})
-            identified = _ws_receive(stream)
+            _ws_send(stream, {"op": 1, "d": identify}, deadline)
+            identified = _ws_receive(stream, deadline)
             if identified.get("op") != 2:
                 raise ConnectionError("A autenticação WebSocket do OBS falhou.")
             request_id = secrets.token_hex(8)
             _ws_send(stream, {"op": 6, "d": {"requestType": request_type,
-                      "requestId": request_id, "requestData": {}}})
+                      "requestId": request_id, "requestData": {}}}, deadline)
             while True:
-                result = _ws_receive(stream)
+                result = _ws_receive(stream, deadline)
                 if result.get("op") != 7:
                     continue
                 data = result.get("d", {})

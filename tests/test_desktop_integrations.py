@@ -262,6 +262,47 @@ def test_obs_flatpak_disabled_server_gets_specific_setup_message(monkeypatch):
     assert "unused-secret" not in response
 
 
+def test_obs_websocket_eof_during_handshake_returns_instead_of_spinning(monkeypatch):
+    monkeypatch.setattr(integrations, "_append_action_log", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(integrations, "_flatpak_obs_settings", lambda: {})
+
+    class ClosedSocket:
+        def __enter__(self): return self
+        def __exit__(self, *_args): return False
+        def settimeout(self, _timeout): pass
+        def sendall(self, _data): pass
+        def recv(self, _count): return b""
+
+    monkeypatch.setattr(integrations.socket, "create_connection", lambda *_args, **_kwargs: ClosedSocket())
+    outcome = integrations.obs_record("start")
+    assert "não consegui confirmar" in outcome.casefold()
+
+
+def test_obs_websocket_frame_read_stops_at_total_deadline():
+    class UnreadSocket:
+        def __init__(self): self.reads = 0
+        def settimeout(self, _timeout): pass
+        def recv(self, _count):
+            self.reads += 1
+            return b"\x81\x00"
+
+    stream = UnreadSocket()
+    try:
+        integrations._ws_receive(stream, integrations.time.monotonic() - 1)
+    except TimeoutError:
+        pass
+    else:
+        raise AssertionError("a leitura devia respeitar o prazo total expirado")
+    assert stream.reads == 0
+
+
+def test_obs_flatpak_settings_with_non_object_json_are_ignored(monkeypatch, tmp_path):
+    config = tmp_path / "config.json"
+    config.write_text("[]", encoding="utf-8")
+    monkeypatch.setattr(integrations, "_flatpak_obs_config_path", lambda: config)
+    assert integrations._flatpak_obs_settings() == {}
+
+
 def test_obs_websocket_authenticates_and_confirms_record_request(monkeypatch):
     monkeypatch.setattr(integrations, "_append_action_log", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(integrations, "_flatpak_obs_settings", lambda: {
