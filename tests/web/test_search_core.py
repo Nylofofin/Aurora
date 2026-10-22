@@ -95,6 +95,28 @@ def test_localized_and_machine_feed_dates_are_parsed():
         assert aurora._parse_publication_date(value).strftime("%d/%m/%Y") == "21/10/2026"
 
 
+def test_google_news_rss_hour_survives_pipeline_freshness_filter(monkeypatch):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    import aurora_core.web.freshness as freshness
+
+    fixed_now = datetime(2026, 10, 22, 15, 30, tzinfo=ZoneInfo("America/Sao_Paulo"))
+    monkeypatch.setattr(search_providers, "public_http_url", lambda url: url)
+    monkeypatch.setattr(
+        search_providers,
+        "_publication_within_window",
+        lambda value, window: freshness._publication_within_window(value, window, now=fixed_now),
+    )
+    rss = "Google Notícias:\nNexa network measurement update [Jornal · 21/10/2026 16:00] :: Nexa network measurement data — https://news.google.com/articles/story"
+
+    items = search_providers._google_news_pipeline_items(
+        rss, "Nexa network measurement", "1d"
+    )
+
+    assert len(items) == 1
+    assert items[0]["published"] == "21/10/2026 16:00"
+
+
 def test_question_intent_and_time_window_are_topic_independent():
     assert aurora.factual_web_intent("Qual é a concentração atual da amostra?")
     assert aurora.current_search_window("Qual é a concentração atual da amostra?") == "30d"

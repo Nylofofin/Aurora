@@ -52,9 +52,11 @@ def _google_news_pipeline_items(results,query,window):
         if ' — ' not in line: continue
         label,url=line.rsplit(' — ',1); snippet=''
         if ' :: ' in label: label,snippet=label.split(' :: ',1)
-        match=re.search(r'\s*\[([^\]]+?)\s*[·|]\s*(\d{2}/\d{2}/\d{4})(?:\s+\d{2}:\d{2})?\]$',label)
+        match=re.search(r'\s*\[([^\]]+?)\s*[·|]\s*(\d{2}/\d{2}/\d{4})(?:\s+(\d{2}:\d{2}))?\]$',label)
         if not match: continue
-        publisher,published=match.groups(); title=label[:match.start()].strip()
+        publisher,published_date,published_time=match.groups()
+        published=' '.join(part for part in (published_date,published_time or '') if part)
+        title=label[:match.start()].strip()
         try: public_http_url(url)
         except Exception: continue
         score=_search_relevance(query,title,snippet)

@@ -84,8 +84,9 @@ def _parse_publication_date(value):
             parsed=parser(raw.replace('Z','+00:00'))
             return parsed if parsed.tzinfo else parsed.replace(tzinfo=datetime.now().astimezone().tzinfo)
         except Exception: pass
-    try: return datetime.strptime(raw.split()[0],'%d/%m/%Y').replace(tzinfo=datetime.now().astimezone().tzinfo)
-    except Exception: pass
+    for fmt in ('%d/%m/%Y %H:%M:%S','%d/%m/%Y %H:%M','%d/%m/%Y'):
+        try: return datetime.strptime(raw,fmt).replace(tzinfo=datetime.now().astimezone().tzinfo)
+        except Exception: pass
     plain=normalize_words(raw)
     months={'jan':1,'janeiro':1,'fev':2,'fevereiro':2,'mar':3,'marco':3,'abr':4,'abril':4,'mai':5,'maio':5,'jun':6,'junho':6,'jul':7,'julho':7,'ago':8,'agosto':8,'set':9,'setembro':9,'out':10,'outubro':10,'nov':11,'novembro':11,'dez':12,'dezembro':12}
     match=re.search(r'\b(\d{1,2})\s+([a-z]+)\.?\s+(20\d{2})\b',plain)
