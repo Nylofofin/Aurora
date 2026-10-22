@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from urllib.parse import urlencode
-import json, re, time, urllib.error, urllib.request
+import json, queue, re, threading, time, urllib.error, urllib.request
 from ..config import settings_save
 from .security import PUBLIC_OPENER, public_http_url
 
@@ -32,10 +32,22 @@ def _weather_place_from_prompt(prompt):
 
 def _get_json(url,timeout=4):
     req=urllib.request.Request(url,headers={'User-Agent':'Aurora-Local/0.4','Accept':'application/json','Cache-Control':'no-cache, no-store, max-age=0','Pragma':'no-cache'})
-    public_http_url(req.full_url)
-    with PUBLIC_OPENER.open(req,timeout=timeout) as r:
-        public_http_url(r.geturl())
-        return json.loads(r.read(300_000))
+    result=queue.Queue(maxsize=1)
+    def read_response():
+        try:
+            public_http_url(req.full_url)
+            with PUBLIC_OPENER.open(req,timeout=timeout) as response:
+                public_http_url(response.geturl())
+                payload=json.loads(response.read(300_000))
+            result.put((payload,None))
+        except Exception as exc:
+            result.put((None,exc))
+    worker=threading.Thread(target=read_response,name='aurora-weather-http',daemon=True)
+    worker.start(); worker.join(max(0.01,float(timeout)))
+    if worker.is_alive(): raise TimeoutError('A consulta do clima excedeu o tempo limite.')
+    payload,error=result.get_nowait()
+    if error: raise error
+    return payload
 
 def weather_now(cfg,prompt):
     """Fast, direct weather path: cached city/IP geolocation then Open-Meteo; no LLM round trip."""
