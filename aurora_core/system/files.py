@@ -42,7 +42,7 @@ def resolve_natural_directory(location):
     if mapped:
         if mapped=='HOME': return Path.home()
         if mapped=='AURORA': return APP_DIR
-        if mapped=='PROJECT': return APP_DIR.parent.parent
+        if mapped=='PROJECT': return APP_DIR.parent
         return xdg_user_directory(mapped)
     if '/' in raw or raw.startswith('./'):
         return (Path.home()/expanded).resolve(strict=False)

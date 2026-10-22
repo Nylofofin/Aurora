@@ -38,6 +38,17 @@ def test_natural_directory_resolves_standard_folder_names(monkeypatch, tmp_path)
     assert aurora.resolve_natural_directory(str(documents)) == documents
 
 
+def test_project_and_aurora_destinations_resolve_to_their_distinct_roots(monkeypatch, tmp_path):
+    import aurora_core.system.files as files
+
+    projects = tmp_path / "Projects"
+    app_dir = projects / "aurora"
+    monkeypatch.setattr(files, "APP_DIR", app_dir)
+
+    assert aurora.resolve_natural_directory("pasta do projeto") == projects
+    assert aurora.resolve_natural_directory("pasta da Aurora") == app_dir
+
+
 def test_file_creation_never_overwrites_existing_file(tmp_path):
     destination = tmp_path / "safe.txt"
     destination.write_text("original", encoding="utf-8")
