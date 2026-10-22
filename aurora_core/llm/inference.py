@@ -11,6 +11,14 @@ from ..web.intent import _is_historical_query, current_search_window, guided_lea
 from ..web.fetch import read_public_page
 from ..web.pipeline import search_public_web
 
+ACTION_TOOL_NAMES = {
+    'open_url', 'take_screenshot', 'spotify_play', 'obs_record',
+    'open_application', 'close_application', 'manage_window',
+    'inspect_accessible_windows', 'focus_accessible_window',
+    'type_accessible_text', 'volume_control', 'get_system_info',
+    'create_file', 'remember_preference', 'forget_preference',
+}
+
 class Inference(QThread):
     phrase=Signal(str); sentence=Signal(str); state=Signal(str); approval=Signal(str,object); result=Signal(str); error=Signal(str); search=Signal(str,str)
     def __init__(self, cfg, prompt, model=None, use_tools=False, history=None, system_prompt=None,response_language='Português brasileiro'): super().__init__(); self.cfg=cfg; self.prompt=prompt; self.model=model or cfg['model']; self.use_tools=use_tools; self.history=(history or [])[-6:]; self.system_prompt=system_prompt; self.response_language=response_language; self.cancelled=False; self.active_response=None
@@ -49,7 +57,7 @@ class Inference(QThread):
         msgs=[{'role':'system','content':system}]
         msgs.extend({'role':item['role'],'content':str(item['content'])[:900]} for item in self.history if item.get('role') in ('user','assistant'))
         msgs.append({'role':'user','content':self.prompt})
-        complete=''; spoken=''; turns=0; spoken_parts=[]
+        complete=''; spoken=''; turns=0; spoken_parts=[]; action_results=[]; other_tool_used=False
         try:
             while turns<5 and not self.cancelled:
                 turns+=1
@@ -59,7 +67,7 @@ class Inference(QThread):
                     'think':False,'options':{'num_ctx':agent_ctx,'num_thread':int(self.cfg['num_thread']),'num_gpu':int(self.cfg['num_gpu']),'temperature':0.25,'num_batch':128,'num_predict':budget}}
                 if self.use_tools: payload['tools']=TOOLS
                 req=urllib.request.Request(ep+'/api/chat',data=json.dumps(payload).encode(),headers={'Content-Type':'application/json'})
-                content=''; calls=[]; deferred_sentences=[]; defer_stream=False
+                content=''; calls=[]; deferred_sentences=[]; defer_stream=self.use_tools
                 with urllib.request.urlopen(req,timeout=240) as response:
                     self.active_response=response
                     try:
@@ -84,9 +92,13 @@ class Inference(QThread):
                                     spoken=pieces[-1]
                             if m.get('tool_calls'): calls.extend(m['tool_calls'])
                     finally: self.active_response=None
-                for item,needs_translation in deferred_sentences:
-                    if needs_translation: item=self.translate_to_language(item,self.response_language)
-                    spoken_parts.append(item); self.sentence.emit(item)
+                call_names=[call.get('function',{}).get('name','') for call in calls]
+                action_only_turn=bool(call_names) and all(name in ACTION_TOOL_NAMES for name in call_names)
+                final_action_turn=not calls and bool(action_results) and not other_tool_used
+                if not action_only_turn and not final_action_turn:
+                    for item,needs_translation in deferred_sentences:
+                        if needs_translation: item=self.translate_to_language(item,self.response_language)
+                        spoken_parts.append(item); self.sentence.emit(item)
                 if not calls: break
                 msgs.append({'role':'assistant','content':content,'tool_calls':calls})
                 for call in calls:
@@ -95,13 +107,24 @@ class Inference(QThread):
                         try: args=json.loads(args)
                         except Exception: args={}
                     output=self.execute_tool(name,args)
+                    if name in ACTION_TOOL_NAMES:
+                        action_results.append(str(output))
+                    else:
+                        other_tool_used=True
                     msgs.append({'role':'tool','tool_name':name,'content':output})
                     if self.cancelled: return
                 if self.cancelled: return
-            tail=spoken.strip()
-            if tail and re.search(r'[.!?][\"”’\')\]]*$',tail):
-                if (self.response_language=='Português brasileiro' and likely_english(tail)) or (self.response_language=='English' and likely_portuguese(tail)) or (self.response_language not in ('Português brasileiro','English') and (likely_english(tail) or likely_portuguese(tail))): tail=self.translate_to_language(tail,self.response_language)
-                spoken_parts.append(tail); self.sentence.emit(tail)
+            if not (action_results and not other_tool_used):
+                tail=spoken.strip()
+                if tail and re.search(r'[.!?][\"”’\')\]]*$',tail):
+                    if (self.response_language=='Português brasileiro' and likely_english(tail)) or (self.response_language=='English' and likely_portuguese(tail)) or (self.response_language not in ('Português brasileiro','English') and (likely_english(tail) or likely_portuguese(tail))): tail=self.translate_to_language(tail,self.response_language)
+                    spoken_parts.append(tail); self.sentence.emit(tail)
+            if action_results and not other_tool_used:
+                complete_response=complete_spoken_response(' '.join(action_results))
+                for item in re.split(r'(?<=[.!?])\s+',complete_response):
+                    if item.strip(): self.sentence.emit(item.strip())
+                self.result.emit(complete_response)
+                return
             complete_response=complete_spoken_response(' '.join(spoken_parts))
             if not complete_response:
                 complete_response=complete_spoken_response(complete) or 'Não consegui concluir a resposta.'

@@ -467,6 +467,7 @@ def obs_record(action: str, password: str = "", host: str = "127.0.0.1", port: i
     if port == 4455 and obs_settings.get("server_port"):
         port = obs_settings["server_port"]
     password = password or obs_settings.get("server_password", "")
+    request_sent = False
     try:
         deadline = time.monotonic() + OBS_REQUEST_TIMEOUT
         stream = socket.create_connection((host, int(port)), timeout=OBS_REQUEST_TIMEOUT)
@@ -510,6 +511,7 @@ def obs_record(action: str, password: str = "", host: str = "127.0.0.1", port: i
             request_id = secrets.token_hex(8)
             _ws_send(stream, {"op": 6, "d": {"requestType": request_type,
                       "requestId": request_id, "requestData": {}}}, deadline)
+            request_sent = True
             while True:
                 result = _ws_receive(stream, deadline)
                 if result.get("op") != 7:
@@ -519,17 +521,23 @@ def obs_record(action: str, password: str = "", host: str = "127.0.0.1", port: i
                     continue
                 if not data.get("requestStatus", {}).get("result"):
                     comment = data.get("requestStatus", {}).get("comment", "").strip()
-                    raise RuntimeError(comment or "O OBS recusou a solicitação de gravação.")
+                    _append_action_log("obs_record", "rejected", {"action": action})
+                    return (f"O OBS recusou o comando: {comment}. A gravação não foi alterada."
+                            if comment else "O OBS recusou o comando. A gravação não foi alterada.")
                 _append_action_log("obs_record", "started" if action == "start" else "stopped")
                 return "Gravação iniciada no OBS." if action == "start" else "Gravação parada no OBS."
     except RuntimeError as exc:
-        _append_action_log("obs_record", "unavailable", {"action": action})
+        _append_action_log("obs_record", "unavailable", {"action": action, "phase": "request" if request_sent else "connect"})
         return str(exc)
     except Exception:
-        _append_action_log("obs_record", "unavailable", {"action": action})
+        _append_action_log("obs_record", "unavailable", {"action": action, "phase": "confirmation" if request_sent else "connect"})
         if (host in ("127.0.0.1", "::1", "localhost") and
                 obs_settings.get("server_enabled") is False and
                 int(port) == obs_settings.get("server_port")):
             return ("O WebSocket do OBS Studio Flatpak está desativado. No OBS, abra "
                     "Ferramentas → Configurações do servidor WebSocket e ative o servidor.")
-        return "Não consegui confirmar a gravação no OBS; nenhuma ação foi considerada concluída."
+        if request_sent:
+            return ("Enviei o comando ao OBS, mas perdi a confirmação. Confira se a gravação "
+                    "começou ou parou antes de tentar de novo.")
+        return (f"O OBS não respondeu em {host}:{port}. Abra o OBS e confira se o servidor "
+                "WebSocket está ativo; não enviei o comando de gravação.")

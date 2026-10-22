@@ -35,7 +35,7 @@ class AuroraOrb(QObject):
         self._keep_on_screen()
         self.anchor=QRectF(self.view.x(),self.view.y(),136,136).toRect()
         self.root.setProperty('windowX',self.view.x()); self.root.setProperty('windowY',self.view.y())
-        self.scale_anim=QPropertyAnimation(self.root,b'revealScale',self.view); self.scale_anim.setDuration(420); self.scale_anim.setEasingCurve(QEasingCurve.Type.OutBack)
+        self.scale_anim=QPropertyAnimation(self.root,b'revealScale',self.view); self.scale_anim.setDuration(520); self.scale_anim.setEasingCurve(QEasingCurve.Type.OutBack)
         self.opacity_anim=QPropertyAnimation(self.view,b'windowOpacity',self.view); self.opacity_anim.setDuration(260); self.opacity_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         self.scale_anim.finished.connect(self._animation_finished)
         self.opacity_anim.finished.connect(self._animation_finished)
@@ -64,7 +64,7 @@ class AuroraOrb(QObject):
     def reveal(self,mode='listening'):
         self.visibility_generation+=1; generation=self.visibility_generation; self.visibility_attempts=0
         self.hiding=False
-        self.scale_anim.setDuration(360); self.scale_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.scale_anim.setDuration(520); self.scale_anim.setEasingCurve(QEasingCurve.Type.OutBack)
         self.set_mode(mode); self.scale_anim.stop(); self.opacity_anim.stop()
         # Each activation starts in the primary display's lower-right corner;
         # the user can drag it anywhere while it remains visible.
@@ -72,12 +72,14 @@ class AuroraOrb(QObject):
         self.view.move(area.right()-153,area.bottom()-153)
         self._keep_on_screen()
         self.root.setProperty('motionEnabled',True)
+        self.root.setProperty('entranceActive',False)
         if not self.view.isVisible():
             # Never depend on the compositor's window-opacity animation to
-            # make the orb visible; scale supplies the entrance motion.
-            self.view.setGeometry(self.anchor); self.root.setProperty('revealScale',.86); self.view.setWindowOpacity(1.0)
+            # make the orb visible; spring scale and ripple supply the entrance.
+            self.view.setGeometry(self.anchor); self.root.setProperty('revealScale',.68); self.view.setWindowOpacity(1.0)
             self.view.show(); self.view.raise_()
-            self.scale_anim.setStartValue(.86); self.scale_anim.setEndValue(1.0); self.scale_anim.start()
+            self.root.setProperty('entranceActive',True)
+            self.scale_anim.setStartValue(.68); self.scale_anim.setEndValue(1.0); self.scale_anim.start()
         else:
             self.root.setProperty('revealScale',1.0); self.view.setWindowOpacity(1.0); self.view.setGeometry(self.anchor); self.view.raise_()
         # XWayland can acknowledge show() before Mutter has exposed the
@@ -97,10 +99,11 @@ class AuroraOrb(QObject):
     def dismiss(self):
         if not self.view.isVisible(): return
         self.hiding=True
+        self.root.setProperty('entranceActive',False)
         self.scale_anim.stop(); self.opacity_anim.stop()
         start=float(self.root.property('revealScale'))
-        self.scale_anim.setStartValue(start); self.scale_anim.setEndValue(.82); self.scale_anim.setDuration(210); self.scale_anim.setEasingCurve(QEasingCurve.Type.InCubic); self.scale_anim.start()
-        self.opacity_anim.setStartValue(self.view.windowOpacity()); self.opacity_anim.setEndValue(0.0); self.opacity_anim.setDuration(200); self.opacity_anim.setEasingCurve(QEasingCurve.Type.InCubic); self.opacity_anim.start()
+        self.scale_anim.setStartValue(start); self.scale_anim.setEndValue(.70); self.scale_anim.setDuration(280); self.scale_anim.setEasingCurve(QEasingCurve.Type.InBack); self.scale_anim.start()
+        self.opacity_anim.setStartValue(self.view.windowOpacity()); self.opacity_anim.setEndValue(0.0); self.opacity_anim.setDuration(260); self.opacity_anim.setEasingCurve(QEasingCurve.Type.InCubic); self.opacity_anim.start()
     def _animation_finished(self):
         if self.hiding and (self.view.windowOpacity()<.01 or float(self.root.property('revealScale'))<.90):
             self.hiding=False

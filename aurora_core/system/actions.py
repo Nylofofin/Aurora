@@ -54,7 +54,7 @@ def execute_action(self,name,args):
             aurora_integrations._append_action_log('screenshot','saved',{'path':str(path)})
             return f'Salvei a captura em {path}.'
         except Exception as exc:
-            aurora_integrations._append_action_log('screenshot','failed')
+            aurora_integrations._append_action_log('screenshot','failed',{'error_type':type(exc).__name__})
             return f'Não consegui confirmar a captura: {exc}'
     if name=='spotify_authorize':
         return aurora_integrations.start_spotify_authorization(

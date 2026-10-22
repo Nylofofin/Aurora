@@ -40,3 +40,37 @@ def test_translation_waits_until_the_current_ollama_stream_is_closed(monkeypatch
     assert translated == [("Wrong language sentence.", "Português brasileiro")]
     assert spoken == ["Frase traduzida.", "Next sentence."]
     assert results == ["Frase traduzida. Next sentence."]
+
+
+def test_agent_speaks_action_result_instead_of_model_reinterpreting_it(monkeypatch):
+    class Response:
+        def __init__(self, message): self.message = message
+        def __enter__(self): return self
+        def __exit__(self, *_args): pass
+        def __iter__(self):
+            yield json.dumps({"message": self.message}).encode()
+
+    responses = iter((
+        Response({"tool_calls": [{"function": {
+            "name": "volume_control", "arguments": {"action": "set", "value": 30}
+        }}]}),
+        Response({"content": "Não consegui confirmar a ação."}),
+    ))
+    monkeypatch.setattr(inference_module.urllib.request, "urlopen",
+                        lambda *_args, **_kwargs: next(responses))
+    monkeypatch.setattr(inference_module.Inference, "execute_tool",
+                        lambda *_args, **_kwargs: "Volume ajustado para 30%.")
+    cfg = {
+        "endpoint": "http://localhost:11434", "model": "gemma4:test",
+        "keep_alive": "5m", "num_ctx": 1024, "agent_num_ctx": 1024,
+        "agent_num_predict": 96, "num_thread": 4, "num_gpu": 99,
+    }
+    worker = inference_module.Inference(cfg, "coloque o volume em 30%", use_tools=True)
+    sentences, results = [], []
+    worker.sentence.connect(sentences.append)
+    worker.result.connect(results.append)
+
+    worker.run()
+
+    assert sentences == ["Volume ajustado para 30%."]
+    assert results == ["Volume ajustado para 30%."]

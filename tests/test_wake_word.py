@@ -146,3 +146,16 @@ def test_right_click_is_wired_to_stop_the_current_request():
     service = (root / "aurora_core" / "service.py").read_text()
     assert "if (mouse.button === Qt.RightButton)" in source
     assert "self.orb.hide_requested.connect(self.stop_conversation)" in service
+
+
+def test_orb_uses_round_silhouette_and_separate_entrance_ripple():
+    from pathlib import Path
+
+    root = Path(aurora.__file__).parent
+    source = (root / "orb.qml").read_text()
+    orb = (root / "aurora_core" / "ui" / "orb.py").read_text()
+    assert "PathAngleArc { centerX: 52; centerY: 52; radiusX: 52; radiusY: 52" in source
+    assert "arrivalRipple" in source and "entranceActive" in source
+    assert "PathCubic" not in source and "morphPhase" not in source
+    assert "self.scale_anim.setStartValue(.68)" in orb
+    assert "QEasingCurve.Type.OutBack" in orb and "QEasingCurve.Type.InBack" in orb

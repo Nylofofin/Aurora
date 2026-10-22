@@ -246,7 +246,9 @@ def test_spotify_reports_missing_local_configuration_without_network(monkeypatch
 def test_obs_is_loopback_only_and_never_claims_unconfirmed_success(monkeypatch):
     monkeypatch.setattr(integrations, "_append_action_log", lambda *_args, **_kwargs: None)
     assert "próprio computador" in integrations.obs_record("start", host="192.0.2.4")
-    assert "não consegui confirmar" in integrations.obs_record("start", host="127.0.0.1", port=1).casefold()
+    unavailable = integrations.obs_record("start", host="127.0.0.1", port=1).casefold()
+    assert "obs não respondeu" in unavailable
+    assert "não enviei o comando" in unavailable
 
 
 def test_obs_flatpak_disabled_server_gets_specific_setup_message(monkeypatch):
@@ -275,7 +277,39 @@ def test_obs_websocket_eof_during_handshake_returns_instead_of_spinning(monkeypa
 
     monkeypatch.setattr(integrations.socket, "create_connection", lambda *_args, **_kwargs: ClosedSocket())
     outcome = integrations.obs_record("start")
-    assert "não consegui confirmar" in outcome.casefold()
+    assert "não enviei o comando" in outcome.casefold()
+
+
+def test_obs_lost_reply_after_request_warns_to_check_state_before_retry(monkeypatch):
+    monkeypatch.setattr(integrations, "_flatpak_obs_settings", lambda: {})
+    actions = []
+    monkeypatch.setattr(integrations, "_append_action_log",
+                        lambda _name, outcome, details=None: actions.append((outcome, details)))
+    sent = []
+
+    class QuietSocket:
+        def __enter__(self): return self
+        def __exit__(self, *_args): return False
+        def settimeout(self, _timeout): pass
+        def sendall(self, data): sent.append(data)
+        def recv(self, _count):
+            return (b"HTTP/1.1 101 Switching Protocols\r\nSec-WebSocket-Accept: valid\r\n\r\n")
+
+    monkeypatch.setattr(integrations.socket, "create_connection", lambda *_args, **_kwargs: QuietSocket())
+    monkeypatch.setattr(integrations.secrets, "compare_digest", lambda *_args: True)
+    received = iter(({"op": 0, "d": {"rpcVersion": 1}}, {"op": 2, "d": {"negotiatedRpcVersion": 1}}))
+
+    def receive(*_args, **_kwargs):
+        try: return next(received)
+        except StopIteration: raise ConnectionError("reply lost")
+
+    monkeypatch.setattr(integrations, "_ws_receive", receive)
+    outcome = integrations.obs_record("start")
+
+    assert "perdi a confirmação" in outcome.casefold()
+    assert "antes de tentar de novo" in outcome.casefold()
+    assert actions == [("unavailable", {"action": "start", "phase": "confirmation"})]
+    assert len(sent) == 3  # HTTP upgrade, Identify, then StartRecord request.
 
 
 def test_obs_websocket_frame_read_stops_at_total_deadline():
