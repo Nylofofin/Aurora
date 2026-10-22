@@ -7,21 +7,10 @@
   "num_gpu": 99,
   "keep_alive": -1,
   "tts_voice": "pt-BR-ThalitaMultilingualNeural",
-  "bubble_position": [
-    1286,
-    746
-  ],
+  "bubble_position": null,
   "agent_num_ctx": 2048,
   "agent_num_predict": 384,
   "spotify_client_id": "",
   "obs_host": "127.0.0.1",
-  "obs_port": 4455,
-  "weather_location": {
-    "city": "Valparaiso",
-    "region": "Sao Paulo",
-    "country": "Brazil",
-    "latitude": -21.2277831,
-    "longitude": -50.8683324,
-    "updated": 1792665985.977953
-  }
+  "obs_port": 4455
 }

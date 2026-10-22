@@ -23,7 +23,7 @@ O código está separado por responsabilidade em `aurora_core/`: `system/` cont�
 2. Na pasta da Aurora, execute `./install-desktop.sh`. O instalador cria o serviço `systemd --user`, habilita o início com a sessão gráfica e mantém um atalho no menu. O ambiente virtual fica em `.venv` dentro da pasta da Aurora.
 3. Consulte `systemctl --user status aurora.service`; pare ou inicie com `systemctl --user stop aurora.service` e `systemctl --user start aurora.service`. Para remover o serviço, execute `./uninstall-service.sh`.
 
-Os parâmetros ajustáveis estão em `aurora-settings.json`, na pasta do app. Endpoint remoto não é aceito: prompt e resposta só vão a `localhost`.
+As configurações ativas ficam em `~/.config/aurora/aurora-settings.json`, com permissões privadas para o usuário (diretório `700`, arquivo `600`); na primeira inicialização, uma configuração antiga em `aurora-settings.json` na pasta do app é migrada sem apagar o arquivo legado. O `aurora-settings.json` versionado é apenas um modelo sem localização ou preferências pessoais. Endpoint remoto não é aceito: prompt e resposta só vão a `localhost`.
 
 ### Testes da busca
 

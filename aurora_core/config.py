@@ -6,7 +6,9 @@ import json, os, platform, shutil
 
 APP_DIR = Path(__file__).resolve().parent.parent
 
-APP_CONFIG = APP_DIR/'aurora-settings.json'
+CONFIG_DIR = Path(os.environ.get('XDG_CONFIG_HOME', Path.home()/'.config'))/'aurora'
+APP_CONFIG = CONFIG_DIR/'aurora-settings.json'
+LEGACY_APP_CONFIG = APP_DIR/'aurora-settings.json'
 
 VOSK_PATH = APP_DIR/'assets/vosk-model'
 
@@ -28,17 +30,31 @@ DEFAULTS = {
 }
 
 def settings_load():
-    try: data=json.loads(APP_CONFIG.read_text())
+    try:
+        data=json.loads(APP_CONFIG.read_text())
+    except FileNotFoundError:
+        try: data=json.loads(LEGACY_APP_CONFIG.read_text())
+        except Exception: data={}
+        if not isinstance(data,dict): data={}
+        if data: settings_save(data)
     except Exception: data={}
+    if not isinstance(data,dict): data={}
     data.pop('hands_free',None); data.pop('wake_enabled',None)
     result={**DEFAULTS,**data}
-    APP_CONFIG.parent.mkdir(parents=True,exist_ok=True)
-    if not APP_CONFIG.exists(): APP_CONFIG.write_text(json.dumps(result,indent=2))
+    if not APP_CONFIG.exists(): settings_save(result)
     return result
 
 def settings_save(data):
-    APP_CONFIG.parent.mkdir(parents=True,exist_ok=True)
-    APP_CONFIG.write_text(json.dumps(data,ensure_ascii=False,indent=2))
+    APP_CONFIG.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
+    os.chmod(APP_CONFIG.parent,0o700)
+    temporary=APP_CONFIG.with_suffix('.tmp')
+    fd=os.open(temporary,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
+    with os.fdopen(fd,'w',encoding='utf-8') as output:
+        json.dump(data,output,ensure_ascii=False,indent=2)
+        output.write('\n')
+        output.flush(); os.fsync(output.fileno())
+    os.replace(temporary,APP_CONFIG)
+    os.chmod(APP_CONFIG,0o600)
 
 def local_endpoint(value):
     try:
