@@ -74,6 +74,18 @@ def test_current_dollar_question_does_not_require_question_words_for_relevance()
     assert aurora._search_relevance(query, "Quanto - Dicio", "Significado da palavra quanto") == 0.0
 
 
+def test_numeric_answers_must_use_numbers_literal_in_evidence():
+    evidence = ["Dólar fica estável hoje; petróleo a US$ 112."]
+    assert aurora._ground_numeric_answer(
+        "O dólar está em torno de 52,50 reais.", evidence,
+        ["Folha de S.Paulo (22/10/2026)", "Estadão (22/10/2026)"],
+    ) == "Não consegui confirmar os valores numéricos com os trechos consultados. Fontes: Folha de S.Paulo (22/10/2026), Estadão (22/10/2026)."
+    assert aurora._ground_numeric_answer("O petróleo está a US$ 112.", evidence, []) == "O petróleo está a US$ 112."
+    prompt, system = aurora.search_answer_prompts("Qual o valor?", "valor atual", evidence, now=NOW)
+    assert "mesma sequência numérica aparecer literalmente" in prompt
+    assert "a sequência numérica apareça literalmente" in system
+
+
 def test_subject_specific_search_adapters_are_absent():
     source = Path(aurora.__file__).read_text().lower()
     for forbidden in ("def robux_price_answer", "def currency_rate_answer", "def minecraft_java_latest_release", "_authoritative_host"):
