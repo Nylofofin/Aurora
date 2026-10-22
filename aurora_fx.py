@@ -24,6 +24,7 @@ QUOTE_CUES = re.compile(r"\b(cotacao|taxa|quanto\s+(?:vale|esta|ta)|converter|co
 CURRENT_CUES = re.compile(r"\b(agora|hoje|atual|atualmente|neste\s+momento|tempo\s+real|ao\s+vivo)\b")
 DATE_PATTERNS = (re.compile(r"\b(20\d{2})-(\d{2})-(\d{2})\b"), re.compile(r"\b(\d{2})/(\d{2})/(20\d{2})\b"))
 FUNCTION_WORDS = {"do", "de", "da", "em", "para", "por", "no", "na", "o", "a", "e", "um", "ao", "as", "dos", "das", "pra", "the", "of", "and", "to"}
+ASSET_CATALOG = (("BTC", "Bitcoin", "Bitcoin"),)
 AMOUNT_RE = re.compile(r"\b(\d{1,12}(?:[.,]\d{1,8})?)\b")
 _CATALOG_CACHE = None
 
@@ -36,6 +37,7 @@ class FXIntent:
     requested_date: date | None = None
     conversion: bool = False
     current: bool = True
+    reference_supported: bool = True
 
 
 @dataclass(frozen=True)
@@ -182,7 +184,9 @@ def detect_fx_intent(prompt: str, catalog=None, today=None):
     if not QUOTE_CUES.search(text):
         return None
     rows = tuple(catalog if catalog is not None else currency_catalog())
-    occurrences = _currency_mentions(text, rows)
+    fiat_codes = {row[0] for row in rows}
+    detection_rows = rows + ASSET_CATALOG if catalog is None else rows
+    occurrences = _currency_mentions(text, detection_rows)
     if not occurrences:
         return None
     distinct = []
@@ -207,7 +211,8 @@ def detect_fx_intent(prompt: str, catalog=None, today=None):
     requested_date = _requested_date(text, today)
     conversion = amount is not None or bool(re.search(r"\b(converter|conversao)\b", text))
     current = requested_date is None and not conversion
-    return FXIntent(base, quote, amount, requested_date, conversion, current)
+    reference_supported = base in fiat_codes and quote in fiat_codes
+    return FXIntent(base, quote, amount, requested_date, conversion, current, reference_supported)
 
 
 def _decimal(value):
@@ -299,7 +304,7 @@ def fetch_frankfurter(intent: FXIntent, timeout=API_TIMEOUT, now=None):
 
 def format_quote(quote: FXQuote):
     rate_text = format(quote.rate.normalize(), "f").replace(".", ",")
-    names = {code: localized for code, _, localized in currency_catalog()}
+    names = {code: localized for code, _, localized in currency_catalog() + ASSET_CATALOG}
     base_name = names.get(quote.base) or quote.base
     quote_name = names.get(quote.quote) or quote.quote
     if quote.source == "AwesomeAPI" and quote.bid is not None and quote.ask is not None:
@@ -319,7 +324,12 @@ def format_quote(quote: FXQuote):
 
 def get_quote(intent: FXIntent, *, awesome=fetch_awesome, frankfurter=fetch_frankfurter, search_fallback=None, timeout=API_TIMEOUT):
     """Return structured evidence or a web fallback, using the requested order."""
-    sources = (("Frankfurter", frankfurter),) if intent.conversion or intent.requested_date else (("AwesomeAPI", awesome), ("Frankfurter", frankfurter))
+    if not intent.reference_supported:
+        sources = (("AwesomeAPI", awesome),) if not intent.requested_date else ()
+    elif intent.conversion or intent.requested_date:
+        sources = (("Frankfurter", frankfurter),)
+    else:
+        sources = (("AwesomeAPI", awesome), ("Frankfurter", frankfurter))
     timings = []
     for source_name, source in sources:
         started = time.monotonic()

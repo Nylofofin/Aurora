@@ -164,3 +164,18 @@ def test_current_quote_falls_back_to_search_when_both_apis_fail():
     result = aurora_fx.get_quote(aurora_fx.FXIntent("USD", "BRL"), awesome=fail, frankfurter=fail, search_fallback=lambda _: "search result")
     assert len(calls) == 2
     assert result.quote is None and result.fallback_output == "search result"
+
+
+def test_awesomeapi_crypto_asset_uses_no_frankfurter_fallback():
+    intent = aurora_fx.detect_fx_intent("Quanto está o bitcoin agora")
+    assert intent is not None and (intent.base, intent.quote, intent.reference_supported) == ("BTC", "BRL", False)
+    calls = []
+    quote = aurora_fx.FXQuote("AwesomeAPI", "BTC", "BRL", Decimal("411892.5"), date(2026, 10, 22), "13:07:20 UTC-3", Decimal("411892"), Decimal("411893"))
+    result = aurora_fx.get_quote(intent,
+        awesome=lambda i, timeout: (calls.append("awesome") or quote),
+        frankfurter=lambda i, timeout: (calls.append("frankfurter") or quote),
+    )
+    assert calls == ["awesome"]
+    assert "Bitcoin (BTC/BRL)" in aurora_fx.format_quote(result.quote)
+
+
