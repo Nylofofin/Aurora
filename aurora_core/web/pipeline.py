@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 from ..system.files import normalize_words
 from .intent import _search_query_variants, _search_relevance, current_search_window, news_search_intent
 from .freshness import _has_expired_deadline, _has_stale_source_date, _has_stale_url_date, _publication_within_window, _parse_publication_date, _independent_recent_source_count
-from .providers import search_google_news, _google_news_pipeline_items, _enrich_news_results
+from .providers import search_google_news, _google_news_pipeline_items
 from .fetch import _search_page_excerpt
 from .parsers import DuckDuckGoLiteResults
 from .security import PUBLIC_OPENER, public_http_url
@@ -17,10 +17,12 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
     if not query or len(query)>180: raise ValueError('Consulta vazia ou longa demais.')
     freshness='' if freshness is False else (freshness or current_search_window(query))
     if news_only is None: news_only=news_search_intent(query)
-    if news_only:
-        news=search_google_news(query,freshness or '7d')
-        return _enrich_news_results(news,query,freshness or '7d')
     found=[]; seen=set(); failures=[]; provider_counts={}; rejected={'url':0,'atualidade':0,'relevancia':0,'duplicado':0}
+    if news_only:
+        freshness=freshness or '7d'
+        news=search_google_news(query,freshness)
+        found=_google_news_pipeline_items(news,query,freshness)
+        seen={urlparse(item['url'])._replace(query='',fragment='').geturl().rstrip('/').casefold() for item in found}
     # Use two genuinely different result interfaces. DDG's normal HTML endpoint
     # is frequently bot-challenged here, while Bing HTML often gives generic
     # navigational pages. DDG Lite and Bing RSS are lightweight alternatives.
@@ -84,11 +86,12 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
                     found.append({'provider':provider,'title':title,'snippet':snippet,'url':href,'host':host,
                         'published':published,'score':relevance})
     for attempt,(search_query,relevance_query) in enumerate(_search_query_variants(query,freshness)):
+        if news_only: break
         collect_query(search_query,relevance_query,3.5 if attempt==0 else 1.8)
         enough=(_independent_recent_source_count(found,freshness)>=2) if freshness else bool(found)
         if enough: break
     window_days={'1d':1,'7d':7,'30d':30}.get(freshness,30)
-    if freshness and (not found or _independent_recent_source_count(found,freshness)<2):
+    if freshness and not news_only and (not found or _independent_recent_source_count(found,freshness)<2):
         try:
             recent=search_google_news(query,freshness)
             for item in _google_news_pipeline_items(recent,query,freshness):

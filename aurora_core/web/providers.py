@@ -4,11 +4,10 @@ from .security import public_http_url
 from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlencode
-import concurrent.futures, html, re, urllib.error, urllib.request
+import html, re, urllib.error, urllib.request
 import xml.etree.ElementTree as ET
-from .fetch import _search_page_excerpt
 from .freshness import _publication_within_window
-from .intent import _fresh_query_terms, _news_result_relevance, _search_relevance, current_search_window, international_news_only
+from .intent import _fresh_query_terms, _news_result_relevance, _search_relevance, international_news_only
 
 def search_google_news(query,window):
     seconds={'1d':86400,'7d':7*86400,'30d':30*86400}.get(window,7*86400)
@@ -65,31 +64,3 @@ def _google_news_pipeline_items(results,query,window):
             'host':'news.google.com','publisher':publisher,'published':published,
             'feed_published':True,'score':score})
     return rows
-
-def _enrich_news_results(results,query,window):
-    """Open current news articles and retain their publisher summary if blocked."""
-    lines=results.splitlines(); header=lines[0] if lines else ''
-    current_news_window=bool(current_search_window(query))
-    parsed=[]
-    for line in lines[1:]:
-        if ' — ' not in line: continue
-        label,url=line.rsplit(' — ',1); snippet=''
-        if ' :: ' in label: label,snippet=label.split(' :: ',1)
-        parsed.append([label,url,snippet])
-    selected=parsed[:4]
-    with concurrent.futures.ThreadPoolExecutor(max_workers=min(3,len(selected) or 1)) as pool:
-        jobs=[(row,pool.submit(_search_page_excerpt,row[1],query,2.5)) for row in selected]
-        for row,future in jobs:
-            try: excerpt,published=future.result(timeout=3.0)
-            except Exception: excerpt,published='',''
-            if published and not _publication_within_window(published,window):
-                row[2]=''; row.append('stale')
-            elif excerpt:
-                row[2]=(row[2]+' | '+excerpt).strip(' |')[:1200]
-            if current_news_window and not published:
-                match=re.search(r'\[([^\]]+?)\s*[·|]\s*([^\]]+)\]$',row[0])
-                if match:
-                    row[0]=row[0][:match.start()]+f' [Feed RSS: {match.group(1)} · {match.group(2)}]'
-    usable=[row for row in parsed if 'stale' not in row]
-    if not usable: return 'As notícias encontradas apontam para páginas antigas ou indisponíveis; não consegui confirmar o conteúdo atual.'
-    return header+'\n'+'\n'.join(f'{row[0]}'+(f' :: {row[2]}' if row[2] else '')+f' — {row[1]}' for row in usable)

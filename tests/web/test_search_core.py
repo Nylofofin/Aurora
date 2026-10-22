@@ -202,18 +202,6 @@ def test_news_prompt_never_turns_headline_into_price_request():
     assert "manchete isolada em resposta sobre preço" in system
 
 
-def test_missing_page_date_uses_feed_timestamp_only_for_current_news(monkeypatch):
-    monkeypatch.setattr(search_providers, "_search_page_excerpt", lambda *_args, **_kwargs: ("", ""))
-    rss = "Google Notícias\nManchete [Jornal · 22/10/2026 10:30] :: resumo do feed — https://example.org/noticia"
-    current = aurora._enrich_news_results(rss, "notícias de tecnologia hoje", "1d")
-    assert "[Feed RSS: Jornal · 22/10/2026 10:30]" in current
-    prompt, system = aurora.search_answer_prompts("notícias de tecnologia hoje", "tecnologia", [current])
-    assert "segundo o feed, de [hora]" in prompt
-    assert "segundo o feed, de [hora]" in system
-    non_current = aurora._enrich_news_results(rss, "notícias de tecnologia", "7d")
-    assert "Feed RSS:" not in non_current
-
-
 def test_numeric_guard_decimal_currency_percent_and_spelled_number_edges():
     fallback = "Não consegui confirmar os valores numéricos com os trechos consultados. Fontes: fonte."
     assert aurora._ground_numeric_answer("O valor é 5.40.", ["O valor é 5,40."], ["fonte"]) == "O valor é 5.40."
@@ -306,7 +294,6 @@ def test_google_news_fallback_uses_common_page_pipeline_and_caps_reads_at_two(mo
     def read(url, query, timeout=2.5):
         calls.append((url, timeout))
         return ("Nexa network measurement reported today in the page.", published)
-    monkeypatch.setattr(search_providers, "_search_page_excerpt", read)
     monkeypatch.setattr(search_pipeline, "_search_page_excerpt", read)
     output = aurora._search_public_web_uncached("Nexa network measurement today", "7d", False)
     assert len(calls) == 2
@@ -330,7 +317,6 @@ def test_current_search_skips_duplicate_publisher_to_read_an_independent_source(
         calls.append(url)
         return ("Nexa network measurement reported today in the article.", today)
 
-    monkeypatch.setattr(search_providers, "_search_page_excerpt", read)
     monkeypatch.setattr(search_pipeline, "_search_page_excerpt", read)
     output = aurora._search_public_web_uncached(
         "Nexa network measurement today", "7d", False
@@ -344,6 +330,33 @@ def test_current_search_skips_duplicate_publisher_to_read_an_independent_source(
     assert "As fontes encontradas não bastam" not in output
 
 
+def test_direct_news_search_uses_shared_pipeline_and_reads_at_most_two_pages(monkeypatch):
+    rss = _google_news_test_rows(count=4)
+    calls = []
+    monkeypatch.setattr(search_pipeline, "search_google_news", lambda *_args: rss)
+    monkeypatch.setattr(search_pipeline, "public_http_url", lambda url: url)
+    monkeypatch.setattr(search_providers, "public_http_url", lambda url: url)
+
+    def read(url, query, timeout=2.5):
+        calls.append(url)
+        return ("Nexa network measurement is reported in this news article.", "")
+
+    monkeypatch.setattr(search_pipeline, "_search_page_excerpt", read)
+    output = aurora._search_public_web_uncached(
+        "Nexa network measurement news today", "1d", True
+    )
+
+    assert len(calls) == 2
+    assert "Feed RSS: Publisher 1 ·" in output
+    assert "Feed RSS: Publisher 2 ·" in output
+    assert "Trecho da página aberta agora" in output
+    prompt, system = aurora.search_answer_prompts(
+        "Nexa network measurement news today", "Nexa network measurement", [output]
+    )
+    assert "segundo o feed, de [hora]" in prompt
+    assert "segundo o feed, de [hora]" in system
+
+
 def test_google_news_feed_candidate_with_failed_redirect_is_discarded(monkeypatch):
     _force_provider_failure(monkeypatch)
     calls = []
@@ -355,7 +368,6 @@ def test_google_news_feed_candidate_with_failed_redirect_is_discarded(monkeypatc
         if url.endswith("story-2"):
             raise ValueError("redirect destination failed public URL validation")
         raise ValueError("redirect destination failed public URL validation")
-    monkeypatch.setattr(search_providers, "_search_page_excerpt", read)
     monkeypatch.setattr(search_pipeline, "_search_page_excerpt", read)
     output = aurora._search_public_web_uncached("Nexa network measurement today", "7d", False)
     assert len(calls) == 2
@@ -372,7 +384,6 @@ def test_google_news_feed_date_is_accepted_when_read_page_has_no_date(monkeypatc
         calls.append(url)
         return ("Nexa network measurement reported today in the page.", "")
 
-    monkeypatch.setattr(search_providers, "_search_page_excerpt", read)
     monkeypatch.setattr(search_pipeline, "_search_page_excerpt", read)
     output = aurora._search_public_web_uncached(
         "Nexa network measurement today", "7d", False
@@ -390,7 +401,6 @@ def test_unread_current_pages_are_not_reported_as_stale(monkeypatch):
     def fail_read(*_args, **_kwargs):
         raise ValueError("page redirect rejected")
 
-    monkeypatch.setattr(search_providers, "_search_page_excerpt", fail_read)
     monkeypatch.setattr(search_pipeline, "_search_page_excerpt", fail_read)
     output = aurora._search_public_web_uncached(
         "Nexa network measurement today", "7d", False

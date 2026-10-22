@@ -104,7 +104,6 @@ from aurora_core.web.freshness import (
     _publication_within_window,
 )
 from aurora_core.web.providers import (
-    _enrich_news_results,
     _google_news_pipeline_items,
     search_google_news,
 )
