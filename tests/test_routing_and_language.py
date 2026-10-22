@@ -1,4 +1,67 @@
+import threading
+
 import aurora
+import aurora_core.routing as routing
+
+
+def test_new_wake_request_is_not_dropped_while_cancelled_inference_exits(monkeypatch):
+    monkeypatch.setattr(routing, "parse_local_command", lambda _prompt: None)
+    monkeypatch.setattr(routing, "local_datetime_answer", lambda _prompt: "Agora são dez horas.")
+
+    class Voice:
+        def __init__(self):
+            self.request_active = threading.Event()
+            self.request_active.set()
+            self.speaking = False
+
+    class Orb:
+        def isVisible(self): return True
+        def set_mode(self, _mode): pass
+        def reveal(self, _mode): pass
+
+    class InferenceStillExiting:
+        cancelled = True
+        def isRunning(self): return True
+
+    class ServiceStub:
+        voice = Voice()
+        orb = Orb()
+        inf = InferenceStillExiting()
+        cfg = {"model": "gemma3:1b"}
+        context_history = []
+        activity_generation = 2
+        request_generation = 4
+        response_language = "Português brasileiro"
+
+        def quick_summary_done(self, text, generation):
+            self.completed = (text, generation)
+
+    service = ServiceStub()
+    routing.route_request(service, "Que horas são?")
+
+    assert service.completed == ("Agora são dez horas.", 5)
+
+
+def test_non_cancelled_active_inference_still_blocks_duplicate_transcript(monkeypatch):
+    class Voice:
+        request_active = threading.Event()
+    Voice.request_active.set()
+
+    class Inference:
+        cancelled = False
+        def isRunning(self): return True
+
+    class ServiceStub:
+        voice = Voice()
+        inf = Inference()
+        request_generation = 4
+        activity_generation = 2
+
+    service = ServiceStub()
+    routing.route_request(service, "Que horas são?")
+
+    assert service.request_generation == 4
+    assert service.activity_generation == 2
 
 
 def test_small_talk_and_personal_advice_do_not_trigger_web_search():

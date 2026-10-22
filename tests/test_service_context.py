@@ -47,6 +47,21 @@ def test_stale_fast_search_answer_does_not_consume_context(monkeypatch):
     assert stub.active_search_context == "new request evidence"
 
 
+def test_finished_signal_from_old_inference_only_releases_its_reference():
+    old_inference = type("Worker", (), {"request_generation": 7})()
+
+    class ServiceStub:
+        inferences = [old_inference]
+        inf = object()
+        request_generation = 8
+        def sender(self): return old_inference
+
+    stub = ServiceStub()
+    service_module.AuroraService.inference_finished(stub)
+
+    assert stub.inferences == []
+
+
 def test_expired_approval_cannot_be_executed_by_a_late_click(monkeypatch):
     now = [100.0]
     timers = []
