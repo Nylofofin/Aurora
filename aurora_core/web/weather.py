@@ -3,6 +3,7 @@ from __future__ import annotations
 from urllib.parse import urlencode
 import json, re, time, urllib.error, urllib.request
 from ..config import settings_save
+from .security import PUBLIC_OPENER, public_http_url
 
 WMO_WEATHER={0:'céu limpo',1:'predominantemente limpo',2:'parcialmente nublado',3:'nublado',45:'neblina',48:'neblina com gelo',51:'garoa fraca',53:'garoa',55:'garoa forte',61:'chuva fraca',63:'chuva',65:'chuva forte',71:'neve fraca',73:'neve',75:'neve forte',80:'pancadas fracas',81:'pancadas de chuva',82:'pancadas fortes',95:'trovoadas',96:'trovoadas com granizo',99:'trovoadas com granizo forte'}
 
@@ -31,7 +32,10 @@ def _weather_place_from_prompt(prompt):
 
 def _get_json(url,timeout=4):
     req=urllib.request.Request(url,headers={'User-Agent':'Aurora-Local/0.4','Accept':'application/json','Cache-Control':'no-cache, no-store, max-age=0','Pragma':'no-cache'})
-    with urllib.request.urlopen(req,timeout=timeout) as r: return json.loads(r.read(300_000))
+    public_http_url(req.full_url)
+    with PUBLIC_OPENER.open(req,timeout=timeout) as r:
+        public_http_url(r.geturl())
+        return json.loads(r.read(300_000))
 
 def weather_now(cfg,prompt):
     """Fast, direct weather path: cached city/IP geolocation then Open-Meteo; no LLM round trip."""

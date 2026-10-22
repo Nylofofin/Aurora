@@ -8,6 +8,11 @@ import pytest
 import aurora_fx
 
 
+@pytest.fixture(autouse=True)
+def skip_real_dns_for_mocked_fx_requests(monkeypatch):
+    monkeypatch.setattr(aurora_fx, "public_http_url", lambda url: url)
+
+
 CATALOG = (
     ("USD", "US Dollar", "Dólar americano"),
     ("CAD", "Canadian Dollar", "Dólar canadense"),
@@ -48,8 +53,9 @@ class FakeResponse:
     status = 200
     headers = {}
 
-    def __init__(self, body):
+    def __init__(self, body, url="https://api.example/quote"):
         self.body = body
+        self.url = url
 
     def __enter__(self):
         return self
@@ -60,21 +66,28 @@ class FakeResponse:
     def read(self, limit):
         return self.body
 
+    def geturl(self):
+        return self.url
+
 
 def test_awesomeapi_validates_fields_and_parses_utc_minus_three(monkeypatch):
     seen = {}
+    validated = []
     body = json.dumps({"USDBRL": {
         "code": "USD", "codein": "BRL", "bid": "5.0400", "ask": "5.0410",
         "create_date": "2026-10-22 12:27:52", "timestamp": "1792682872",
     }}).encode()
 
-    def urlopen(request, timeout):
+    def open_request(request, timeout):
         seen.update(url=request.full_url, timeout=timeout)
         return FakeResponse(body)
 
-    monkeypatch.setattr(aurora_fx.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(aurora_fx.PUBLIC_OPENER, "open", open_request)
+    monkeypatch.setattr(aurora_fx, "public_http_url",
+                        lambda url: validated.append(url) or url)
     quote = aurora_fx.fetch_awesome(aurora_fx.FXIntent("USD", "BRL"), timeout=2)
     assert seen == {"url": "https://economia.awesomeapi.com.br/json/last/USD-BRL", "timeout": 2}
+    assert validated == [seen["url"], "https://api.example/quote"]
     assert quote.bid == Decimal("5.0400") and quote.ask == Decimal("5.0410")
     assert quote.quote_time == "12:27:52 UTC-3"
 
@@ -104,7 +117,7 @@ def test_frankfurter_rejects_invalid_json_rate_values(monkeypatch, bad_rate):
 
 
 def test_invalid_json_body_is_rejected(monkeypatch):
-    monkeypatch.setattr(aurora_fx.urllib.request, "urlopen", lambda *a, **kw: FakeResponse(b"not-json"))
+    monkeypatch.setattr(aurora_fx.PUBLIC_OPENER, "open", lambda *a, **kw: FakeResponse(b"not-json"))
     with pytest.raises(json.JSONDecodeError):
         aurora_fx.fetch_frankfurter(aurora_fx.FXIntent("USD", "BRL"))
 
@@ -116,7 +129,7 @@ def test_http_timeout_is_a_total_deadline(monkeypatch):
         release.wait(0.5)
         return FakeResponse(b"{}")
 
-    monkeypatch.setattr(aurora_fx.urllib.request, "urlopen", slow_open)
+    monkeypatch.setattr(aurora_fx.PUBLIC_OPENER, "open", slow_open)
     with pytest.raises(TimeoutError, match="total timeout"):
         aurora_fx._read_json("https://example.invalid", timeout=0.03)
     release.set()
@@ -185,7 +198,7 @@ def test_awesome_quote_older_than_thirty_minutes_is_labeled_stale(monkeypatch):
         "code": "USD", "codein": "BRL", "bid": "5.04", "ask": "5.05",
         "create_date": "2026-10-22 12:29:59",
     }}).encode()
-    monkeypatch.setattr(aurora_fx.urllib.request, "urlopen", lambda *a, **k: FakeResponse(payload))
+    monkeypatch.setattr(aurora_fx.PUBLIC_OPENER, "open", lambda *a, **k: FakeResponse(payload))
     quote = aurora_fx.fetch_awesome(aurora_fx.FXIntent("USD", "BRL"), now=now)
     assert quote.stale is True
     answer = aurora_fx.format_quote(quote)

@@ -15,6 +15,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from zoneinfo import ZoneInfo
+from aurora_core.web.security import PUBLIC_OPENER, public_http_url
 
 
 LOCAL_TZ = ZoneInfo("America/Sao_Paulo")
@@ -235,8 +236,10 @@ def _read_json(url: str, timeout=API_TIMEOUT, headers=None):
 
     def read_response():
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
+            public_http_url(request.full_url)
+            with PUBLIC_OPENER.open(request, timeout=timeout) as response:
                 status = response.status
+                public_http_url(response.geturl())
                 content_type = response.headers.get("Content-Type", "")
                 if not 200 <= status < 300:
                     raise ValueError(f"HTTP {status}")

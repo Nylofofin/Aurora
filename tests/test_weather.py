@@ -1,6 +1,27 @@
 import aurora_core.web.weather as weather
 
 
+def test_weather_json_uses_redirect_protected_public_opener(monkeypatch):
+    validated = []
+
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *_args): return None
+        def geturl(self): return "https://api.open-meteo.com/v1/forecast"
+        def read(self, _limit): return b'{"ok": true}'
+
+    monkeypatch.setattr(weather, "public_http_url",
+                        lambda url: validated.append(url) or url)
+    monkeypatch.setattr(weather.PUBLIC_OPENER, "open",
+                        lambda *_args, **_kwargs: Response())
+
+    assert weather._get_json("https://api.open-meteo.com/v1/forecast") == {"ok": True}
+    assert validated == [
+        "https://api.open-meteo.com/v1/forecast",
+        "https://api.open-meteo.com/v1/forecast",
+    ]
+
+
 def test_weather_place_ignores_forecast_day_as_a_city():
     assert weather._weather_place_from_prompt("previsão para amanhã") == ""
     assert weather._weather_place_from_prompt("clima para hoje") == ""
