@@ -97,6 +97,19 @@ def test_localized_and_machine_feed_dates_are_parsed():
         assert aurora._parse_publication_date(value).strftime("%d/%m/%Y") == "21/10/2026"
 
 
+def test_accented_portuguese_news_question_compacts_without_function_words():
+    from aurora_core.web.intent import _fresh_query_terms, _news_result_relevance, _search_query_variants
+
+    query = "Quais são as notícias de hoje sobre tecnologia"
+    variants = _search_query_variants(query, "1d")
+
+    assert _fresh_query_terms(query) == {"tecnologia"}
+    assert len(variants) == 2
+    assert variants[1][0] == "noticias tecnologia 2026"
+    assert _news_result_relevance(query, "Tecnologia: nova medida anunciada hoje") == 1.0
+    assert _news_result_relevance(query, "Instituto Federal suspende aulas após ameaça") == 0.0
+
+
 def test_google_news_rss_hour_survives_pipeline_freshness_filter(monkeypatch):
     from datetime import datetime
     from zoneinfo import ZoneInfo
@@ -145,6 +158,104 @@ def test_google_news_provider_uses_the_public_redirect_protected_opener(monkeypa
     assert calls and calls[0][0].startswith("https://news.google.com/rss/search?")
     assert calls[0][1] == 3.5
     assert "Não encontrei publicações recentes" in result
+
+
+def test_bing_news_rss_unwraps_publisher_links_and_keeps_feed_dates(monkeypatch):
+    from email.message import Message
+    from urllib.parse import quote
+
+    target = "https://publisher.example/tecnologia/noticia"
+    rss = f"""<rss><channel><item>
+      <title>Tecnologia recebe novo recurso hoje</title>
+      <description>Atualização sobre tecnologia.</description>
+      <link>https://www.bing.com/news/apiclick.aspx?url={quote(target, safe='')}</link>
+      <pubDate>Wed, 21 Oct 2026 15:00:00 GMT</pubDate><source>Jornal Exemplo</source>
+    </item></channel></rss>""".encode()
+
+    class Response:
+        headers = Message()
+        def __init__(self): self.headers["Content-Type"] = "application/xml; charset=utf-8"
+        def __enter__(self): return self
+        def __exit__(self, *_args): return None
+        def getcode(self): return 200
+        def geturl(self): return "https://www.bing.com/news/search?format=rss"
+        def read(self, _limit): return rss
+
+    monkeypatch.setattr(search_providers.PUBLIC_OPENER, "open", lambda *_args, **_kwargs: Response())
+    monkeypatch.setattr(search_providers, "public_http_url", lambda url: url)
+
+    rows = search_providers.search_bing_news("notícias de tecnologia hoje")
+
+    assert rows == [(target, "Tecnologia recebe novo recurso hoje", "Atualização sobre tecnologia.", "21/10/2026 12:00", "Jornal Exemplo")]
+
+
+def test_bing_news_rejects_unsafe_unwrapped_publisher_url(monkeypatch):
+    from email.message import Message
+    from urllib.parse import quote
+
+    target = "http://127.0.0.1/private"
+    rss = f"<rss><channel><item><title>Tecnologia</title><link>https://www.bing.com/news/apiclick.aspx?url={quote(target, safe='')}</link><pubDate>Wed, 21 Oct 2026 15:00:00 GMT</pubDate></item></channel></rss>".encode()
+
+    class Response:
+        headers = Message()
+        def __init__(self): self.headers["Content-Type"] = "application/rss+xml"
+        def __enter__(self): return self
+        def __exit__(self, *_args): return None
+        def getcode(self): return 200
+        def geturl(self): return "https://www.bing.com/news/search?format=rss"
+        def read(self, _limit): return rss
+
+    monkeypatch.setattr(search_providers.PUBLIC_OPENER, "open", lambda *_args, **_kwargs: Response())
+    def validate(url):
+        if url.startswith("http://127."):
+            raise ValueError("private address")
+        return url
+    monkeypatch.setattr(search_providers, "public_http_url", validate)
+
+    assert search_providers.search_bing_news("notícias de tecnologia hoje") == []
+
+
+def test_bing_news_candidates_use_common_pipeline_and_feed_date_when_page_has_no_date(monkeypatch):
+    from datetime import timedelta
+
+    today = datetime.now().astimezone().strftime("%d/%m/%Y %H:%M")
+    recent_yesterday = (datetime.now().astimezone() - timedelta(hours=20)).strftime("%d/%m/%Y %H:%M")
+    feed_date = datetime.now().astimezone().strftime("%d/%m/%Y")
+    news_queries = []
+    google_feed = "Google Notícias:\n" + "\n".join(
+        f"Tecnologia recebe manchete {index} [Google Publisher {index} · {feed_date}] :: Tecnologia em destaque — https://news.google.com/articles/story-{index}"
+        for index in (1, 2)
+    )
+    monkeypatch.setattr(search_pipeline, "search_google_news", lambda *_args: google_feed)
+    def bing_news(query, *_args):
+        news_queries.append(query)
+        if query.endswith(" Brasil"):
+            return []
+        return [
+            ("https://publisher-a.example/tecnologia", "Tecnologia recebe novo recurso", "Atualização sobre tecnologia.", today, "Jornal A"),
+            ("https://publisher-b.example/tecnologia", "Tecnologia anuncia outra novidade", "Informações de tecnologia.", recent_yesterday, "Jornal B"),
+        ]
+    monkeypatch.setattr(search_pipeline, "search_bing_news", bing_news)
+    monkeypatch.setattr(search_pipeline, "public_http_url", lambda url: url)
+    monkeypatch.setattr(search_pipeline.PUBLIC_OPENER, "open", lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("search unavailable")))
+    reads = []
+    def read(url, _query, timeout=2.5):
+        reads.append(url)
+        return ("Tecnologia: reportagem com detalhes confirmados nesta página.", "")
+    monkeypatch.setattr(search_pipeline, "_search_page_excerpt", read)
+
+    output = search_pipeline._search_public_web_uncached("quais as notícias de tecnologia hoje", "1d", True)
+
+    assert len(reads) == 2
+    assert set(reads) == {
+        "https://publisher-a.example/tecnologia",
+        "https://publisher-b.example/tecnologia",
+    }
+    assert news_queries == ["tecnologia", "tecnologia Brasil"]
+    assert "Feed RSS: Jornal A" in output
+    assert "Feed RSS: Jornal B" in output
+    assert "Bing Notícias" in output
+    assert "Trecho da página aberta agora" in output
 
 
 def test_public_redirect_handler_rejects_loopback_destinations():
@@ -461,6 +572,31 @@ def test_news_query_falls_back_to_ddg_and_bing_when_google_news_fails(monkeypatc
     assert len(reads) == 2
     assert "Google Notícias: TimeoutError" not in output
     assert "Bing RSS" in output
+
+
+def test_google_news_wrapper_candidates_do_not_skip_compact_provider_query(monkeypatch):
+    requested_urls = []
+    rss = _google_news_test_rows().replace("Nexa network measurement", "technology")
+    monkeypatch.setattr(search_pipeline, "search_google_news", lambda *_args: rss)
+    monkeypatch.setattr(search_pipeline, "_search_query_variants", lambda *_args: [
+        ("Quais são as notícias de hoje sobre tecnologia 2026", "Quais são as notícias de hoje sobre tecnologia"),
+        ("noticias tecnologia 2026", "noticias tecnologia"),
+    ])
+    monkeypatch.setattr(search_pipeline, "public_http_url", lambda url: url)
+
+    class Opener:
+        def open(self, request, timeout):
+            requested_urls.append(request.full_url)
+            raise OSError("provider unavailable")
+
+    monkeypatch.setattr(search_pipeline.PUBLIC_OPENER, "open", Opener().open)
+    monkeypatch.setattr(search_pipeline, "_search_page_excerpt", lambda *_args: "")
+
+    search_pipeline._search_public_web_uncached(
+        "Quais são as notícias de hoje sobre tecnologia", "1d", True
+    )
+
+    assert any("q=noticias+tecnologia+2026" in url for url in requested_urls)
 
 
 def test_google_news_fallback_uses_common_page_pipeline_and_caps_reads_at_two(monkeypatch):

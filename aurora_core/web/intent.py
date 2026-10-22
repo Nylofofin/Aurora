@@ -123,7 +123,7 @@ def contextual_source_request(prompt):
 
 def _fresh_query_terms(query):
     plain=unicodedata.normalize('NFKD',str(query)).encode('ascii','ignore').decode('ascii').lower()
-    ignored={'a','as','o','os','um','uma','uns','umas','de','do','da','dos','das','em','no','na','nos','nas','com','por','para','pra','e','ou','que','qual','quais','quem','como','onde','quando','quanto','esta','porque','sobre','pesquise','pesquisar','busque','buscar','procure','procurar','me','diga','mostre','informe','hoje','agora','atual','atualmente','atualizada','atualizado','recente','recentes','ultima','ultimas','ultimos','ultimo','ao','vivo','news','latest','current','breaking','today','now','recent','search','find','about','what','whats','the','for','and','with','from','is','are','was','were','be','been','being','do','does','did','have','has','had','can','could','would','should','will','who','when','where','why','how','much','many','please','tell','explain','explanation','describe','compare','comparison','difference','between','mean','means','meaning','work','works','working','function','of'}
+    ignored={'a','as','o','os','um','uma','uns','umas','de','do','da','dos','das','em','no','na','nos','nas','com','por','para','pra','e','ou','que','qual','quais','quem','como','onde','quando','quanto','esta','sao','porque','sobre','pesquise','pesquisar','busque','buscar','procure','procurar','me','diga','mostre','informe','hoje','agora','atual','atualmente','atualizada','atualizado','recente','recentes','ultima','ultimas','ultimos','ultimo','ao','vivo','news','latest','current','breaking','today','now','recent','search','find','about','what','whats','the','for','and','with','from','is','are','was','were','be','been','being','do','does','did','have','has','had','can','could','would','should','will','who','when','where','why','how','much','many','please','tell','explain','explanation','describe','compare','comparison','difference','between','mean','means','meaning','work','works','working','function','of'}
     terms={word for word in re.findall(r'[a-z0-9]+',plain) if (len(word)>2 or word.isdigit()) and word not in ignored}
     format_words={'noticia','noticias','novidades','ultimas'}
     subject_terms=terms-format_words
@@ -148,17 +148,19 @@ def _search_relevance(query,title,snippet=''):
 def _search_query_variants(query,freshness=''):
     """Keep the spoken query first, then try a compact subject-focused form."""
     original=' '.join(str(query).split())
+    normalized=unicodedata.normalize('NFKD',original).encode('ascii','ignore').decode('ascii')
     cleaned=re.sub(
         r'\b(?:por favor|poderia|gostaria de saber|quero saber|me diga|me fale|me mostra|mostra para mim|'
         r'pesquise|pesquisar|busque|buscar|procure|procurar|encontre|encontrar|'
-        r'quais sao|qual e|quem e|quando foi|onde fica|o que e|o que voce sabe sobre|como funciona|'
+        r'quais s(?:ã|a)o|qual e|quem e|quando foi|onde fica|o que e|o que voce sabe sobre|como funciona|'
         r'tutorial|tutoriais|guias?|passo a passo|instrucoes|manuais?|como|'
         r'jogar|jogue|play|playing|instalar|install|configurar|configure|fazer|make|montar|build|usar|use|'
-        r'a|as|o|os|um|uma|uns|umas|de|do|da|dos|das|em|no|na|nos|nas|com|por|para|pra|e|ou|que)\b',
-        ' ',original,flags=re.I)
+        r'hoje|agora|atual|atualmente|recente|recentes|ultima|ultimas|ultimos|ultimo|'
+        r'a|as|o|os|um|uma|uns|umas|de|do|da|dos|das|em|no|na|nos|nas|com|por|para|pra|sobre|e|ou|que)\b',
+        ' ',normalized,flags=re.I)
     cleaned=' '.join(cleaned.split()).strip(' ,.:;!?')
     variants=[(current_web_query(original,freshness),original)]
-    if cleaned and _fresh_query_terms(cleaned) and _fresh_query_terms(cleaned)!=_fresh_query_terms(original):
+    if cleaned and _fresh_query_terms(cleaned) and cleaned.casefold()!=normalized.casefold():
         variants.append((current_web_query(cleaned,freshness),cleaned))
     return variants
 

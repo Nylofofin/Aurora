@@ -3,10 +3,10 @@ from __future__ import annotations
 from .security import PUBLIC_OPENER, public_http_url
 from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode, urlparse
 import html, re, urllib.error, urllib.request
 import xml.etree.ElementTree as ET
-from .freshness import _publication_within_window
+from .freshness import _parse_publication_date, _publication_within_window
 from .intent import _fresh_query_terms, _news_result_relevance, _search_relevance, international_news_only
 
 def search_google_news(query,window,timeout=3.5):
@@ -43,6 +43,36 @@ def search_google_news(query,window,timeout=3.5):
     checked=now.strftime('%d/%m/%Y %H:%M %Z')
     if not rows: return f'Não encontrei publicações recentes relevantes sobre “{query}” nos últimos {label}. Busca atualizada em {checked}; não vou preencher com páginas antigas ou sem relação.'
     return f'Google Notícias, publicações dos últimos {label}; consulta atualizada em {checked}:\n'+'\n'.join(rows)
+
+def search_bing_news(query,timeout=3.5):
+    """Read Bing's public News RSS and return publisher URLs as dated leads."""
+    url='https://www.bing.com/news/search?'+urlencode({'q':query,'format':'rss','setlang':'pt-br','cc':'BR'})
+    req=urllib.request.Request(url,headers={'User-Agent':'Aurora-Local/0.4','Accept':'application/rss+xml,application/xml,text/xml','Cache-Control':'no-cache, no-store, max-age=0','Pragma':'no-cache'})
+    with PUBLIC_OPENER.open(req,timeout=timeout) as response:
+        if response.getcode()!=200: raise urllib.error.HTTPError(url,response.getcode(),'Unexpected status',response.headers,None)
+        public_http_url(response.geturl())
+        if 'xml' not in response.headers.get('Content-Type','').lower() and 'rss' not in response.headers.get('Content-Type','').lower():
+            raise ValueError('Bing Notícias não retornou RSS/XML.')
+        raw=response.read(1_500_001)
+    if len(raw)>1_500_000: raise ValueError('Resposta Bing Notícias excedeu o limite de tamanho.')
+    root=ET.fromstring(raw); rows=[]; seen=set()
+    for item in root.findall('./channel/item'):
+        title=' '.join((item.findtext('title') or '').split())
+        snippet=' '.join(re.sub(r'<[^>]+>',' ',html.unescape(item.findtext('description') or '')).split())
+        href=(item.findtext('link') or '').strip(); parsed=urlparse(href)
+        if parsed.hostname and parsed.hostname.lower()=='www.bing.com' and parsed.path=='/news/apiclick.aspx':
+            href=(parse_qs(parsed.query).get('url') or [''])[0].strip()
+        try: public_http_url(href)
+        except Exception: continue
+        try: published=_parse_publication_date(item.findtext('pubDate')).astimezone().strftime('%d/%m/%Y %H:%M')
+        except Exception: continue
+        source=item.find('source')
+        publisher=' '.join((source.text or '').split()) if source is not None else ''
+        key=urlparse(href)._replace(query='',fragment='').geturl().rstrip('/').casefold()
+        if not title or key in seen: continue
+        seen.add(key); rows.append((href,title,snippet,published,publisher))
+        if len(rows)>=10: break
+    return rows
 
 def _google_news_pipeline_items(results,query,window):
     """Translate RSS rows into common candidates; feed dates remain separate metadata."""

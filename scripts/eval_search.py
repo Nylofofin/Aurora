@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import aurora
 import aurora_core.service as aurora_service
 import aurora_core.web.pipeline as web_pipeline
+import aurora_core.web.requests as web_requests
 import aurora_core.web.security as web_security
 import aurora_core.web.fetch as web_fetch
 import aurora_core.web.providers as web_providers
@@ -103,10 +104,13 @@ class EvalService(QObject):
         self.last_wake = 0.0
         self.background_requests = []
         self.context_history = []
+        self.inferences = []
         self.current_prompt = ""
         self.active_search_context = ""
+        self.response_language = "Português brasileiro"
         self.orb = OrbStub()
-        self.voice = SimpleNamespace(speaking=False)
+        self.voice = SimpleNamespace(speaking=False, request_active=threading.Event())
+        self.voice.request_active.set()
         self.speaker = SpeakerStub()
         self.trace = None
         self.fx_api_timings = ()
@@ -116,6 +120,15 @@ class EvalService(QObject):
     def start_background_request(self, request):
         self.background_requests.append(request)
         request.start()
+
+    def start_inference(self, inference, generation):
+        # Keep Aurora's actual local inference path in evaluations, while
+        # avoiding the production voice/UI lifecycle.
+        inference.request_generation = generation
+        self.inf = inference
+        self.inferences.append(inference)
+        inference.finished.connect(self.inference_finished)
+        inference.start()
 
     def run_local_action(self, name, args):
         # Diagnostic safety: record the route without opening apps or changing PC state.
@@ -134,6 +147,11 @@ class EvalService(QObject):
 
     def quick_search_answer_done(self, text, generation, evidence, sources):
         aurora.AuroraService.quick_search_answer_done(self, text, generation, evidence, sources)
+
+    def speak_in_selected_language(self, text, generation=None):
+        # Evaluation captures spoken text but never starts an audio device.
+        if generation is None or generation == self.request_generation:
+            self.speaker.say(text)
 
     def fx_lookup_done(self, lookup, generation=None):
         if self.trace is not None:
@@ -252,6 +270,8 @@ def canonical_result_url(url, provider):
     parsed = urlparse(url)
     if provider == "DuckDuckGo Lite" and parsed.hostname and parsed.hostname.endswith("duckduckgo.com") and parsed.path == "/l/":
         url = (parse_qs(parsed.query).get("uddg") or [""])[0]
+    elif provider == "Bing Notícias" and parsed.hostname and parsed.hostname.endswith("bing.com") and parsed.path == "/news/apiclick.aspx":
+        url = (parse_qs(parsed.query).get("url") or [""])[0]
     elif provider == "Bing RSS" and parsed.hostname and parsed.hostname.endswith("bing.com") and parsed.path == "/ck/a":
         encoded = (parse_qs(parsed.query).get("u") or [""])[0]
         if encoded.startswith("a1"):
@@ -370,6 +390,8 @@ def install_trace(trace):
         host = urlparse(url).hostname or ""
         if host == "lite.duckduckgo.com":
             return "DuckDuckGo Lite"
+        if host in ("www.bing.com", "bing.com") and urlparse(url).path == "/news/search":
+            return "Bing Notícias"
         if host == "www.bing.com" or host == "bing.com":
             return "Bing RSS"
         if host == "news.google.com":
@@ -451,7 +473,7 @@ def install_trace(trace):
         record = getattr(request_context, "current_request", None)
         try:
             root = original_xml_fromstring(data, *args, **kwargs)
-            if record and record["kind"] in ("Bing RSS", "Google Notícias"):
+            if record and record["kind"] in ("Bing RSS", "Bing Notícias", "Google Notícias"):
                 items = root.findall("./channel/item")
                 record["extracted"] = len(items)
                 record["candidate_urls"] = [item.findtext("link") or "" for item in items]
@@ -475,7 +497,13 @@ def install_trace(trace):
                             published = web_pipeline._parse_publication_date(item.findtext("pubDate")).astimezone().strftime("%d/%m/%Y")
                         except Exception:
                             published = ""
-                        domain_hint = ""
+                        domain_hint = urlparse(source_url).hostname or ""
+                    if record["kind"] == "Bing Notícias":
+                        try:
+                            published = web_pipeline._parse_publication_date(item.findtext("pubDate")).astimezone().strftime("%d/%m/%Y %H:%M")
+                        except Exception:
+                            published = ""
+                        domain_hint = urlparse(source_url).hostname or ""
                     raw_rows.append(diagnostic_item(
                         title, item.findtext("link") or "", snippet, published,
                         record["kind"], publisher, domain_hint,
@@ -499,7 +527,7 @@ def install_trace(trace):
             canonical_result_url(row[3], "") for row in parse_provider_result_lines(result)
         }
         for record in trace.network_requests[request_start:]:
-            if record["kind"] not in ("DuckDuckGo Lite", "Bing RSS", "Google Notícias"):
+            if record["kind"] not in ("DuckDuckGo Lite", "Bing RSS", "Bing Notícias", "Google Notícias"):
                 continue
             candidates = [canonical_result_url(url, record["kind"]) for url in record["candidate_urls"]]
             record["after_pipeline"] = sum(bool(url) and url in returned_urls for url in candidates)
@@ -535,6 +563,7 @@ def install_trace(trace):
         "redirect_request": original_redirect,
     })
     web_pipeline.search_public_web = traced_search
+    web_requests.search_public_web = traced_search
     aurora_service.search_public_web = traced_search
     web_pipeline._search_page_excerpt = traced_page
     web_fetch._search_page_excerpt = traced_page
@@ -560,6 +589,7 @@ def install_trace(trace):
 
 def restore_trace(originals):
     web_pipeline.search_public_web = originals["search_public_web"]
+    web_requests.search_public_web = originals["search_public_web"]
     aurora_service.search_public_web = originals["search_public_web"]
     web_pipeline._search_page_excerpt = originals["_search_page_excerpt"]
     web_fetch._search_page_excerpt = originals["_search_page_excerpt"]
@@ -631,7 +661,7 @@ def evaluate(line_number, question, cfg, timeout_seconds, history=None, context_
             q = trace.fx_quote
             lines.append(f"  - Valores API ({q['pair']}): bid `{q['bid']}`, ask `{q['ask']}`, taxa `{q['rate']}`, conversão `{q['converted']}`.")
     lines.append("- **Diagnóstico HTTP por provedor:**")
-    provider_requests = [item for item in trace.network_requests if item["kind"] in ("DuckDuckGo Lite", "Bing RSS", "Google Notícias")]
+    provider_requests = [item for item in trace.network_requests if item["kind"] in ("DuckDuckGo Lite", "Bing RSS", "Bing Notícias", "Google Notícias")]
     if provider_requests:
         for item in provider_requests:
             extracted = item["extracted"] if item["extracted"] is not None else "não medido (falha antes do parser)"

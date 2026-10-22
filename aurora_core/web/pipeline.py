@@ -5,9 +5,9 @@ from urllib.parse import urlparse, urlencode, urljoin, parse_qs
 import base64, concurrent.futures, threading, time, urllib.request
 import xml.etree.ElementTree as ET
 from ..system.files import normalize_words
-from .intent import _search_query_variants, _search_relevance, current_search_window, news_search_intent
+from .intent import _fresh_query_terms, _search_query_variants, _search_relevance, current_search_window, international_news_only, news_search_intent
 from .freshness import _has_expired_deadline, _has_stale_source_date, _has_stale_url_date, _publication_within_window, _parse_publication_date, _independent_recent_source_count
-from .providers import search_google_news, _google_news_pipeline_items
+from .providers import search_google_news, search_bing_news, _google_news_pipeline_items
 from .fetch import _search_page_excerpt
 from .parsers import DuckDuckGoLiteResults
 from .security import PUBLIC_OPENER, public_http_url
@@ -52,8 +52,20 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
             ('DuckDuckGo Lite','https://lite.duckduckgo.com/lite/?'+urlencode({'q':search_query,'kl':'br-pt'}),'ddg'),
             ('Bing RSS','https://www.bing.com/search?'+urlencode({'q':search_query,'format':'rss','setlang':'pt-br'}),'bing-rss'),
         )
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(providers)) as pool:
+        news_queries=[]
+        if news_only:
+            # Bing News performs poorly with request phrasing and appended years;
+            # query only the user's topic, then enforce relevance and dates below.
+            news_query=' '.join(sorted(_fresh_query_terms(relevance_query))) or search_query
+            news_queries=[news_query]
+            # The regional feed often finds a second independent publisher
+            # when the topic-only feed repeats a blocked or syndicated page.
+            if 'brasil' not in news_query.split() and not international_news_only(relevance_query):
+                news_queries.append(f'{news_query} Brasil')
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(providers) + len(news_queries)) as pool:
             jobs=[(provider,kind,pool.submit(fetch_provider,url,kind,timeout)) for provider,url,kind in providers]
+            jobs.extend(('Bing Notícias','bing-news',pool.submit(search_bing_news,news_query_variant,timeout))
+                        for news_query_variant in news_queries)
             for provider,kind,future in jobs:
                 stats=provider_counts.setdefault(provider,{'extraidos':0,'relevantes':0})
                 try: rows=future.result(timeout=timeout+0.5)
@@ -62,6 +74,7 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
                 stats['extraidos']+=len(rows)
                 for row in rows:
                     href,title,snippet=row[:3]; published=row[3] if len(row)>3 else ''
+                    publisher=row[4] if len(row)>4 else ''
                     href=urljoin('https://duckduckgo.com',href) if kind=='ddg' else href
                     parsed=urlparse(href)
                     if parsed.hostname and parsed.hostname.lower().endswith('duckduckgo.com') and parsed.path=='/l/':
@@ -73,10 +86,15 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
                             except Exception: continue
                     try: public_http_url(href)
                     except Exception: rejected['url']+=1; continue
+                    # Bing News carries a full publication timestamp. Its
+                    # precise elapsed-time check below supersedes the generic
+                    # calendar-day detector, which would reject yesterday's
+                    # still-within-24-hours stories.
+                    stale_feed_date=(published and kind!='bing-news' and _has_stale_source_date('published '+published,freshness))
                     if freshness and (_has_expired_deadline(title+' '+snippet) or
                             _has_stale_source_date(title+' '+snippet,freshness) or
                             _has_stale_url_date(href,freshness) or
-                            (published and _has_stale_source_date('published '+published,freshness))):
+                            stale_feed_date):
                         rejected['atualidade']+=1; continue
                     # The alternate query removes request phrasing, not subject terms.
                     relevance=_search_relevance(relevance_query,title,snippet)
@@ -87,10 +105,14 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
                     seen.add(key)
                     host=(urlparse(href).hostname or '').removeprefix('www.')
                     found.append({'provider':provider,'title':title,'snippet':snippet,'url':href,'host':host,
-                        'published':published,'score':relevance})
+                        'publisher':publisher,'published':published,'feed_published':kind=='bing-news','score':relevance})
     for attempt,(search_query,relevance_query) in enumerate(_search_query_variants(query,freshness)):
         collect_query(search_query,relevance_query,3.5 if attempt==0 else 1.8)
-        enough=(_independent_recent_source_count(found,freshness)>=2) if freshness else bool(found)
+        # Google News RSS links may remain Google wrapper pages that our safe
+        # HTTP reader cannot extract. They must not suppress the compact-query
+        # fallback before we have any directly readable publisher candidates.
+        readable_candidates=[item for item in found if item.get('host')!='news.google.com']
+        enough=(_independent_recent_source_count(readable_candidates,freshness)>=2) if freshness else bool(readable_candidates)
         if enough: break
     window_days={'1d':1,'7d':7,'30d':30}.get(freshness,30)
     if freshness and not news_only and (not found or _independent_recent_source_count(found,freshness)<2):
@@ -105,7 +127,12 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
     def rank(item):
         try: age=max(0,(today-datetime.strptime(item['published'].split()[0],'%d/%m/%Y').date()).days)
         except Exception: age=window_days
-        return item['score']+0.2*max(0,1-age/window_days)
+        # Google News article URLs can resolve to its generic RSS wrapper HTML.
+        # Prefer readable publisher URLs when equally relevant, while retaining
+        # Google candidates as a last resort if no direct result survives.
+        direct_publisher=0.5 if item.get('host')!='news.google.com' else 0
+        news_feed_priority=1.5 if news_only and item.get('provider')=='Bing Notícias' else 0
+        return news_feed_priority+direct_publisher+item['score']+0.2*max(0,1-age/window_days)
     found.sort(key=rank,reverse=True)
     if not found:
         counts='; '.join(f'{name}: {stats["extraidos"]} extraídos, {stats["relevantes"]} relacionados' for name,stats in provider_counts.items()) or 'nenhum resultado extraído'
@@ -119,7 +146,7 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
     for item in found:
         if freshness and not _publication_within_window(item['published'],freshness): continue
         if freshness:
-            source=(item.get('publisher') if item.get('host')=='news.google.com' else item.get('host')) or item.get('url')
+            source=(item.get('publisher') if item.get('feed_published') else item.get('host')) or item.get('url')
             source=source.casefold()
             if source in selected_sources: continue
             selected_sources.add(source)
