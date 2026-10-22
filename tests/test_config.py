@@ -1,5 +1,7 @@
 import json
 import os
+import concurrent.futures
+import time
 
 import aurora_core.config as config
 
@@ -50,3 +52,24 @@ def test_settings_load_uses_defaults_when_json_root_is_not_an_object(monkeypatch
     loaded = config.settings_load()
 
     assert loaded["model"] == config.DEFAULTS["model"]
+
+
+def test_concurrent_settings_saves_do_not_race_on_shared_temporary_file(monkeypatch, tmp_path):
+    private_dir = tmp_path / "config" / "aurora"
+    monkeypatch.setattr(config, "APP_CONFIG", private_dir / "aurora-settings.json")
+    original_dump = config.json.dump
+
+    def delayed_dump(*args, **kwargs):
+        time.sleep(0.02)
+        return original_dump(*args, **kwargs)
+
+    monkeypatch.setattr(config.json, "dump", delayed_dump)
+    values = [{"model": f"model-{index}", "num_ctx": index} for index in range(8)]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+        futures = [executor.submit(config.settings_save, value) for value in values]
+        for future in futures:
+            future.result()
+
+    saved = json.loads(config.APP_CONFIG.read_text(encoding="utf-8"))
+    assert saved in values
+    assert not list(private_dir.glob("*.tmp"))

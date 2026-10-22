@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 from urllib.parse import urlparse
-import json, os, platform, shutil
+import json, os, platform, shutil, threading
 
 APP_DIR = Path(__file__).resolve().parent.parent
 
 CONFIG_DIR = Path(os.environ.get('XDG_CONFIG_HOME', Path.home()/'.config'))/'aurora'
 APP_CONFIG = CONFIG_DIR/'aurora-settings.json'
 LEGACY_APP_CONFIG = APP_DIR/'aurora-settings.json'
+_SETTINGS_SAVE_LOCK=threading.RLock()
 
 VOSK_PATH = APP_DIR/'assets/vosk-model'
 
@@ -45,16 +46,18 @@ def settings_load():
     return result
 
 def settings_save(data):
-    APP_CONFIG.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
-    os.chmod(APP_CONFIG.parent,0o700)
-    temporary=APP_CONFIG.with_suffix('.tmp')
-    fd=os.open(temporary,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
-    with os.fdopen(fd,'w',encoding='utf-8') as output:
-        json.dump(data,output,ensure_ascii=False,indent=2)
-        output.write('\n')
-        output.flush(); os.fsync(output.fileno())
-    os.replace(temporary,APP_CONFIG)
-    os.chmod(APP_CONFIG,0o600)
+    with _SETTINGS_SAVE_LOCK:
+        snapshot=dict(data)
+        APP_CONFIG.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
+        os.chmod(APP_CONFIG.parent,0o700)
+        temporary=APP_CONFIG.with_suffix('.tmp')
+        fd=os.open(temporary,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
+        with os.fdopen(fd,'w',encoding='utf-8') as output:
+            json.dump(snapshot,output,ensure_ascii=False,indent=2)
+            output.write('\n')
+            output.flush(); os.fsync(output.fileno())
+        os.replace(temporary,APP_CONFIG)
+        os.chmod(APP_CONFIG,0o600)
 
 def local_endpoint(value):
     try:
