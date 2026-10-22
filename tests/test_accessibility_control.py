@@ -139,6 +139,26 @@ def test_screen_text_action_requires_bubble_approval():
     assert stub.calls[0][0] == "type_accessible_text"
 
 
+def test_voice_cancel_only_interrupts_pending_screen_control():
+    class Stub:
+        def __init__(self, pending):
+            self.pending = pending
+            self.cancelled = False
+
+        def stop_conversation(self):
+            self.cancelled = True
+
+    for name in ("focus_accessible_window", "type_accessible_text"):
+        stub = Stub({"name": name})
+        service_module.AuroraService.cancel_pending_screen_control(stub)
+        assert stub.cancelled
+
+    for pending in (None, {"name": "take_screenshot"}, {"name": "close_application"}):
+        stub = Stub(pending)
+        service_module.AuroraService.cancel_pending_screen_control(stub)
+        assert not stub.cancelled
+
+
 def test_screen_control_tools_have_closed_arguments():
     by_name = {tool["function"]["name"]: tool["function"]["parameters"] for tool in TOOLS}
     assert by_name["focus_accessible_window"]["required"] == ["application", "window"]
