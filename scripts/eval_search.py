@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import os
 import queue
 import re
@@ -11,7 +12,7 @@ import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urljoin, urlparse
 
 from PySide6.QtCore import QCoreApplication, QEventLoop, QObject, QTimer, Signal
 
@@ -20,7 +21,6 @@ import aurora
 
 ROOT = Path(__file__).resolve().parents[1]
 QUESTIONS = ROOT / "tests" / "eval" / "questions.txt"
-PROVIDER_HOSTS = ("lite.duckduckgo.com", "bing.com", "news.google.com")
 CONTEXT_PAIR_START = 427
 CONTEXT_PAIR_END = 466
 
@@ -29,7 +29,7 @@ class Trace:
     def __init__(self):
         self.lock = threading.Lock()
         self.search_calls = []
-        self.provider_requests = []
+        self.network_requests = []
         self.raw_result_text = ""
         self.pages_read = []
 
@@ -200,43 +200,214 @@ def parse_provider_result_lines(text):
     return rows
 
 
+def canonical_result_url(url, provider):
+    url = urljoin("https://duckduckgo.com", url) if provider == "DuckDuckGo Lite" else url
+    parsed = urlparse(url)
+    if provider == "DuckDuckGo Lite" and parsed.hostname and parsed.hostname.endswith("duckduckgo.com") and parsed.path == "/l/":
+        url = (parse_qs(parsed.query).get("uddg") or [""])[0]
+    elif provider == "Bing RSS" and parsed.hostname and parsed.hostname.endswith("bing.com") and parsed.path == "/ck/a":
+        encoded = (parse_qs(parsed.query).get("u") or [""])[0]
+        if encoded.startswith("a1"):
+            try:
+                url = base64.urlsafe_b64decode(encoded[2:] + "=" * ((-len(encoded[2:])) % 4)).decode("utf-8")
+            except Exception:
+                return ""
+    parsed = urlparse(url)
+    return parsed._replace(fragment="").geturl().rstrip("/")
+
+
+class ResponseCapture:
+    """Transparent response wrapper that records metadata and bytes read by Aurora."""
+
+    def __init__(self, response, record, started):
+        self._response = response
+        self._record = record
+        self._started = started
+        self._sample = bytearray()
+        self._bytes = 0
+
+    def __getattr__(self, name):
+        return getattr(self._response, name)
+
+    def __enter__(self):
+        self._response.__enter__()
+        return self
+
+    def read(self, *args, **kwargs):
+        data = self._response.read(*args, **kwargs)
+        if data:
+            self._bytes += len(data)
+            if len(self._sample) < 300:
+                self._sample.extend(data[:300 - len(self._sample)])
+        return data
+
+    def _finish(self, error=None):
+        headers = getattr(self._response, "headers", None)
+        self._record.update({
+            "status": getattr(self._response, "status", None) or getattr(self._response, "code", None),
+            "content_type": headers.get("Content-Type") if headers else None,
+            "content_length": headers.get("Content-Length") if headers else None,
+            "bytes": self._bytes,
+            "final_url": self._response.geturl(),
+            "elapsed_ms": round((time.perf_counter() - self._started) * 1000),
+        })
+        if error:
+            self._record["error"] = f"{type(error).__name__}: {error}"
+        if self._sample:
+            self._record["body_prefix"] = bytes(self._sample).decode("utf-8", errors="replace")
+
+    def __exit__(self, exc_type, exc, tb):
+        try:
+            return self._response.__exit__(exc_type, exc, tb)
+        finally:
+            self._finish(exc)
+
+
 def install_trace(trace):
     originals = {}
     original_search = aurora.search_public_web
     original_page = aurora._search_page_excerpt
-    original_request = aurora.urllib.request.Request
+    original_open = aurora.PUBLIC_OPENER.open
+    original_urlopen = aurora.urllib.request.urlopen
+    original_ddg_feed = aurora.DuckDuckGoLiteResults.feed
+    original_xml_fromstring = aurora.ET.fromstring
+    request_context = threading.local()
+
+    def request_kind(url):
+        if getattr(request_context, "reading_page", False):
+            return "página candidata"
+        host = urlparse(url).hostname or ""
+        if host == "lite.duckduckgo.com":
+            return "DuckDuckGo Lite"
+        if host == "www.bing.com" or host == "bing.com":
+            return "Bing RSS"
+        if host == "news.google.com":
+            return "Google Notícias"
+        return ""
+
+    def request_headers(req):
+        try:
+            return dict(req.header_items())
+        except Exception:
+            return {}
+
+    def instrumented_open(original):
+        def open_request(req, *args, **kwargs):
+            url = getattr(req, "full_url", str(req))
+            kind = request_kind(url)
+            if not kind:
+                return original(req, *args, **kwargs)
+            record = {
+                "kind": kind, "url": url, "request_headers": request_headers(req),
+                "extracted": None, "candidate_urls": [], "bytes": 0,
+            }
+            trace.append("network_requests", record)
+            started = time.perf_counter()
+            request_context.current_request = record
+            try:
+                response = original(req, *args, **kwargs)
+            except Exception as exc:
+                record.update({
+                    "status": getattr(exc, "code", None),
+                    "content_type": getattr(exc, "headers", {}).get("Content-Type") if getattr(exc, "headers", None) else None,
+                    "content_length": getattr(exc, "headers", {}).get("Content-Length") if getattr(exc, "headers", None) else None,
+                    "final_url": getattr(exc, "url", url),
+                    "elapsed_ms": round((time.perf_counter() - started) * 1000),
+                    "error": f"{type(exc).__name__}: {exc}",
+                })
+                if isinstance(exc, aurora.urllib.error.HTTPError):
+                    try:
+                        body = exc.read(1_500_000)
+                        record["bytes"] = len(body)
+                        record["body_prefix"] = body[:300].decode("utf-8", errors="replace")
+                    except Exception:
+                        pass
+                    finally:
+                        exc.close()
+                raise
+            return ResponseCapture(response, record, started)
+        return open_request
+
+    def traced_ddg_feed(parser, data):
+        result = original_ddg_feed(parser, data)
+        record = getattr(request_context, "current_request", None)
+        if record and record["kind"] == "DuckDuckGo Lite":
+            record["extracted"] = len(parser.results)
+            record["candidate_urls"] = [row[0] for row in parser.results]
+        request_context.current_request = None
+        return result
+
+    def traced_xml_fromstring(data, *args, **kwargs):
+        record = getattr(request_context, "current_request", None)
+        try:
+            root = original_xml_fromstring(data, *args, **kwargs)
+            if record and record["kind"] in ("Bing RSS", "Google Notícias"):
+                items = root.findall("./channel/item")
+                record["extracted"] = len(items)
+                record["candidate_urls"] = [item.findtext("link") or "" for item in items]
+            return root
+        except Exception as exc:
+            if record:
+                record["parse_error"] = f"{type(exc).__name__}: {exc}"
+            raise
+        finally:
+            request_context.current_request = None
 
     def traced_search(query, freshness=None, news_only=None):
         trace.append("search_calls", {"query": query, "freshness": freshness, "news_only": news_only})
+        request_start = len(trace.network_requests)
         result = original_search(query, freshness, news_only)
         trace.raw_result_text = result
+        returned_urls = {
+            canonical_result_url(row[3], "") for row in parse_provider_result_lines(result)
+        }
+        for record in trace.network_requests[request_start:]:
+            if record["kind"] not in ("DuckDuckGo Lite", "Bing RSS", "Google Notícias"):
+                continue
+            candidates = [canonical_result_url(url, record["kind"]) for url in record["candidate_urls"]]
+            record["after_pipeline"] = sum(bool(url) and url in returned_urls for url in candidates)
         return result
 
     def traced_page(url, query, timeout=3.0):
-        excerpt, published = original_page(url, query, timeout)
-        trace.append("pages_read", {"url": url, "date": published or "sem data", "excerpt": excerpt})
-        return excerpt, published
+        request_context.reading_page = True
+        page = {"url": url, "date": "sem data", "excerpt": ""}
+        try:
+            result = original_page(url, query, timeout)
+            if isinstance(result, tuple):
+                excerpt, published = result
+            else:
+                excerpt, published = result, ""
+            page.update({"excerpt": excerpt, "date": published or "sem data"})
+            return result
+        except Exception as exc:
+            page["error"] = f"{type(exc).__name__}: {exc}"
+            raise
+        finally:
+            request_context.reading_page = False
+            request_context.current_request = None
+            trace.append("pages_read", page)
 
-    def traced_request(url, *args, **kwargs):
-        raw_url = getattr(url, "full_url", url)
-        host = urlparse(str(raw_url)).hostname or ""
-        if any(host == suffix or host.endswith("." + suffix) for suffix in PROVIDER_HOSTS):
-            trace.append("provider_requests", str(raw_url))
-        return original_request(url, *args, **kwargs)
-
-    originals["search_public_web"] = original_search
-    originals["_search_page_excerpt"] = original_page
-    originals["Request"] = original_request
+    originals.update({
+        "search_public_web": original_search, "_search_page_excerpt": original_page,
+        "opener_open": original_open, "urlopen": original_urlopen,
+        "ddg_feed": original_ddg_feed, "xml_fromstring": original_xml_fromstring,
+    })
     aurora.search_public_web = traced_search
     aurora._search_page_excerpt = traced_page
-    aurora.urllib.request.Request = traced_request
+    aurora.PUBLIC_OPENER.open = instrumented_open(original_open)
+    aurora.urllib.request.urlopen = instrumented_open(original_urlopen)
+    aurora.DuckDuckGoLiteResults.feed = traced_ddg_feed
+    aurora.ET.fromstring = traced_xml_fromstring
     return originals
 
 
 def restore_trace(originals):
     aurora.search_public_web = originals["search_public_web"]
     aurora._search_page_excerpt = originals["_search_page_excerpt"]
-    aurora.urllib.request.Request = originals["Request"]
+    aurora.PUBLIC_OPENER.open = originals["opener_open"]
+    aurora.urllib.request.urlopen = originals["urlopen"]
+    aurora.DuckDuckGoLiteResults.feed = originals["ddg_feed"]
+    aurora.ET.fromstring = originals["xml_fromstring"]
 
 
 def evaluate(line_number, question, cfg, timeout_seconds, history=None, context_note=""):
@@ -279,10 +450,32 @@ def evaluate(line_number, question, cfg, timeout_seconds, history=None, context_
         ))
     else:
         lines.append("- **Consulta(s) passada(s) ao caminho de busca:** nenhuma.")
-    lines.append("- **URL(s) de consulta enviadas aos provedores:**")
-    lines.extend(f"  - `{url}`" for url in trace.provider_requests)
-    if not trace.provider_requests:
-        lines.append("  - nenhuma capturada")
+    lines.append("- **Diagnóstico HTTP por provedor:**")
+    provider_requests = [item for item in trace.network_requests if item["kind"] in ("DuckDuckGo Lite", "Bing RSS", "Google Notícias")]
+    if provider_requests:
+        for item in provider_requests:
+            extracted = item["extracted"] if item["extracted"] is not None else "não medido (falha antes do parser)"
+            after = item.get("after_pipeline", "não disponível")
+            lines.append(
+                f"  - **{item['kind']}** — URL `{item['url']}`; status `{item.get('status', 'sem resposta')}`; "
+                f"content-type `{item.get('content_type') or 'desconhecido'}`; {item.get('bytes', 0)} bytes lidos"
+                + (f" (Content-Length: {item['content_length']} bytes)" if item.get("content_length") else "")
+                + "; "
+                f"{item.get('elapsed_ms', 0)} ms; extraídos antes dos filtros: {extracted}; "
+                f"presentes no resultado final do pipeline: {after}."
+            )
+            headers = item.get("request_headers") or {}
+            lines.append("    - Headers enviados: " + ("; ".join(f"`{key}: {value}`" for key, value in headers.items()) or "nenhum capturado"))
+            if item.get("error"):
+                lines.append(f"    - Erro HTTP/rede: `{item['error']}`")
+            if item.get("parse_error"):
+                lines.append(f"    - Erro ao interpretar corpo: `{item['parse_error']}`")
+            if item.get("extracted") == 0 or (item.get("extracted") is None and (item.get("error") or item.get("parse_error"))):
+                preview = item.get("body_prefix") or "(nenhum corpo recebido)"
+                lines.append(f"    - Prefixo do corpo (máx. 300 caracteres): `{preview[:300]}`")
+    else:
+        lines.append("  - nenhuma requisição a provedor capturada")
+    lines.append("  - O código não expõe um motivo individual de descarte por resultado; as contagens são observacionais.")
     lines.append(
         "- **Resultados da busca antes da resposta do LLM** "
         "(normalizados/filtrados pelo pipeline; o HTML bruto não é exposto):"
@@ -294,9 +487,20 @@ def evaluate(line_number, question, cfg, timeout_seconds, history=None, context_
         lines.append("  - " + " ".join(trace.raw_result_text.split()))
     else:
         lines.append("  - nenhum")
-    lines.append("- **Páginas escolhidas pelo pipeline para leitura:**")
+    lines.append("- **Tentativas de leitura de páginas candidatas:**")
     if trace.pages_read:
-        lines.extend(f"  - `{item['url']}` — {item['date']}" for item in trace.pages_read)
+        for page in trace.pages_read:
+            request = next((item for item in trace.network_requests if item["kind"] == "página candidata" and item["url"] == page["url"]), None)
+            if request:
+                lines.append(
+                    f"  - URL `{page['url']}` → final `{request.get('final_url') or 'indisponível'}`; "
+                    f"status `{request.get('status', 'sem resposta')}`; {request.get('bytes', 0)} bytes; "
+                    f"{request.get('elapsed_ms', 0)} ms; data extraída: {page['date']}"
+                    + (f"; erro: `{request['error']}`" if request.get("error") else "")
+                    + (f"; erro no parser: `{request['parse_error']}`" if request.get("parse_error") else "")
+                )
+            else:
+                lines.append(f"  - URL `{page['url']}`; sem tentativa HTTP registrada; data: {page['date']}" + (f"; erro: `{page['error']}`" if page.get("error") else ""))
     else:
         lines.append("  - nenhuma")
     answer = service.response_summary or " ".join(service.speaker.parts).strip()
