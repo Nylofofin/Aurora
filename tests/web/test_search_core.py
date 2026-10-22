@@ -401,6 +401,15 @@ def test_news_dates_and_headline_numbers_do_not_trigger_numeric_guard():
     assert aurora.ground_search_answer("notícias de hoje", "Custa 52,50 reais.", evidence, ["fonte"]) == "Custa 52,50 reais."
 
 
+def test_news_summary_prompt_preserves_claim_and_publisher_attribution():
+    prompt, system = aurora.search_answer_prompts(
+        "Quais as notícias de tecnologia hoje?", "tecnologia",
+        ["Título: Acordo é firmado, segundo o Departamento de Estado | Fonte: valor.globo.com"],
+    )
+    assert "não transforme “segundo X” em “X anunciou/publicou”" in prompt
+    assert "nomeie o veículo identificado nos trechos" in system
+
+
 def test_numeric_guard_failure_message_matches_news_intent():
     result = aurora.ground_search_answer(
         "quantas notícias recentes sobre tecnologia?", "Foram 12 notícias.",
