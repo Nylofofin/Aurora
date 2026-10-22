@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from pathlib import Path
+import pytest
 import re
 
 import aurora
@@ -115,6 +116,43 @@ def test_google_news_rss_hour_survives_pipeline_freshness_filter(monkeypatch):
 
     assert len(items) == 1
     assert items[0]["published"] == "21/10/2026 16:00"
+
+
+def test_google_news_provider_uses_the_public_redirect_protected_opener(monkeypatch):
+    from email.message import Message
+
+    calls = []
+    class Response:
+        headers = Message()
+        def __enter__(self): return self
+        def __exit__(self, *_args): return None
+        def geturl(self): return "https://news.google.com/rss/search?q=example"
+        def read(self, _limit): return b"<rss><channel /></rss>"
+
+    class Opener:
+        def open(self, request, timeout):
+            calls.append((request.full_url, timeout))
+            return Response()
+
+    monkeypatch.setattr(search_providers, "PUBLIC_OPENER", Opener())
+    monkeypatch.setattr(search_providers, "public_http_url", lambda url: url)
+    monkeypatch.setattr(search_providers.urllib.request, "urlopen",
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unprotected urlopen used")))
+
+    result = search_providers.search_google_news("example", "7d")
+
+    assert calls and calls[0][0].startswith("https://news.google.com/rss/search?")
+    assert calls[0][1] == 8
+    assert "Não encontrei publicações recentes" in result
+
+
+def test_public_redirect_handler_rejects_loopback_destinations():
+    from urllib.request import Request
+
+    handler = web_security.PublicRedirectHandler()
+    request = Request("https://news.google.com/rss")
+    with pytest.raises(ValueError, match="públicos|local|reservado"):
+        handler.redirect_request(request, None, 302, "Found", {}, "http://127.0.0.1/")
 
 
 def test_question_intent_and_time_window_are_topic_independent():

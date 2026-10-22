@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .security import public_http_url
+from .security import PUBLIC_OPENER, public_http_url
 from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlencode
@@ -17,7 +17,7 @@ def search_google_news(query,window):
     locale={'hl':'pt-BR','gl':'US','ceid':'US:pt-419'} if international else {'hl':'pt-BR','gl':'BR','ceid':'BR:pt-419'}
     url='https://news.google.com/rss/search?'+urlencode({'q':f'{query} when:{window}',**locale})
     req=urllib.request.Request(url,headers={'User-Agent':'Aurora-Local/0.4','Accept':'application/rss+xml,application/xml,text/xml','Cache-Control':'no-cache, no-store, max-age=0','Pragma':'no-cache'})
-    with urllib.request.urlopen(req,timeout=8) as response:
+    with PUBLIC_OPENER.open(req,timeout=8) as response:
         public_http_url(response.geturl()); raw=response.read(1_500_000)
     root=ET.fromstring(raw); rows=[]; seen=set(); query_terms=_fresh_query_terms(query)
     for item in root.findall('./channel/item'):
