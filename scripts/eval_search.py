@@ -32,6 +32,7 @@ class Trace:
         self.network_requests = []
         self.raw_result_text = ""
         self.pages_read = []
+        self.current_query = ""
 
     def append(self, name, value):
         with self.lock:
@@ -291,6 +292,21 @@ def install_trace(trace):
         except Exception:
             return {}
 
+    def diagnostic_item(title, url, snippet, published, provider, publisher="", domain_hint=""):
+        resolved = canonical_result_url(url, provider)
+        domain = domain_hint or (urlparse(resolved).hostname or "domínio desconhecido")
+        score = aurora._search_relevance(trace.current_query, title, snippet)
+        return {
+            "title": title,
+            "domain": domain.removeprefix("www."),
+            "date": published or "sem data",
+            "snippet": " ".join(snippet.split())[:150],
+            "url": url,
+            "publisher": publisher,
+            "relevance_score": score,
+            "relevance_pass": score > 0,
+        }
+
     def instrumented_open(original):
         def open_request(req, *args, **kwargs):
             url = getattr(req, "full_url", str(req))
@@ -334,6 +350,10 @@ def install_trace(trace):
         if record and record["kind"] == "DuckDuckGo Lite":
             record["extracted"] = len(parser.results)
             record["candidate_urls"] = [row[0] for row in parser.results]
+            record["raw_items"] = [
+                diagnostic_item(title, url, snippet, "", "DuckDuckGo Lite")
+                for url, title, snippet in parser.results
+            ]
         request_context.current_request = None
         return result
 
@@ -345,6 +365,32 @@ def install_trace(trace):
                 items = root.findall("./channel/item")
                 record["extracted"] = len(items)
                 record["candidate_urls"] = [item.findtext("link") or "" for item in items]
+                raw_rows = []
+                for item in items:
+                    title = " ".join((item.findtext("title") or "").split())
+                    snippet = item.findtext("description") or ""
+                    source = item.find("source")
+                    publisher = " ".join((source.text or "").split()) if source is not None else ""
+                    source_url = source.get("url", "") if source is not None else ""
+                    if record["kind"] == "Google Notícias":
+                        snippet = re.sub(r"<[^>]+>", " ", aurora.html.unescape(snippet))
+                        try:
+                            published_at = aurora.parsedate_to_datetime(item.findtext("pubDate")).astimezone()
+                            published = published_at.strftime("%d/%m/%Y %H:%M")
+                        except Exception:
+                            published = ""
+                        domain_hint = urlparse(source_url).hostname or ""
+                    else:
+                        try:
+                            published = aurora._parse_publication_date(item.findtext("pubDate")).astimezone().strftime("%d/%m/%Y")
+                        except Exception:
+                            published = ""
+                        domain_hint = ""
+                    raw_rows.append(diagnostic_item(
+                        title, item.findtext("link") or "", snippet, published,
+                        record["kind"], publisher, domain_hint,
+                    ))
+                record["raw_items"] = raw_rows
             return root
         except Exception as exc:
             if record:
@@ -355,6 +401,7 @@ def install_trace(trace):
 
     def traced_search(query, freshness=None, news_only=None):
         trace.append("search_calls", {"query": query, "freshness": freshness, "news_only": news_only})
+        trace.current_query = query
         request_start = len(trace.network_requests)
         result = original_search(query, freshness, news_only)
         trace.raw_result_text = result
@@ -473,9 +520,22 @@ def evaluate(line_number, question, cfg, timeout_seconds, history=None, context_
             if item.get("extracted") == 0 or (item.get("extracted") is None and (item.get("error") or item.get("parse_error"))):
                 preview = item.get("body_prefix") or "(nenhum corpo recebido)"
                 lines.append(f"    - Prefixo do corpo (máx. 300 caracteres): `{preview[:300]}`")
+            raw_items = item.get("raw_items", [])
+            lines.append(f"    - Itens extraídos antes dos filtros ({len(raw_items)}):")
+            if raw_items:
+                for index, row in enumerate(raw_items, 1):
+                    status = "passa no filtro de relevância" if row["relevance_pass"] else "descartado pelo filtro de relevância (score zero)"
+                    publisher = f"; publicação: {row['publisher']}" if row.get("publisher") else ""
+                    lines.append(
+                        f"      {index}. **{row['title'] or '(sem título)'}** — domínio `{row['domain']}`; "
+                        f"data: {row['date']}{publisher}; score de relevância isolado: {row['relevance_score']:.3f} "
+                        f"({status}); trecho: {row['snippet'] or '(sem trecho)'}"
+                    )
+            else:
+                lines.append("      nenhum item interpretado")
     else:
         lines.append("  - nenhuma requisição a provedor capturada")
-    lines.append("  - O código não expõe um motivo individual de descarte por resultado; as contagens são observacionais.")
+    lines.append("  - O código não expõe um texto de motivo individual; o score abaixo é recalculado pela função pura de relevância, separadamente dos filtros de data e URL.")
     lines.append(
         "- **Resultados da busca antes da resposta do LLM** "
         "(normalizados/filtrados pelo pipeline; o HTML bruto não é exposto):"
