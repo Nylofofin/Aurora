@@ -29,12 +29,12 @@ Item {
     readonly property string statusText: ({
         listening: "OUVINDO", thinking: "PENSANDO", searching: "BUSCANDO",
         weather: "CLIMA", preparing: "PREPARANDO", speaking: "FALANDO",
-        approval: "AUTORIZAR", error: "ERRO", idle: "PRONTA"
+        approval: "AUTORIZAR", controlling: "CONTROLANDO", error: "ERRO", idle: "PRONTA"
     })[mode] || "PRONTA"
     readonly property color accent: ({
         listening: "#d9b8ff", thinking: "#b77cff", searching: "#d3a4ff",
         weather: "#c9a0ff", preparing: "#c79aff", speaking: "#edc9ff",
-        approval: "#ffd28a", error: "#ff9fba", idle: "#c1a0ff"
+        approval: "#ffd28a", controlling: "#f0c8ff", error: "#ff9fba", idle: "#c1a0ff"
     })[mode] || "#c1a0ff"
 
     Shape {
