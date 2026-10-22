@@ -91,6 +91,7 @@ class EvalService(QObject):
         self.voice = SimpleNamespace(speaking=False)
         self.speaker = SpeakerStub()
         self.trace = None
+        self.fx_api_timings = ()
         self.local_action = ""
         self.done = False
 
@@ -112,6 +113,10 @@ class EvalService(QObject):
         if self.trace is not None:
             self.trace.raw_result_text = output
         aurora.AuroraService.quick_search_done(self, query, output, generation)
+
+    def fx_lookup_done(self, lookup, generation=None):
+        aurora.AuroraService.fx_lookup_done(self, lookup, generation)
+        self._finish()
 
     def quick_summary_done(self, summary, generation=None, context_extra=""):
         aurora.AuroraService.quick_summary_done(self, summary, generation, context_extra)
@@ -564,6 +569,8 @@ def evaluate(line_number, question, cfg, timeout_seconds, history=None, context_
     else:
         lines.append("  - nenhuma")
     answer = service.response_summary or " ".join(service.speaker.parts).strip()
+    if service.fx_api_timings:
+        lines.append("- **Latência das APIs de câmbio:** " + "; ".join(f"{name}: {seconds * 1000:.0f} ms" for name, seconds in service.fx_api_timings))
     if timed_out["value"] and not answer:
         answer = f"tempo limite após {timeout_seconds:g}s; sem resposta final"
     lines.append("- **Resposta final:** " + (answer or "sem resposta final capturada"))

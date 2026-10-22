@@ -6,11 +6,13 @@ import math
 import xml.etree.ElementTree as ET
 from array import array
 from datetime import datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.parse import urlparse, urlencode, parse_qs, urljoin
 from html.parser import HTMLParser
 import socket, ipaddress
+import aurora_fx
 
 from PySide6.QtCore import Qt, QObject, QThread, Signal, Slot, QTimer, QPoint, QRectF, QUrl, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QColor, QDesktopServices, QSurfaceFormat
@@ -1116,8 +1118,13 @@ def _ground_numeric_answer(answer,evidence,sources):
             elif len(separators)==1:
                 separator=separators[0]
                 left,right=number.rsplit(separator,1)
-                if len(right)!=3 or left.startswith('0'):
-                    number=left+'.'+right
+                if len(right)==3 and not left.startswith('0'):
+                    return number+('%' if percent else '')
+                number=left+'.'+right
+            try:
+                number=format(Decimal(number).normalize(),'f')
+            except InvalidOperation:
+                pass
         return number.lstrip('+')+('%' if percent else '')
 
     def values(text):
@@ -1139,6 +1146,34 @@ def _ground_numeric_answer(answer,evidence,sources):
     if not unsupported: return str(answer)
     cited=', '.join(map(str,sources)) or 'as fontes consultadas'
     return f'Não consegui confirmar os valores numéricos com os trechos consultados. Fontes: {cited}.'
+
+def _verified_fx_answer(answer,quote):
+    """Apply the web numeric guard to values and timestamps returned by FX APIs."""
+    evidence=[str(quote.rate),quote.quote_date.strftime('%d/%m/%Y')]
+    if quote.bid is not None: evidence.append(str(quote.bid))
+    if quote.ask is not None: evidence.append(str(quote.ask))
+    if quote.quote_time: evidence.append(quote.quote_time)
+    if quote.retrieved_at: evidence.append(quote.retrieved_at.strftime('%H:%M:%S'))
+    if quote.amount is not None: evidence.append(str(quote.amount))
+    if quote.converted is not None: evidence.append(str(quote.converted))
+    source=f'{quote.source} ({quote.quote_time or "taxa de referência diária"} de {quote.quote_date:%d/%m/%Y})'
+    grounded=_ground_numeric_answer(answer,evidence,[source])
+    def canonical(value):
+        value=''.join(value.split())
+        if value.endswith('%'): suffix='%'; value=value[:-1]
+        else: suffix=''
+        if ',' in value and '.' in value:
+            decimal=',' if value.rfind(',')>value.rfind('.') else '.'
+            thousands='.' if decimal==',' else ','
+            value=value.replace(thousands,'').replace(decimal,'.')
+        elif ',' in value: value=value.replace(',','.')
+        try: return format(Decimal(value).normalize(),'f')+suffix
+        except InvalidOperation: return value+suffix
+    answer_values={canonical(value) for value in re.findall(r'(?<!\w)\d+(?:[.,]\d+)*(?:\s*%)?(?!\w)',grounded)}
+    required=[quote.bid,quote.ask] if quote.bid is not None and quote.ask is not None else [quote.converted if quote.converted is not None else quote.rate]
+    if grounded!=str(answer) or not all(canonical(str(value)) in answer_values for value in required):
+        return f'Não confirmei o valor numérico. Fonte: {source}.'
+    return grounded
 
 class Inference(QThread):
     phrase=Signal(str); sentence=Signal(str); state=Signal(str); approval=Signal(str,object); result=Signal(str); error=Signal(str); search=Signal(str,str)
@@ -1569,6 +1604,15 @@ class SearchRequest(QThread):
         try: self.result.emit(self.query,search_public_web(self.query,self.freshness,self.news_only))
         except Exception as exc: self.error.emit(self.query,str(exc))
 
+class FXRequest(QThread):
+    result=Signal(object); error=Signal(str)
+    def __init__(self,intent,prompt): super().__init__(); self.intent=intent; self.prompt=prompt
+    def run(self):
+        try:
+            fallback=lambda _intent: search_public_web(self.prompt,current_search_window(self.prompt),news_search_intent(self.prompt))
+            self.result.emit(aurora_fx.get_quote(self.intent,search_fallback=fallback,timeout=aurora_fx.API_TIMEOUT))
+        except Exception as exc: self.error.emit(str(exc))
+
 class ModelWarmup(QThread):
     def __init__(self,cfg): super().__init__(); self.cfg=cfg
     def run(self):
@@ -1691,6 +1735,14 @@ class AuroraService(QObject):
             self.weather.result.connect(lambda text,g=generation: self.weather_done(text,g))
             self.weather.error.connect(lambda message,g=generation: self.weather_error(message,g))
             self.start_background_request(self.weather); return
+        fx_intent=aurora_fx.detect_fx_intent(prompt)
+        if fx_intent:
+            self.orb.set_mode('searching')
+            generation=self.request_generation
+            self.fx_request=FXRequest(fx_intent,prompt)
+            self.fx_request.result.connect(lambda lookup,g=generation: self.fx_lookup_done(lookup,g),Qt.ConnectionType.QueuedConnection)
+            self.fx_request.error.connect(lambda message,g=generation: self.quick_search_error(prompt,message,g),Qt.ConnectionType.QueuedConnection)
+            self.start_background_request(self.fx_request); return
         freshness=current_search_window(prompt)
         query=search_intent(prompt)
         is_followup=bool(self.context_history and contextual_followup(prompt))
@@ -1770,6 +1822,17 @@ class AuroraService(QObject):
         if generation is not None and generation!=self.request_generation: return
         grounded=_ground_numeric_answer(text,evidence,sources)
         self.quick_summary_done(grounded,generation)
+    def fx_lookup_done(self,lookup,generation=None):
+        if generation is not None and generation!=self.request_generation: return
+        self.fx_api_timings=lookup.api_timings
+        if lookup.quote is not None:
+            answer=aurora_fx.format_quote(lookup.quote)
+            answer=_verified_fx_answer(answer,lookup.quote)
+            self.quick_summary_done(answer,generation)
+        elif lookup.fallback_output:
+            self.quick_search_done(self.current_prompt,lookup.fallback_output,generation)
+        else:
+            self.quick_search_error(self.current_prompt,'no verified quote',generation)
     def quick_summary_done(self,summary,generation=None,context_extra=''):
         if generation is not None and generation!=self.request_generation: return
         self.response_summary=' '.join(str(summary).split()); self.response_finished=True

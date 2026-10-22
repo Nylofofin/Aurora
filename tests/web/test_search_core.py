@@ -98,6 +98,21 @@ def test_numeric_guard_decimal_currency_percent_and_spelled_number_edges():
     assert aurora._ground_numeric_answer("É um ponto importante.", ["É uma observação relevante."], ["fonte"]) == "É um ponto importante."
 
 
+def test_structured_fx_answer_must_say_api_values_and_accept_equivalent_decimal_format():
+    from datetime import date
+    from decimal import Decimal
+    quote = aurora.aurora_fx.FXQuote(
+        "AwesomeAPI", "USD", "BRL", Decimal("5.045"), date(2026, 10, 22),
+        "12:30:00 UTC-3", Decimal("5.04"), Decimal("5.05"),
+    )
+    safe = aurora._verified_fx_answer("O dólar está em 5.03 e 5.05.", quote)
+    assert safe.startswith("Não confirmei o valor numérico.")
+    incomplete = "O dólar está em 5,04 para compra e R$ 5,05 para venda."
+    assert aurora._verified_fx_answer(incomplete, quote) == incomplete
+    spoken = "Compra R$ 5,04 e venda R$ 5,05, conforme a cotação."
+    assert aurora._verified_fx_answer(spoken, quote) == spoken
+
+
 def test_subject_specific_search_adapters_are_absent():
     source = Path(aurora.__file__).read_text().lower()
     for forbidden in ("def robux_price_answer", "def currency_rate_answer", "def minecraft_java_latest_release", "_authoritative_host"):
