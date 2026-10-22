@@ -67,6 +67,15 @@ def test_question_intent_and_time_window_are_topic_independent():
     assert aurora.current_web_query("Nexa network current measurement", "30d").endswith(str(NOW.year))
 
 
+def test_news_format_terms_are_removed_only_when_a_subject_remains():
+    query = "quais as notícias de tecnologia hoje"
+    assert aurora._fresh_query_terms(query) == {"tecnologia"}
+    assert aurora._search_relevance(query, "Novidades sobre tecnologia e ciência", "") > 0
+    assert aurora._search_relevance(query, "Resultado sobre política e futebol", "") == 0.0
+    assert aurora._fresh_query_terms("notícias de hoje") == {"noticias"}
+    assert aurora._search_relevance("notícias de hoje", "Notícias do dia", "") == 1.0
+
+
 def test_current_dollar_question_does_not_require_question_words_for_relevance():
     query = "Quanto está o dólar agora"
     assert aurora._fresh_query_terms(query) == {"dolar"}

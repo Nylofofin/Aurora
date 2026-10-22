@@ -682,7 +682,10 @@ def contextual_source_request(prompt):
 def _fresh_query_terms(query):
     plain=unicodedata.normalize('NFKD',str(query)).encode('ascii','ignore').decode('ascii').lower()
     ignored={'a','as','o','os','um','uma','uns','umas','de','do','da','dos','das','em','no','na','nos','nas','com','por','para','pra','e','ou','que','qual','quais','quem','como','onde','quando','quanto','esta','porque','sobre','pesquise','pesquisar','busque','buscar','procure','procurar','me','diga','mostre','informe','hoje','agora','atual','atualmente','atualizada','atualizado','recente','recentes','ultima','ultimas','ultimos','ultimo','ao','vivo','news','latest','current','breaking','today','now','recent','search','find','about','what','whats','the','for','and','with','from','is','are','was','were','be','been','being','do','does','did','have','has','had','can','could','would','should','will','who','when','where','why','how','much','many','please','tell','explain','explanation','describe','compare','comparison','difference','between','mean','means','meaning','work','works','working','function','of'}
-    return {word for word in re.findall(r'[a-z0-9]+',plain) if (len(word)>2 or word.isdigit()) and word not in ignored}
+    terms={word for word in re.findall(r'[a-z0-9]+',plain) if (len(word)>2 or word.isdigit()) and word not in ignored}
+    format_words={'noticia','noticias','novidades','ultimas'}
+    subject_terms=terms-format_words
+    return subject_terms or terms
 
 def _search_relevance(query,title,snippet=''):
     """Reject generic engine pages that only share one incidental query word."""
