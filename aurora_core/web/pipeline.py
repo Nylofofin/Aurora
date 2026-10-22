@@ -110,9 +110,14 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
         return f'Não confirmei fontes para essa pergunta. Resultados de busca ({counts}).{filtered}{reason} Não vou completar por memória.'
     # Snippets are often truncated or misleading. Open up to two relevant pages
     # in parallel so the model gets the page's own evidence without serial delay.
-    selected=[]
+    selected=[]; selected_sources=set()
     for item in found:
         if freshness and not _publication_within_window(item['published'],freshness): continue
+        if freshness:
+            source=(item.get('publisher') if item.get('host')=='news.google.com' else item.get('host')) or item.get('url')
+            source=source.casefold()
+            if source in selected_sources: continue
+            selected_sources.add(source)
         selected.append(item)
         if len(selected)>=2: break
     if not selected:

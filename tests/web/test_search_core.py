@@ -315,6 +315,35 @@ def test_google_news_fallback_uses_common_page_pipeline_and_caps_reads_at_two(mo
     assert "Nexa network measurement" in output
 
 
+def test_current_search_skips_duplicate_publisher_to_read_an_independent_source(monkeypatch):
+    _force_provider_failure(monkeypatch)
+    today = datetime.now().astimezone().strftime("%d/%m/%Y")
+    rss = "Google Notícias:\n" + "\n".join((
+        f"Nexa network measurement results [Daily News · {today}] :: Nexa network measurement reported today — https://news.google.com/articles/story-1",
+        f"Nexa network measurement details [Daily News · {today}] :: Nexa network measurement reported today — https://news.google.com/articles/story-2",
+        f"Sensor lab measures Nexa network [Independent Journal · {today}] :: Nexa network measurement reported today — https://news.google.com/articles/story-3",
+    ))
+    monkeypatch.setattr(search_pipeline, "search_google_news", lambda *_args: rss)
+    calls = []
+
+    def read(url, query, timeout=2.5):
+        calls.append(url)
+        return ("Nexa network measurement reported today in the article.", today)
+
+    monkeypatch.setattr(search_providers, "_search_page_excerpt", read)
+    monkeypatch.setattr(search_pipeline, "_search_page_excerpt", read)
+    output = aurora._search_public_web_uncached(
+        "Nexa network measurement today", "7d", False
+    )
+
+    assert calls == [
+        "https://news.google.com/articles/story-1",
+        "https://news.google.com/articles/story-3",
+    ]
+    assert "Independent Journal" in output
+    assert "As fontes encontradas não bastam" not in output
+
+
 def test_google_news_feed_candidate_with_failed_redirect_is_discarded(monkeypatch):
     _force_provider_failure(monkeypatch)
     calls = []
