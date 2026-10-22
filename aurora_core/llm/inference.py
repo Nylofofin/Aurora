@@ -6,6 +6,7 @@ from ..config import local_endpoint
 from .prompts import assistant_system_prompt, complete_spoken_response
 from .tools import TOOLS, execute_local_tool
 from ..system.files import normalize_words
+from ..system.commands import parse_local_command
 from ..web.language import likely_english, likely_portuguese
 from ..web.intent import _is_historical_query, current_search_window, guided_learning_intent
 from ..web.fetch import read_public_page
@@ -102,6 +103,10 @@ class Inference(QThread):
                 if not calls: break
                 msgs.append({'role':'assistant','content':content,'tool_calls':calls})
                 for call in calls:
+                    # A cancellation may arrive after the model stream closes but
+                    # before the next tool call. Never start a local side effect
+                    # once the user has cancelled the request.
+                    if self.cancelled: return
                     fn=call.get('function',{}); name=fn.get('name',''); args=fn.get('arguments',{})
                     if isinstance(args,str):
                         try: args=json.loads(args)
@@ -149,7 +154,12 @@ class Inference(QThread):
             self.search.emit(query,output)
             return output
         if name not in ('close_application','manage_window','open_url','take_screenshot','spotify_play','obs_record','focus_accessible_window','type_accessible_text'): return 'Ferramenta indisponível.'
-        detail={'name':name,'args':args,'event':threading.Event(),'result':'Ação recusada.'}
+        parsed_request=parse_local_command(self.prompt)
+        explicit_request=bool(parsed_request and parsed_request[0]==name)
+        if name=='obs_record' and explicit_request:
+            explicit_request=parsed_request[1].get('action')==args.get('action')
+        detail={'name':name,'args':args,'event':threading.Event(),'result':'Ação recusada.',
+                'explicit_user_request':explicit_request}
         self.approval.emit(name,detail)
         if not detail['event'].wait(90): return 'Autorização expirou; ação cancelada.'
         if self.cancelled: return 'Ação cancelada porque Aurora está encerrando.'

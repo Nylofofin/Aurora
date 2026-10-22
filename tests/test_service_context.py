@@ -1,5 +1,6 @@
 import aurora_core.service as service_module
 import threading
+import time
 
 
 def test_fast_search_answer_keeps_evidence_in_followup_context(monkeypatch):
@@ -133,6 +134,88 @@ def test_screen_approval_explains_voice_cancellation(monkeypatch):
     assert stub.voice.enabled
     assert "Diga “parar”" in stub.spoken
     assert "clique com o botão direito" in stub.spoken
+
+
+def test_screenshot_does_not_request_a_second_aurora_confirmation():
+    from aurora_core.system.approval import requires_user_approval
+    assert requires_user_approval("take_screenshot", {})
+    assert not requires_user_approval("take_screenshot", {}, explicit_user_request=True)
+    assert requires_user_approval("open_url", {"url": "https://example.com"})
+    assert not requires_user_approval("open_url", {"url": "https://example.com"}, explicit_user_request=True)
+    assert requires_user_approval("close_application", {"application": "Editor"})
+    assert requires_user_approval("obs_record", {"action": "start"})
+    assert requires_user_approval("obs_record", {"action": "stop"})
+    assert not requires_user_approval("obs_record", {"action": "stop"}, explicit_user_request=True)
+
+    class Orb:
+        pending = False
+        def set_mode(self, _mode): pass
+
+    class ServiceStub:
+        pending = None
+        orb = Orb()
+        def execute_action(self, name, _args):
+            assert name == "take_screenshot"
+            self.executed = True
+            return "Salvei a captura."
+
+    detail = {"name": "take_screenshot", "args": {}, "event": threading.Event(),
+              "explicit_user_request": True}
+    stub = ServiceStub()
+    service_module.AuroraService.request_approval(stub, detail["name"], detail)
+    assert stub.executed
+    assert detail["event"].is_set()
+    assert stub.pending is None
+
+
+def test_obs_approval_runs_off_the_gui_thread(monkeypatch):
+    from PySide6.QtCore import QCoreApplication, QObject
+    app = QCoreApplication.instance() or QCoreApplication([])
+    main_thread = threading.get_ident()
+    observed = []
+
+    def slow_obs(action, *_args, **_kwargs):
+        observed.append((action, threading.get_ident()))
+        time.sleep(0.12)
+        return "Gravação iniciada no OBS."
+
+    monkeypatch.setattr(service_module.aurora_integrations, "obs_record", slow_obs)
+
+    class Orb:
+        pending = True
+        def set_mode(self, _mode): pass
+        def isVisible(self): return True
+
+    class Voice:
+        def disable_control_cancel(self): pass
+
+    class ServiceStub(service_module.AuroraService):
+        def __init__(self):
+            QObject.__init__(self)
+            self.cfg = {"obs_host": "127.0.0.1", "obs_port": 4455}
+            self.action_workers = []
+            self.obs_details = {}
+            self.action_cancel_event = threading.Event()
+            self.request_generation = 0
+            self.pending = None
+            self.orb = Orb()
+            self.voice = Voice()
+    detail = {"name": "obs_record", "args": {"action": "start"},
+              "event": threading.Event(), "result": "Ação recusada."}
+    stub = ServiceStub()
+    stub.pending = detail
+    started = time.monotonic()
+    service_module.AuroraService.resolve_approval(stub, True)
+    elapsed = time.monotonic() - started
+    assert elapsed < 0.1
+    deadline = time.monotonic() + 2
+    while not detail["event"].is_set() and time.monotonic() < deadline:
+        app.processEvents()
+        time.sleep(0.01)
+    assert detail["event"].is_set()
+    assert observed and observed[0][0] == "start"
+    assert observed[0][1] != main_thread
+    assert detail["result"] == "Gravação iniciada no OBS."
 
 
 def test_tapping_pending_approval_interrupts_voice_before_execution():

@@ -1,4 +1,5 @@
 from pathlib import Path
+import stat
 
 import aurora
 import aurora_core.system.files as system_files
@@ -96,6 +97,12 @@ def test_project_and_aurora_destinations_resolve_to_their_distinct_roots(monkeyp
 
     assert aurora.resolve_natural_directory("pasta do projeto") == projects
     assert aurora.resolve_natural_directory("pasta da Aurora") == app_dir
+
+
+def test_created_user_files_are_private(tmp_path):
+    path = tmp_path / "private.txt"
+    system_files.create_user_file(path.name, str(tmp_path), "private note")
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
 def test_natural_directory_search_refuses_partial_results_after_scan_limit(monkeypatch, tmp_path):

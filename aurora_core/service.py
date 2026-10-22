@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QObject, Slot, QTimer, QUrl
+from PySide6.QtCore import Qt, QObject, Slot, QTimer, QUrl, QThread, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtMultimedia import QSoundEffect
 from PySide6.QtWidgets import QApplication
@@ -16,6 +16,8 @@ from .memory import user_memory_update
 from .routing import route_request
 from .system.apps import close_application, launch_application
 from .system.actions import execute_action as dispatch_action
+from .system.audit import audit_action
+from .system.approval import requires_user_approval
 from .system.commands import parse_local_command
 from .system.files import create_user_file, normalize_words, xdg_user_directory
 from .system.hardware import system_hardware_summary
@@ -31,6 +33,24 @@ from .web.requests import FXRequest, SearchRequest, WeatherRequest
 
 APPROVAL_TIMEOUT_SECONDS=90
 
+
+class _ObsActionRequest(QThread):
+    completed=Signal(object,object)
+
+    def __init__(self,cfg,action,cancel_event):
+        super().__init__()
+        self.cfg=cfg; self.action=action; self.cancel_event=cancel_event
+
+    def run(self):
+        try:
+            result=aurora_integrations.obs_record(
+                self.action,os.environ.get('AURORA_OBS_PASSWORD',''),
+                self.cfg.get('obs_host','127.0.0.1'),self.cfg.get('obs_port',4455),
+                cancel_event=self.cancel_event)
+            self.completed.emit(True,result)
+        except Exception as exc:
+            self.completed.emit(False,str(exc))
+
 class AuroraService(QObject):
     def __init__(self,app):
         # Keep every slot connected to worker-thread signals on the GUI thread.
@@ -39,7 +59,7 @@ class AuroraService(QObject):
         # wake() then called the floating view's show()/raise_() outside Qt's GUI thread:
         # the feedback sound played, while the orb window was never mapped.
         super().__init__(app)
-        self.app=app; self.cfg=settings_load(); self.hw=hardware_profile(); self.pending=None; self.inf=None; self.inferences=[]
+        self.app=app; self.cfg=settings_load(); self.hw=hardware_profile(); self.pending=None; self.inf=None; self.inferences=[]; self.action_workers=[]; self.obs_details={}; self.action_cancel_event=threading.Event()
         self.response_summary=''; self.response_finished=False; self.response_language='Português brasileiro'; self.activity_generation=0; self.request_generation=0; self.last_wake=0.0; self.background_requests=[]; self.context_history=[]; self.current_prompt=''; self.active_search_context=''
         self.orb=AuroraOrb(self.cfg); self.orb.start_voice.connect(self.listen_once); self.orb.hide_requested.connect(self.stop_conversation); self.orb.quit_requested.connect(app.quit)
         self.feedback=QSoundEffect(); self.feedback.setSource(QUrl.fromLocalFile(str(APP_DIR/'assets'/'audio'/'entrada.wav'))); self.feedback.setVolume(.34)
@@ -95,6 +115,9 @@ class AuroraService(QObject):
     @Slot()
     def wake(self):
         self.last_wake=time.monotonic()
+        # Give this activation its own cancellation token. Workers from a
+        # cancelled request retain the old, set token when a new wake arrives.
+        self.action_cancel_event=threading.Event()
         self.activity_generation+=1
         self.voice.begin_request()
         self.orb.reveal('listening'); self.feedback.play()
@@ -112,6 +135,7 @@ class AuroraService(QObject):
     def stop_conversation(self):
         """Immediately cancel the current one-shot request and its pending output."""
         self.activity_generation+=1; self.request_generation+=1
+        self.action_cancel_event.set()
         self.voice.end_request()
         self.voice.disable_control_cancel()
         self.voice.speaking=False
@@ -156,11 +180,12 @@ class AuroraService(QObject):
         if generation==self.request_generation and self.voice.request_active.is_set(): self.speaker.say(text)
     def run_local_action(self,name,args):
         self.orb.set_mode('thinking')
-        if (name=='close_application' or (name=='manage_window' and args.get('action')=='close') or
-            name=='take_screenshot' or name in ('focus_accessible_window','type_accessible_text') or
-            (name=='obs_record' and args.get('action')=='start')):
+        if requires_user_approval(name,args,explicit_user_request=True):
             detail={'name':name,'args':args,'event':threading.Event(),'result':'Ação recusada.','direct':True}
             self.request_approval(name,detail); return
+        if name=='obs_record':
+            detail={'name':name,'args':args,'event':threading.Event(),'result':'Ação recusada.','direct':True}
+            self._start_obs_action(detail); return
         self.complete_direct_action(self.execute_action(name,args))
     def remember_exchange(self,user_text,assistant_text):
         user_text=' '.join(str(user_text).split())[:700]; assistant_text=' '.join(str(assistant_text).split())[:1200]
@@ -300,6 +325,19 @@ class AuroraService(QObject):
             if request_busy: self.orb.set_mode('thinking')
         if self.inf and self.inf.model!=self.cfg['model']: self.start_warmup()
     def request_approval(self,name,detail):
+        explicit=bool(detail.get('direct') or detail.get('explicit_user_request'))
+        if not requires_user_approval(name,detail.get('args',{}),explicit_user_request=explicit):
+            if name=='obs_record':
+                self._start_obs_action(detail)
+                return
+            try:
+                detail['result']=str(self.execute_action(name,detail.get('args',{})))
+            except Exception as exc:
+                detail['result']=f'Ação falhou: {exc}'
+            detail['event'].set()
+            if detail.get('direct'):
+                self.complete_direct_action(detail['result'])
+            return
         detail['expires_at']=time.monotonic()+APPROVAL_TIMEOUT_SECONDS
         self.pending=detail
         if name in {'focus_accessible_window','type_accessible_text'}:
@@ -331,14 +369,49 @@ class AuroraService(QObject):
         self.pending=None; self.orb.pending=False
         if detail.get('name') in {'focus_accessible_window','type_accessible_text'}:
             self.voice.disable_control_cancel()
+        if approved and detail.get('name')=='obs_record':
+            self._start_obs_action(detail)
+            return
         try:
             if detail['name']=='web_search': detail['result']=True if approved else 'Ação negada pelo usuário.'
             else: detail['result']=self.execute_action(detail['name'],detail['args']) if approved else 'Ação negada pelo usuário.'
         except Exception as e: detail['result']=f'Ação falhou: {e}'
         detail['event'].set(); self.orb.set_mode('thinking')
         if detail.get('direct'): self.complete_direct_action(detail['result'] if approved else 'Tudo bem, não executei essa ação.')
+    def _start_obs_action(self,detail):
+        self.orb.set_mode('controlling')
+        detail['request_generation']=self.request_generation
+        detail['cancel_event']=self.action_cancel_event
+        worker=_ObsActionRequest(self.cfg,detail['args'].get('action',''),self.action_cancel_event)
+        self.action_workers.append(worker)
+        self.obs_details[worker]=detail
+        worker.completed.connect(self._obs_action_result)
+        worker.finished.connect(lambda w=worker:self.action_workers.remove(w) if w in self.action_workers else None)
+        worker.start()
+    @Slot(object,object)
+    def _obs_action_result(self,ok,result):
+        worker=self.sender()
+        detail=self.obs_details.pop(worker,None)
+        if detail is not None:
+            self._finish_obs_action(detail,ok,result)
+    def _finish_obs_action(self,detail,ok,result):
+        detail['result']=str(result) if ok else f'Ação falhou: {result}'
+        if detail.get('event'): detail['event'].set()
+        current=detail.get('request_generation')==self.request_generation
+        cancelled=bool(detail.get('cancel_event') and detail['cancel_event'].is_set())
+        if current and self.orb.isVisible(): self.orb.set_mode('thinking')
+        if detail.get('direct') and current and not cancelled and self.voice.request_active.is_set():
+            self.complete_direct_action(detail['result'])
     def execute_action(self,name,args):
-        return dispatch_action(self,name,args)
+        audited={'open_application','close_application','manage_window','volume_control',
+                 'system_info','get_system_info','create_file','remember_preference','forget_preference'}
+        try:
+            result=dispatch_action(self,name,args)
+        except Exception:
+            if name in audited: audit_action(name,'failed')
+            raise
+        if name in audited: audit_action(name)
+        return result
     def unload_model(self,model=None):
         model=model or self.cfg['model']
         try:
@@ -347,6 +420,7 @@ class AuroraService(QObject):
             urllib.request.urlopen(req,timeout=5).read()
         except Exception: pass
     def stop(self):
+        self.action_cancel_event.set()
         self.voice.disable_control_cancel()
         if self.pending:
             self.pending['result']='Ação cancelada porque Aurora está encerrando.'
@@ -356,6 +430,8 @@ class AuroraService(QObject):
         self.voice.stop(); self.speaker.stop()
         if self.voice.isRunning(): self.voice.wait(2000)
         if self.speaker.isRunning(): self.speaker.wait(2000)
+        for worker in tuple(self.action_workers):
+            if worker.isRunning(): worker.wait(2000)
         for inference in tuple(self.inferences):
             if inference.isRunning(): inference.wait(3000)
         if getattr(self,'warmup',None) and self.warmup.isRunning(): self.warmup.wait(15000)

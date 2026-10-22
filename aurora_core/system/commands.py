@@ -52,20 +52,20 @@ def parse_local_command(prompt):
         if re.search(r'\b(aument|sub|mais alto|mais forte|suba)\w*\b',text): return ('volume_control',{'action':'up','value':value})
         if re.search(r'\b(diminu|baix|mais baixo|mais fraco|reduz)\w*\b',text): return ('volume_control',{'action':'down','value':value})
         if amount or re.search(r'\b(defina|coloque|ajuste|mude|deixe)\w*\b',text): return ('volume_control',{'action':'set','value':value})
-    match=re.search(r'^\s*(?:por favor\s+)?(?P<verb>maximizar|maximiza|maximize|minimizar|minimiza|minimize|restaure|restaurar|feche a janela|fechar a janela|fecha a janela|feche a|fechar a|fecha a)\b\s*(?P<target>.*)$',text)
+    match=re.search(r'^\s*(?:por favor\s+)?(?:(?:voce\s+)?(?:pode|poderia|consegue)\s+)?(?P<verb>maximizar|maximiza|maximize|minimizar|minimiza|minimize|restaure|restaurar|feche a janela|fechar a janela|fecha a janela|feche a|fechar a|fecha a)\b\s*(?P<target>.*)$',text)
     if match:
-        verb=match.group('verb'); target=(match.group('target') or '').strip()
+        verb=match.group('verb'); target=(match.group('target') or '').strip(' .,!?:;')
         action='maximize' if verb.startswith('maxim') else 'minimize' if verb.startswith('minim') else 'restore' if verb.startswith('restaur') else 'close'
         target=re.sub(r'^(?:(?:a|o)\s+)?janela\s+(?:(?:do|da|de)\s+)?','',target)
         target=re.sub(r'^(?:do|da|de|the)\s+','',target)
         target='' if target in ('atual','atual agora','atual por favor','atual agora por favor','janela atual','a janela atual','app atual') else target
         return ('manage_window',{'action':action,'target':target})
-    match=re.search(r'^\s*(?:por favor\s+)?(?:feche|fecha|fechar|encerre|encerrar|termine|terminar|saia de|sair de)\s+(?:o |a |do |da |meu |minha |aplicativo |app |programa )?(.+?)\s*$',text)
+    match=re.search(r'^\s*(?:por favor\s+)?(?:(?:voce\s+)?(?:pode|poderia|consegue)\s+)?(?:feche|fecha|fechar|encerre|encerrar|termine|terminar|saia de|sair de)\s+(?:o |a |do |da |meu |minha |aplicativo |app |programa )?(.+?)\s*$',text)
     if match and match.group(1) not in ('a janela','janela atual'):
         target=re.sub(r'^(?:(?:app|aplicativo|programa)\s+)+','',match.group(1).strip())
-        target=re.sub(r'\s+(?:por favor|pra mim|para mim)$','',target)
+        target=re.sub(r'\s+(?:por favor|pra mim|para mim)$','',target).strip(' .,!?:;')
         return ('close_application',{'application':target})
-    match=re.search(r'^\s*(?:por favor\s+)?(?:abra|abrir|abre|inicie|iniciar|inicia|execute|executar)\s+(?:(?:o|a|meu|minha)\s+)?(?:(?:app|aplicativo|programa)\s+)?(.+?)\s*$',text)
+    match=re.search(r'^\s*(?:por favor\s+)?(?:(?:voce\s+)?(?:pode|poderia|consegue)\s+)?(?:abra|abrir|abre|inicie|iniciar|inicia|execute|executar)\s+(?:(?:o|a|meu|minha)\s+)?(?:(?:app|aplicativo|programa)\s+)?(.+?)\s*$',text)
     if match:
         target=match.group(1).strip(' .,!?:;')
         target=re.sub(r'^(?:por favor|pra mim|para mim)\s+','',target)

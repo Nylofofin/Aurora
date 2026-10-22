@@ -14,7 +14,7 @@ Assistente pessoal de IA por voz, local-first, para o PC do usuário. Interface 
 - Voz: Edge TTS (`pt-BR-ThalitaMultilingualNeural`).
 - Serviço `systemd --user`, instalador e desinstalador em shell.
 
-Hardware-alvo (não ignore): Fedora 44, GNOME/Wayland, Intel i5-2300 (4 núcleos, **sem AVX2**), 12 GB de RAM, AMD RX 470 com 4 GB de VRAM (Ollama via Vulkan). Modelos grandes ou dependências pesadas estão fora de cogitação.
+Hardware-alvo: computadores pessoais modestos com recursos locais limitados. Detecte capacidades em tempo de execução; não dependa de instruções de CPU, aceleradores, memória ou GPU específicos. Modelos grandes ou dependências pesadas estão fora de cogitação.
 
 ## 2. Regras de ouro (valem para TODAS as fases)
 
@@ -25,25 +25,25 @@ Hardware-alvo (não ignore): Fedora 44, GNOME/Wayland, Intel i5-2300 (4 núcleos
 5. **Não adicione o que não foi pedido.** Se achar uma melhoria, liste no final da resposta e não implemente.
 6. **Respeite o hardware.** Mantenha o Gemma 3 1B quente na GPU e as respostas curtas rápidas. Qualquer mudança que aumente latência da primeira resposta precisa ser medida e informada.
 7. **Privacidade honesta.** Prompt e resposta do LLM só vão a `localhost`. O que sai para a internet (áudio do comando para o Google, texto da resposta para o Edge TTS, buscas web, localização aproximada por IP) deve estar descrito sem ambiguidade no README. Não escreva "tudo local" quando não for.
-8. **Segurança de ações.** Ações destrutivas ou irreversíveis exigem confirmação na bolha. Arquivos existentes nunca são sobrescritos. Mantenha `public_http_url` e o handler de redirecionamento público (proteção contra acesso a rede interna).
+8. **Segurança de ações.** Ações destrutivas ou irreversíveis exigem confirmação na bolha. Um pedido explícito de captura de tela é autorização suficiente para a Aurora; respeite também o portal do desktop. Arquivos existentes nunca são sobrescritos. Mantenha `public_http_url` e o handler de redirecionamento público (proteção contra acesso a rede interna).
 
 ## 3. Fase 0 — Criar a raiz fixa do projeto e git
 
-Contexto: hoje o projeto mora em `~/Documents/Codex/2026-10-21/va/outputs/aurora/` (pasta temporária de sessão, fácil de perder ou apagar). A raiz definitiva será **`~/Projects/aurora/`**. Este arquivo pode ter chegado colado direto no chat, sem estar em nenhuma pasta; nesse caso esta fase é a primeira coisa a fazer.
+Contexto histórico: a fase criou uma raiz de projeto permanente fora de pastas temporárias de sessão. Este arquivo pode ter chegado colado direto no chat, sem estar em nenhuma pasta; nesse caso esta fase é a primeira coisa a fazer.
 
 Passos, nesta ordem:
 
 1. **Parar o serviço** antes de mexer: `systemctl --user stop aurora.service`.
-2. **Criar** `~/Projects/aurora/` (e `~/Projects/` se não existir).
-3. **Copiar, não mover.** Copie o conteúdo de `~/Documents/Codex/2026-10-21/va/outputs/aurora/` para a nova raiz, **excluindo** `.venv/`, `__pycache__/` e `*-preview.png`. Inclua `assets/` (áudios de entrada/saída e o modelo Vosk, se existir). A pasta antiga fica **intacta** como backup até o usuário confirmar que tudo funciona; nunca apague nada dela.
-4. **Salvar este arquivo** como `~/Projects/aurora/AGENTS.md` (se ele não existir lá), para que as próximas sessões o leiam sozinhas.
-5. **Verificar dependências fora da pasta.** O `start-alpha.sh` usa o runtime local em `~/Documents/Codex/2026-10-21/va/work/` quando disponível, e existem logs e amostras `.wav` lá. Liste o que o projeto realmente usa de `work/` e **relate ao usuário** antes de copiar qualquer coisa grande; não traga logs, amostras de áudio nem venvs antigos sem necessidade.
+2. **Criar** uma raiz permanente para o projeto fora de pastas temporárias.
+3. **Copiar, não mover.** Copie o conteúdo do checkout atual para a nova raiz, **excluindo** `.venv/`, `__pycache__/` e `*-preview.png`. Inclua `assets/` (áudios de entrada/saída e o modelo Vosk, se existir). A pasta antiga fica **intacta** como backup até o usuário confirmar que tudo funciona; nunca apague nada dela.
+4. **Salvar este arquivo** na raiz permanente como `AGENTS.md` (se ele não existir lá), para que as próximas sessões o leiam sozinhas.
+5. **Verificar dependências fora da pasta.** Se `start-alpha.sh` usar runtime ou arquivos externos configurados na máquina, liste o que o projeto realmente usa e **relate ao usuário** antes de copiar qualquer coisa grande; não traga logs, amostras de áudio nem venvs antigos sem necessidade.
 6. **Git:** `git init` na nova raiz, criar `.gitignore` (ignorar `.venv/`, `__pycache__/`, `assets/vosk-model/`, `*.wav`, `*.log`, `*-preview.png`, caches) e fazer o commit inicial **antes de qualquer alteração de código**.
 7. **Recriar o `.venv`** na nova pasta (não copiar o antigo) e instalar os requirements. Se o modelo Vosk não foi copiado, usar `setup-voice.sh`.
 8. **Atualizar todos os caminhos absolutos** em `install-service.sh`, `install-desktop.sh`, `aurora.desktop`, `run.sh`, `start-alpha.sh` e `uninstall-service.sh`. Antes de reinstalar, rodar o `uninstall-service.sh` da instalação antiga para não ficar um `aurora.service` apontando para a pasta velha. Depois reinstalar e conferir com `systemctl --user status aurora.service`.
 9. **Manter `~/.config/aurora` como está.** Não perder `aurora-settings.json` nem a memória local do usuário.
 
-Aceite: a Aurora sobe pelo serviço a partir de `~/Projects/aurora/`, responde ao wake word, o repositório git tem o commit inicial, e a pasta antiga continua intacta para o usuário apagar quando quiser. Ao terminar, informe o caminho final e quais arquivos foram alterados nos scripts.
+Aceite: a Aurora sobe pelo serviço a partir da raiz permanente escolhida, responde ao wake word, o repositório git tem o commit inicial, e a pasta antiga continua intacta para o usuário apagar quando quiser. Ao terminar, informe o caminho final e quais arquivos foram alterados nos scripts.
 
 ## 4. Fase 1 — Modularização (sem mudar comportamento)
 
@@ -110,19 +110,19 @@ A Aurora às vezes responde com informação antiga. Além disso, exemplos do us
 
 ## 6. Fase 3 — Automação de tela no GNOME/Wayland
 
-O Wayland bloqueia mouse e teclado sintéticos de aplicativos comuns, então **primeiro pesquise e relate, depois implemente.** Entregue antes um relatório curto com o que funciona neste Fedora 44 e o custo de cada opção:
+O Wayland bloqueia mouse e teclado sintéticos de aplicativos comuns, então **primeiro pesquise e relate, depois implemente.** Entregue antes um relatório curto com o que funciona no ambiente Linux do usuário e o custo de cada opção:
 
 1. **Portais do `xdg-desktop-portal`** (RemoteDesktop, Screenshot, GlobalShortcuts): caminho preferido, exige permissão explícita do usuário.
 2. **D-Bus do GNOME Shell e acessibilidade (AT-SPI)**: ler a interface e acionar controles de apps compatíveis.
 3. **`ydotool`** (precisa de acesso a `uinput`): fallback para teclado e mouse, com atenção a permissões e segurança.
-4. Captura de tela + modelo de visão: **só como fase opcional**, e apenas se couber em 4 GB de VRAM sem tirar o Gemma 1B da GPU. Se não couber, descartar.
+4. Captura de tela + modelo de visão: **só como fase opcional**, e apenas se couber nos recursos de GPU detectados sem tirar o Gemma 1B da GPU. Se não couber, descartar.
 
 Regras de implementação:
 
 - Expor ao agente poucas ferramentas, com argumentos tipados e fechados (por exemplo: focar janela, pressionar atalho, digitar texto, clicar em controle por nome acessível, tirar print). O Gemma 4 E2B é pequeno: quanto mais simples o conjunto de ferramentas, melhor.
-- **Segurança obrigatória:** confirmação na bolha para ações sensíveis; nunca digitar em campo de senha; lista de apps permitidos configurável; log de tudo que foi executado; parada imediata por comando de voz ("para") ou atalho; indicação visível quando a Aurora estiver controlando a tela.
+- **Segurança obrigatória:** confirmação na bolha para ações destrutivas ou sensíveis; pedido explícito do usuário autoriza screenshot sem confirmação redundante da Aurora; nunca digitar em campo de senha; lista de apps permitidos configurável; log de tudo que foi executado; parada imediata por comando de voz ("para") ou atalho; indicação visível quando a Aurora estiver controlando a tela.
 - Cada ferramenta nova tem teste com a camada de sistema mockada.
-- Aceite: demonstração de pelo menos 3 ações reais (por exemplo focar uma janela, digitar texto num app aberto, tirar um print) com confirmação e log, e relatório do que ficou de fora e por quê.
+- Aceite: demonstração de pelo menos 3 ações reais (por exemplo focar uma janela, digitar texto num app aberto, tirar um print) com as confirmações exigidas pela política de cada ação e log, e relatório do que ficou de fora e por quê.
 
 ## 7. Fase 4 — Documentação e limpeza
 

@@ -50,8 +50,9 @@ def execute_action(self,name,args):
         QApplication.processEvents()
         if not self.voice.request_active.is_set(): return 'A captura foi cancelada.'
         try:
-            path=aurora_integrations.capture_screenshot(xdg_user_directory('PICTURES'))
-            aurora_integrations._append_action_log('screenshot','saved',{'path':str(path)})
+            path=aurora_integrations.capture_screenshot(
+                xdg_user_directory('PICTURES'), cancel_event=getattr(self,'action_cancel_event',None))
+            aurora_integrations._append_action_log('screenshot','saved')
             return f'Salvei a captura em {path}.'
         except Exception as exc:
             aurora_integrations._append_action_log('screenshot','failed',{'error_type':type(exc).__name__})

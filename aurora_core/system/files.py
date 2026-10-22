@@ -77,6 +77,7 @@ def create_user_file(filename,location,content):
     target=directory/name
     payload=str(content or '').encode('utf-8')
     if len(payload)>2_000_000: raise ValueError('O arquivo excede o limite de 2 MB.')
-    fd=os.open(target,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o644)
+    # User-created content may contain private notes; keep it private by default.
+    fd=os.open(target,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
     with os.fdopen(fd,'wb') as output: output.write(payload)
     return f'Criei {target} sem substituir nenhum arquivo existente.'

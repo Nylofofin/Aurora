@@ -49,4 +49,6 @@ def manage_window(action,target=''):
                 elif action=='restore': subprocess.run([xdotool,'windowstate',wid,'--remove','MAXIMIZED_VERT','--remove','MAXIMIZED_HORZ'],check=True,timeout=3)
             return f'Janela: {action} concluído.'
         except Exception: return 'Não consegui controlar essa janela pelo X11.'
-    return 'Esta sessão Wayland não expõe o controle de janelas para a Aurora. Fechar aplicativos e outras ações continuam disponíveis; para maximizar/minimizar, instale wmctrl e use janelas XWayland.'
+    return ('Não consigo controlar esta janela: não há um gerenciador X11 disponível. '
+            'wmctrl só controla janelas X11/XWayland; janelas Wayland nativas não são expostas '
+            'por esta rota. Fechar aplicativos instalados continua disponível.')

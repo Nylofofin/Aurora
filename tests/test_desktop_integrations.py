@@ -30,6 +30,46 @@ def test_screenshot_portal_uses_qt_encoded_slot_signature():
     assert Response.staticMetaObject.indexOfSlot("receive(uint,QVariantMap)") >= 0
 
 
+def test_cancelled_screenshot_closes_portal_request_without_saving(monkeypatch, tmp_path):
+    from PySide6 import QtDBus
+    cancelled = threading.Event()
+    cancelled.set()
+    calls = []
+
+    class Message:
+        class MessageType:
+            ErrorMessage = object()
+        def __init__(self, path, interface, method):
+            self.path, self.interface, self.method = path, interface, method
+        @staticmethod
+        def createMethodCall(_service, path, interface, method):
+            return Message(path, interface, method)
+        def setArguments(self, _args): pass
+        def type(self): return object()
+        def errorMessage(self): return ""
+
+    class Bus:
+        def isConnected(self): return True
+        def baseService(self): return ":1.42"
+        def connect(self, *_args): return True
+        def disconnect(self, *_args): pass
+        def call(self, message, *_args):
+            calls.append((message.path, message.interface, message.method))
+            return type("Reply", (), {"type": lambda _self: object(),
+                                      "errorMessage": lambda _self: ""})()
+
+    monkeypatch.setattr(QtDBus, "QDBusMessage", Message)
+    monkeypatch.setattr(QtDBus.QDBusConnection, "sessionBus", lambda: Bus())
+    try:
+        integrations.capture_screenshot(tmp_path, cancel_event=cancelled)
+    except RuntimeError as exc:
+        assert "cancelada" in str(exc)
+    else:
+        raise AssertionError("cancelled screenshots must not be saved")
+    assert calls[-1][1:] == ("org.freedesktop.portal.Request", "Close")
+    assert not (tmp_path / "Aurora").exists()
+
+
 def test_site_opening_is_separate_from_application_opening():
     assert integrations.site_url_from_request("Aurora, abra o site example.com") == "https://example.com"
     assert integrations.site_url_from_request("abre o link https://example.org/ajuda") == "https://example.org/ajuda"
@@ -70,7 +110,7 @@ def test_flatpak_application_launches_through_exported_desktop_entry(monkeypatch
     monkeypatch.setattr(apps_module.subprocess, "run", lambda command, **_kwargs: (
         calls.append(command) or type("Result", (), {"returncode": 0, "stderr": ""})()
     ))
-    assert apps_module.launch_application("OBS Studio") == "Abri OBS Studio."
+    assert apps_module.launch_application("OBS Studio") == "Solicitei a abertura de OBS Studio; o sistema aceitou o pedido."
     assert calls == [["/usr/bin/gio", "launch", str(desktop_file)]]
 
 
@@ -89,8 +129,17 @@ def test_roblox_app_request_resolves_to_installed_sober_flatpak(monkeypatch, tmp
         "open_application", {"command": "roblox"}
     )
     assert apps_module.find_desktop_app("Roblox") == app
-    assert apps_module.launch_application("Roblox") == "Abri Sober."
+    assert apps_module.launch_application("Roblox") == "Solicitei a abertura de Sober; o sistema aceitou o pedido."
     assert calls == [["/usr/bin/gio", "launch", str(desktop_file)]]
+
+
+def test_polite_app_commands_are_routed_without_llm_fallback(monkeypatch):
+    import aurora_core.system.commands as commands
+    monkeypatch.setattr(commands, "find_desktop_app", lambda _name: {"name": "Sober"})
+    assert aurora.parse_local_command("você pode abrir Roblox?") == (
+        "open_application", {"command": "roblox"})
+    assert aurora.parse_local_command("pode fechar o Sober?") == (
+        "close_application", {"application": "sober"})
 
 
 def test_flatpak_application_launch_failure_is_not_reported_as_success(monkeypatch, tmp_path):
@@ -211,6 +260,15 @@ def test_window_manager_rejects_unknown_action_before_running_tools(monkeypatch)
     assert calls == []
 
 
+def test_wayland_window_limit_is_explained_without_false_install_advice(monkeypatch):
+    import aurora_core.system.windows as windows_module
+    monkeypatch.setattr(windows_module.shutil, "which", lambda _name: None)
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-test")
+    result = windows_module.manage_window("maximize", "Editor")
+    assert "X11/XWayland" in result
+    assert "janelas Wayland nativas" in result
+
+
 def test_window_manager_applies_action_once_to_active_window(monkeypatch):
     import aurora_core.system.windows as windows_module
 
@@ -244,6 +302,7 @@ def test_local_fast_router_handles_media_capture_and_obs_requests():
 
 def test_hardware_fast_route_reaches_the_system_info_executor(monkeypatch):
     monkeypatch.setattr(system_actions, "system_hardware_summary", lambda: "hardware confirmado")
+    monkeypatch.setattr(service_module, "audit_action", lambda *_args, **_kwargs: None)
     assert aurora.parse_local_command("mostre o hardware do meu PC") == ("system_info", {})
     assert service_module.AuroraService.execute_action(object(), "system_info", {}) == "hardware confirmado"
 
@@ -257,6 +316,18 @@ def test_screenshot_saves_unique_timestamped_files_without_overwriting(tmp_path)
     assert first.name == "Aurora_2026-10-22_10-11-12-123456.png"
     assert second.name == "Aurora_2026-10-22_10-11-12-123456_1.png"
     assert first.read_bytes() == second.read_bytes() == b"png-data"
+    import stat
+    assert stat.S_IMODE(first.stat().st_mode) == 0o600
+    assert stat.S_IMODE(first.parent.stat().st_mode) == 0o700
+
+
+def test_obs_cancelled_before_start_does_not_connect_or_launch(monkeypatch):
+    cancelled = threading.Event()
+    cancelled.set()
+    monkeypatch.setattr(integrations.socket, "create_connection",
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("must not connect")))
+
+    assert "cancelada antes" in integrations.obs_record("start", cancel_event=cancelled)
 
 
 def test_screenshot_uri_must_be_local_file(tmp_path):
@@ -266,6 +337,32 @@ def test_screenshot_uri_must_be_local_file(tmp_path):
         assert "arquivo local" in str(exc)
     else:
         raise AssertionError("remote screenshot URI must be rejected")
+
+
+def test_screenshot_collision_never_deletes_existing_file(monkeypatch, tmp_path):
+    source = tmp_path / "portal-shot.png"
+    source.write_bytes(b"new image")
+    existing_dir = tmp_path / "Pictures" / "Aurora"
+    existing_dir.mkdir(parents=True)
+    existing = existing_dir / "Aurora_2026-10-22_10-11-12-123456.png"
+    existing.write_bytes(b"keep me")
+    monkeypatch.setattr(integrations, "unique_screenshot_path", lambda *_args: existing)
+    try:
+        integrations.save_screenshot_uri(source.as_uri(), tmp_path / "Pictures")
+    except FileExistsError:
+        pass
+    else:
+        raise AssertionError("a name collision must not overwrite an existing capture")
+    assert existing.read_bytes() == b"keep me"
+
+
+def test_action_log_permissions_are_private(monkeypatch, tmp_path):
+    import stat
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    integrations._append_action_log("test_action", "returned")
+    root = tmp_path / "aurora"
+    assert stat.S_IMODE(root.stat().st_mode) == 0o700
+    assert stat.S_IMODE((root / "actions.jsonl").stat().st_mode) == 0o600
 
 
 def test_spotify_pkce_challenge_is_url_safe():
@@ -312,7 +409,7 @@ def test_obs_start_launches_flatpak_after_approved_websocket_connection_fails(mo
     launches = []
     monkeypatch.setattr(
         "aurora_core.system.apps.launch_application",
-        lambda name: launches.append(name) or "Abri OBS Studio.",
+        lambda name: launches.append(name) or "Solicitei a abertura de OBS Studio; o sistema aceitou o pedido.",
     )
     monkeypatch.setattr(integrations.socket, "create_connection",
                         lambda *_args, **_kwargs: (_ for _ in ()).throw(ConnectionRefusedError()))

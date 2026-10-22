@@ -74,3 +74,28 @@ def test_agent_speaks_action_result_instead_of_model_reinterpreting_it(monkeypat
 
     assert sentences == ["Volume ajustado para 30%."]
     assert results == ["Volume ajustado para 30%."]
+
+
+def test_cancel_before_tool_dispatch_prevents_local_side_effect(monkeypatch):
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *_args): worker.cancelled = True
+        def __iter__(self):
+            yield json.dumps({"message": {"tool_calls": [{"function": {
+                "name": "open_application", "arguments": {"command": "Editor"}
+            }}]}}).encode()
+
+    monkeypatch.setattr(inference_module.urllib.request, "urlopen", lambda *_args, **_kwargs: Response())
+    cfg = {
+        "endpoint": "http://localhost:11434", "model": "gemma4:test",
+        "keep_alive": "5m", "num_ctx": 1024, "agent_num_ctx": 1024,
+        "agent_num_predict": 96, "num_thread": 4, "num_gpu": 99,
+    }
+    worker = inference_module.Inference(cfg, "Abra o Editor", use_tools=True)
+    dispatched = []
+    monkeypatch.setattr(worker, "execute_tool", lambda name, args: dispatched.append((name, args)))
+
+    worker.run()
+
+    assert worker.cancelled
+    assert dispatched == []

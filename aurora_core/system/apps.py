@@ -98,12 +98,15 @@ def launch_application(name):
         if result.returncode:
             detail=(result.stderr or '').strip()
             return f'Não consegui abrir {app["name"]}.'+(f' {detail}' if detail else '')
-        return f'Abri {app["name"]}.'
+        return f'Solicitei a abertura de {app["name"]}; o sistema aceitou o pedido.'
     if re.fullmatch(r'[\w.+-]{1,80}',query,flags=re.UNICODE):
         executable=shutil.which(query)
         if executable:
-            subprocess.Popen([executable],start_new_session=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-            return f'Abri {query}.'
+            try:
+                subprocess.Popen([executable],start_new_session=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+            except OSError:
+                return f'Não consegui iniciar {query}.'
+            return f'Solicitei a abertura de {query}; o processo foi iniciado.'
     return f'Não encontrei um aplicativo instalado chamado “{query}”.'
 
 def process_names_for_app(query):

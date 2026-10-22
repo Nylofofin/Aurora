@@ -94,7 +94,8 @@ def site_url_from_request(prompt: str) -> str | None:
 
 def unique_screenshot_path(pictures_dir: str | Path, now: datetime | None = None) -> Path:
     folder = Path(pictures_dir).expanduser() / "Aurora"
-    folder.mkdir(parents=True, exist_ok=True)
+    folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(folder, 0o700)
     moment = now or datetime.now().astimezone()
     stamp = moment.strftime("%Y-%m-%d_%H-%M-%S-%f")
     candidate = folder / f"Aurora_{stamp}.png"
@@ -105,17 +106,39 @@ def unique_screenshot_path(pictures_dir: str | Path, now: datetime | None = None
     return candidate
 
 
-def save_screenshot_uri(uri: str, pictures_dir: str | Path, now: datetime | None = None) -> Path:
+def save_screenshot_uri(uri: str, pictures_dir: str | Path, now: datetime | None = None,
+                        cancel_event: threading.Event | None = None) -> Path:
     """Copy the local file URI returned by the desktop screenshot portal."""
     parsed = urllib.parse.urlsplit(str(uri))
     if parsed.scheme != "file" or parsed.netloc not in ("", "localhost"):
         raise ValueError("O portal não retornou um arquivo local.")
     source = Path(urllib.parse.unquote(parsed.path))
+    if cancel_event and cancel_event.is_set():
+        raise RuntimeError("A captura foi cancelada; nenhum arquivo foi salvo.")
     if not source.is_file():
         raise FileNotFoundError("O arquivo temporário da captura não existe.")
-    target = unique_screenshot_path(pictures_dir, now)
-    with source.open("rb") as incoming, target.open("xb") as outgoing:
-        shutil.copyfileobj(incoming, outgoing)
+    with source.open("rb") as incoming:
+        target = None
+        fd = None
+        for _attempt in range(1000):
+            candidate = unique_screenshot_path(pictures_dir, now)
+            try:
+                fd = os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                target = candidate
+                break
+            except FileExistsError:
+                continue
+        if fd is None or target is None:
+            raise FileExistsError("Não consegui reservar um nome exclusivo para a captura.")
+        try:
+            with os.fdopen(fd, "wb") as outgoing:
+                shutil.copyfileobj(incoming, outgoing)
+            if cancel_event and cancel_event.is_set():
+                raise RuntimeError("A captura foi cancelada; nenhum arquivo foi salvo.")
+        except Exception:
+            target.unlink(missing_ok=True)
+            raise
+    os.chmod(target, 0o600)
     return target
 
 
@@ -133,7 +156,8 @@ def _portal_response_slot() -> str:
     return SLOT(f"receive({_portal_response_code_type()},QVariantMap)")
 
 
-def capture_screenshot(pictures_dir: str | Path, timeout: int = 45) -> Path:
+def capture_screenshot(pictures_dir: str | Path, timeout: int = 45,
+                       cancel_event: threading.Event | None = None) -> Path:
     """Request a full-screen capture through the XDG portal and save it safely."""
     try:
         from PySide6.QtCore import QEventLoop, QObject, QTimer, Slot
@@ -177,12 +201,31 @@ def capture_screenshot(pictures_dir: str | Path, timeout: int = 45) -> Path:
     timer = QTimer()
     timer.setSingleShot(True)
     timer.timeout.connect(loop.quit)
+    cancelled = {"value": False}
+    cancel_timer = QTimer()
+    def cancel_if_requested():
+        if cancel_event and cancel_event.is_set():
+            cancelled["value"] = True
+            close = QDBusMessage.createMethodCall(
+                "org.freedesktop.portal.Desktop", request_path,
+                "org.freedesktop.portal.Request", "Close")
+            try:
+                bus.call(close, QDBus.CallMode.Block, 500)
+            except Exception:
+                pass
+            loop.quit()
+    cancel_timer.timeout.connect(cancel_if_requested)
+    cancel_timer.start(50)
     timer.start(max(1, int(timeout)) * 1000)
-    if "code" not in result:
+    cancel_if_requested()
+    if "code" not in result and not (cancel_event and cancel_event.is_set()):
         loop.exec()
     timer.stop()
+    cancel_timer.stop()
     bus.disconnect("org.freedesktop.portal.Desktop", request_path,
                    "org.freedesktop.portal.Request", "Response", receiver, slot)
+    if cancelled["value"] or (cancel_event and cancel_event.is_set()):
+        raise RuntimeError("A captura foi cancelada; nenhum arquivo foi salvo.")
     if "code" not in result:
         raise TimeoutError("A captura expirou ou o portal aguarda uma ação do sistema.")
     if result["code"] != 0:
@@ -190,19 +233,21 @@ def capture_screenshot(pictures_dir: str | Path, timeout: int = 45) -> Path:
     uri = result["data"].get("uri")
     if not uri:
         raise RuntimeError("O portal concluiu sem informar o arquivo da captura.")
-    return save_screenshot_uri(str(uri), pictures_dir)
+    return save_screenshot_uri(str(uri), pictures_dir, cancel_event=cancel_event)
 
 
 def _append_action_log(action: str, outcome: str, details: dict | None = None) -> None:
     """Keep an auditable, local JSONL record; callers must omit credentials."""
     root = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "aurora"
-    root.mkdir(parents=True, exist_ok=True)
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(root, 0o700)
     row = {"time": datetime.now().astimezone().isoformat(timespec="seconds"),
            "action": action, "outcome": outcome, "details": details or {}}
     path = root / "actions.jsonl"
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
     with os.fdopen(fd, "a", encoding="utf-8") as stream:
         stream.write(json.dumps(row, ensure_ascii=False) + "\n")
+    os.chmod(path, 0o600)
 
 
 def _token_path() -> Path:
@@ -390,7 +435,7 @@ def play_spotify_track(query: str, client_id: str) -> str:
         if status not in (200, 202, 204):
             raise RuntimeError("Abra o Spotify em um dispositivo ativo e confirme uma conta Premium.")
         spoken = f"Tocando {title}" + (f", de {artists}." if artists else ".")
-        _append_action_log("spotify_play", "started", {"track": title, "artists": artists})
+        _append_action_log("spotify_play", "started")
         return spoken
     except RuntimeError as exc:
         _append_action_log("spotify_play", "unavailable")
@@ -468,7 +513,8 @@ def _ws_receive(stream: socket.socket, deadline: float | None = None) -> dict:
         return json.loads(data.decode("utf-8"))
 
 
-def obs_record(action: str, password: str = "", host: str = "127.0.0.1", port: int = 4455) -> str:
+def obs_record(action: str, password: str = "", host: str = "127.0.0.1", port: int = 4455,
+               cancel_event: threading.Event | None = None) -> str:
     """Call only OBS on loopback; speak success only after its RPC confirms."""
     if host not in ("127.0.0.1", "::1", "localhost"):
         return "Por segurança, o OBS WebSocket precisa estar no próprio computador."
@@ -487,11 +533,14 @@ def obs_record(action: str, password: str = "", host: str = "127.0.0.1", port: i
         port = obs_settings["server_port"]
     password = password or obs_settings.get("server_password", "")
     request_sent = False
+    if cancel_event and cancel_event.is_set():
+        return "A gravação foi cancelada antes de enviar qualquer comando ao OBS."
     try:
-        deadline = time.monotonic() + OBS_REQUEST_TIMEOUT
         try:
             stream = socket.create_connection((host, int(port)), timeout=OBS_REQUEST_TIMEOUT)
         except OSError:
+            if cancel_event and cancel_event.is_set():
+                return "A gravação foi cancelada antes de abrir o OBS."
             # Start OBS only after the user approved StartRecord. Never launch
             # it for a stop request or when its local WebSocket is disabled.
             configured_port = obs_settings.get("server_port")
@@ -500,11 +549,13 @@ def obs_record(action: str, password: str = "", host: str = "127.0.0.1", port: i
                 raise
             from aurora_core.system.apps import launch_application
             launch_result = launch_application("OBS Studio")
-            if not launch_result.startswith("Abri "):
+            if not launch_result.startswith("Solicitei a abertura"):
                 return f"Não consegui iniciar o OBS: {launch_result}"
             startup_deadline = time.monotonic() + OBS_STARTUP_TIMEOUT
             stream = None
             while time.monotonic() < startup_deadline:
+                if cancel_event and cancel_event.is_set():
+                    return "A gravação foi cancelada antes de enviar qualquer comando ao OBS."
                 try:
                     stream = socket.create_connection((host, int(port)), timeout=0.5)
                     break
@@ -513,7 +564,13 @@ def obs_record(action: str, password: str = "", host: str = "127.0.0.1", port: i
             if stream is None:
                 return ("Abri o OBS, mas o WebSocket não ficou disponível. Confira se o servidor "
                         f"está ativo na porta {port}; não iniciei a gravação.")
+        # Startup has its own bounded wait. Start the short protocol deadline
+        # only after a socket is connected, otherwise launching OBS can consume
+        # the entire handshake budget before OBS is ready.
+        deadline = time.monotonic() + OBS_REQUEST_TIMEOUT
         with stream:
+            if cancel_event and cancel_event.is_set():
+                return "A gravação foi cancelada antes de enviar qualquer comando ao OBS."
             _set_request_timeout(stream, deadline)
             key = base64.b64encode(secrets.token_bytes(16)).decode("ascii")
             stream.sendall(("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\n"
@@ -550,6 +607,8 @@ def obs_record(action: str, password: str = "", host: str = "127.0.0.1", port: i
             identified = _ws_receive(stream, deadline)
             if identified.get("op") != 2:
                 raise ConnectionError("A autenticação WebSocket do OBS falhou.")
+            if cancel_event and cancel_event.is_set():
+                return "A gravação foi cancelada antes de enviar qualquer comando ao OBS."
             request_id = secrets.token_hex(8)
             _ws_send(stream, {"op": 6, "d": {"requestType": request_type,
                       "requestId": request_id, "requestData": {}}}, deadline)

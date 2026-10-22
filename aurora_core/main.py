@@ -9,7 +9,7 @@ def main():
     app=QApplication(sys.argv); app.setApplicationName('Aurora'); app.setQuitOnLastWindowClosed(False)
     print(f'[aurora] qt_platform={app.platformName()}',file=sys.stderr,flush=True)
     cfg=settings_load(); hw=hardware_profile()
-    # Hardware-tuned defaults for this host: Sandy Bridge CPU, 12 GiB RAM, 4 GiB Polaris Vulkan GPU.
+    # Select conservative runtime defaults from the detected local hardware.
     raw={}
     try: raw=json.loads(APP_CONFIG.read_text())
     except Exception: pass
