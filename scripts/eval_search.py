@@ -205,6 +205,8 @@ def decision_explanation(question):
     ))
     if not hardware_temp and re.search(r"\b(tempo|clima|previs[aã]o|temperatura|vai chover|chove)\b", question, re.I):
         return False, "rota direta de clima (API), sem busca web genérica"
+    if aurora.aurora_fx.detect_fx_intent(question):
+        return True, "rota estruturada de cotação/conversão; consulta API antes da busca web"
     explicit_query = aurora.search_intent(question)
     freshness = aurora.current_search_window(question)
     factual = aurora.factual_web_intent(question)
