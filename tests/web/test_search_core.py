@@ -136,6 +136,18 @@ def test_structured_conversion_requires_both_rate_and_converted_value():
     assert aurora._verified_fx_answer("100 USD equivalem a R$ 565,28.", quote).startswith("Não confirmei o valor numérico.")
 
 
+def test_old_awesome_quote_warning_preserves_numeric_verification():
+    from datetime import date
+    from decimal import Decimal
+    quote = aurora.aurora_fx.FXQuote(
+        "AwesomeAPI", "USD", "BRL", Decimal("5.045"), date(2026, 10, 22),
+        "12:00:00 UTC-3", Decimal("5.04"), Decimal("5.05"), stale=True,
+    )
+    answer = aurora.aurora_fx.format_quote(quote)
+    assert "não a apresento como valor de agora" in answer
+    assert aurora._verified_fx_answer(answer, quote) == answer
+
+
 def _google_news_test_rows(count=3):
     from datetime import date
     published = date.today().strftime("%d/%m/%Y")

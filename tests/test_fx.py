@@ -1,6 +1,6 @@
 import json
 import threading
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 import pytest
@@ -177,5 +177,20 @@ def test_awesomeapi_crypto_asset_uses_no_frankfurter_fallback():
     )
     assert calls == ["awesome"]
     assert "Bitcoin (BTC/BRL)" in aurora_fx.format_quote(result.quote)
+
+
+def test_awesome_quote_older_than_thirty_minutes_is_labeled_stale(monkeypatch):
+    now = datetime(2026, 10, 22, 13, 0, 0, tzinfo=aurora_fx.LOCAL_TZ)
+    payload = json.dumps({"USDBRL": {
+        "code": "USD", "codein": "BRL", "bid": "5.04", "ask": "5.05",
+        "create_date": "2026-10-22 12:29:59",
+    }}).encode()
+    monkeypatch.setattr(aurora_fx.urllib.request, "urlopen", lambda *a, **k: FakeResponse(payload))
+    quote = aurora_fx.fetch_awesome(aurora_fx.FXIntent("USD", "BRL"), now=now)
+    assert quote.stale is True
+    answer = aurora_fx.format_quote(quote)
+    assert "cotação de 12:29:59 UTC-3" in answer
+    assert "pode estar desatualizada" in answer
+    assert "não a apresento como valor de agora" in answer
 
 

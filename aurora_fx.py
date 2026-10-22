@@ -54,6 +54,7 @@ class FXQuote:
     converted: Decimal | None = None
     retrieved_at: datetime | None = None
     api_timings: tuple[tuple[str, float], ...] = ()
+    stale: bool = False
 
 
 @dataclass(frozen=True)
@@ -280,7 +281,8 @@ def fetch_awesome(intent: FXIntent, timeout=API_TIMEOUT, now=None):
         raise ValueError("invalid quote time") from exc
     retrieved = (now or datetime.now(LOCAL_TZ)).astimezone(LOCAL_TZ)
     converted = ((intent.amount * ((bid + ask) / 2)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if intent.amount else None)
-    return FXQuote("AwesomeAPI", intent.base, intent.quote, (bid + ask) / 2, quote_dt.date(), quote_dt.strftime("%H:%M:%S UTC-3"), bid, ask, intent.amount, converted, retrieved)
+    stale = retrieved - quote_dt.astimezone(LOCAL_TZ) > timedelta(minutes=30)
+    return FXQuote("AwesomeAPI", intent.base, intent.quote, (bid + ask) / 2, quote_dt.date(), quote_dt.strftime("%H:%M:%S UTC-3"), bid, ask, intent.amount, converted, retrieved, stale=stale)
 
 
 def fetch_frankfurter(intent: FXIntent, timeout=API_TIMEOUT, now=None):
@@ -310,6 +312,8 @@ def format_quote(quote: FXQuote):
     if quote.source == "AwesomeAPI" and quote.bid is not None and quote.ask is not None:
         bid_text, ask_text = format(quote.bid.normalize(), "f").replace(".", ","), format(quote.ask.normalize(), "f").replace(".", ",")
         text = f"{base_name} ({quote.base}/{quote.quote}): {quote_name} {bid_text} de compra e {quote_name} {ask_text} de venda, segundo a AwesomeAPI, cotação de {quote.quote_time} em {quote.quote_date:%d/%m/%Y}."
+        if quote.stale:
+            text += " Essa cotação pode estar desatualizada ou o mercado pode estar fechado; não a apresento como valor de agora."
     else:
         text = f"{base_name} ({quote.base}/{quote.quote}): {rate_text} {quote_name}, taxa de referência diária da Frankfurter de {quote.quote_date:%d/%m/%Y}."
     if quote.amount is not None and quote.converted is not None:
