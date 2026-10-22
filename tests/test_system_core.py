@@ -88,6 +88,28 @@ def test_project_and_aurora_destinations_resolve_to_their_distinct_roots(monkeyp
     assert aurora.resolve_natural_directory("pasta da Aurora") == app_dir
 
 
+def test_natural_directory_search_refuses_partial_results_after_scan_limit(monkeypatch, tmp_path):
+    target = tmp_path / "target"
+    target.mkdir()
+    monkeypatch.setattr(system_files, "xdg_user_directory", lambda _kind: tmp_path)
+    monkeypatch.setattr(system_files.Path, "home", staticmethod(lambda: tmp_path))
+    monkeypatch.setattr(system_files, "APP_DIR", tmp_path / "Projects" / "aurora")
+
+    def truncated_walk(base):
+        yield str(base), ["target"], []
+        yield str(target), [], []
+        for index in range(3000):
+            yield str(base / f"directory-{index}"), [], []
+
+    monkeypatch.setattr(system_files.os, "walk", truncated_walk)
+    try:
+        system_files.resolve_natural_directory("target")
+    except ValueError as exc:
+        assert "limite de pastas" in str(exc)
+    else:
+        raise AssertionError("uma busca parcial não pode afirmar que o destino é único")
+
+
 def test_file_creation_never_overwrites_existing_file(tmp_path):
     destination = tmp_path / "safe.txt"
     destination.write_text("original", encoding="utf-8")

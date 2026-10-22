@@ -50,15 +50,19 @@ def resolve_natural_directory(location):
     roots=[]
     for base in (xdg_user_directory('DOCUMENTS'),xdg_user_directory('DESKTOP'),xdg_user_directory('DOWNLOAD'),APP_DIR.parent.parent,Path.home()):
         if base.is_dir() and base not in roots: roots.append(base)
-    wanted=normalized; matches=[]; visited=0; skipped={'.cache','.local','.mozilla','.var','node_modules','.git','__pycache__'}
+    wanted=normalized; matches=[]; visited=0; search_truncated=False; skipped={'.cache','.local','.mozilla','.var','node_modules','.git','__pycache__'}
     for base in roots:
         for current,dirs,_ in os.walk(base):
             depth=len(Path(current).relative_to(base).parts)
             dirs[:]=sorted(d for d in dirs if not d.startswith('.') and d not in skipped) if depth<4 else []
             visited+=1
-            if visited>3000: break
+            if visited>3000:
+                search_truncated=True
+                break
             if normalize_words(Path(current).name)==wanted: matches.append(Path(current).resolve())
-        if visited>3000: break
+        if search_truncated: break
+    if search_truncated:
+        raise ValueError('A busca por nome atingiu o limite de pastas; diga o caminho completo para evitar escolher um destino errado.')
     unique=list(dict.fromkeys(matches))
     if len(unique)==1: return unique[0]
     if len(unique)>1: raise ValueError('Achei mais de uma pasta com esse nome: '+', '.join(str(x) for x in unique[:4])+'. Diga qual caminho deseja usar.')
