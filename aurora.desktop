@@ -2,7 +2,7 @@
 Type=Application
 Name=Aurora
 Comment=Bolha de assistente local
-Exec=/usr/bin/env bash -lc '"/home/nylofofin/Projects/aurora/run.sh"'
+Exec=systemctl --user start aurora.service
 Terminal=false
 Categories=Utility;Accessibility;
 StartupNotify=false

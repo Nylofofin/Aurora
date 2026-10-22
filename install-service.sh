@@ -26,6 +26,7 @@ Environment=OLLAMA_NUM_PARALLEL=1
 Environment=OLLAMA_MAX_LOADED_MODELS=1
 Environment=OLLAMA_VULKAN=1
 Environment=QT_QPA_PLATFORM=xcb
+EnvironmentFile=-%h/.config/aurora/runtime.env
 
 [Install]
 WantedBy=graphical-session.target

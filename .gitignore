@@ -5,6 +5,8 @@ __pycache__/
 .ruff_cache/
 assets/vosk-model/
 *.wav
+!assets/audio/entrada.wav
+!assets/audio/saida.wav
 *.log
 *-preview.png
 
