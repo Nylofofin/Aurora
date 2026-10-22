@@ -18,6 +18,18 @@ def test_screenshot_portal_request_path_preserves_sender_prefix():
     )
 
 
+def test_screenshot_portal_uses_qt_encoded_slot_signature():
+    from PySide6.QtCore import QObject, Slot
+
+    class Response(QObject):
+        @Slot(integrations._portal_response_code_type(), "QVariantMap")
+        def receive(self, _code, _data):
+            pass
+
+    assert integrations._portal_response_slot().startswith("1receive(")
+    assert Response.staticMetaObject.indexOfSlot("receive(uint,QVariantMap)") >= 0
+
+
 def test_site_opening_is_separate_from_application_opening():
     assert integrations.site_url_from_request("Aurora, abra o site example.com") == "https://example.com"
     assert integrations.site_url_from_request("abre o link https://example.org/ajuda") == "https://example.org/ajuda"
@@ -268,6 +280,43 @@ def test_obs_flatpak_disabled_server_gets_specific_setup_message(monkeypatch):
     response = integrations.obs_record("start")
     assert "WebSocket do OBS Studio Flatpak está desativado" in response
     assert "unused-secret" not in response
+
+
+def test_obs_start_launches_flatpak_after_approved_websocket_connection_fails(monkeypatch):
+    monkeypatch.setattr(integrations, "_append_action_log", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(integrations, "_flatpak_obs_settings", lambda: {
+        "server_enabled": True, "auth_required": True,
+        "server_port": 4455, "server_password": "",
+    })
+    monkeypatch.setattr(integrations, "OBS_STARTUP_TIMEOUT", 0.01)
+    monkeypatch.setattr(integrations.time, "sleep", lambda _seconds: None)
+    launches = []
+    monkeypatch.setattr(
+        "aurora_core.system.apps.launch_application",
+        lambda name: launches.append(name) or "Abri OBS Studio.",
+    )
+    monkeypatch.setattr(integrations.socket, "create_connection",
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(ConnectionRefusedError()))
+
+    result = integrations.obs_record("start")
+
+    assert launches == ["OBS Studio"]
+    assert "não iniciei a gravação" in result.casefold()
+
+
+def test_obs_stop_never_launches_obs_when_websocket_is_down(monkeypatch):
+    monkeypatch.setattr(integrations, "_append_action_log", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(integrations, "_flatpak_obs_settings", lambda: {
+        "server_enabled": True, "server_port": 4455,
+    })
+    monkeypatch.setattr("aurora_core.system.apps.launch_application",
+                        lambda _name: (_ for _ in ()).throw(AssertionError("must not launch")))
+    monkeypatch.setattr(integrations.socket, "create_connection",
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(ConnectionRefusedError()))
+
+    result = integrations.obs_record("stop")
+
+    assert "não enviei o comando" in result.casefold()
 
 
 def test_obs_websocket_eof_during_handshake_returns_instead_of_spinning(monkeypatch):

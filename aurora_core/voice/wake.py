@@ -39,7 +39,8 @@ class LocalVoice(QThread):
         return finalized and normalize_words(text) in {
             'para','pare','parar','cancele','cancela','cancelar','interrompa',
             'interrompe','interromper','chega','espera','calma para',
-            'nao para','nao calma para','nao espera','corta'
+            'nao','nao para','nao calma para','nao espera','calma','pera',
+            'pera ai','deixa','deixa pra la','para agora','para com isso','corta'
         }
     def cloud_transcribe(self,sr,pcm,fallback):
         try: command=self.recognizer.recognize_google(sr.AudioData(pcm,16000,2),language='pt-BR')
@@ -55,7 +56,7 @@ class LocalVoice(QThread):
             if not VOSK_PATH.exists(): raise RuntimeError(f'Modelo Vosk local não encontrado em {VOSK_PATH}')
             model=Model(str(VOSK_PATH)); rec=KaldiRecognizer(model,16000); rec.SetWords(False)
             wake_rec=KaldiRecognizer(model,16000,'["aurora", "ei aurora", "olá aurora"]'); wake_rec.SetWords(False)
-            cancel_rec=KaldiRecognizer(model,16000,'["para", "pare", "parar", "cancele", "cancela", "cancelar", "interrompa", "interrompe", "interromper", "chega", "espera", "calma para", "não para", "não calma para", "não espera", "corta"]'); cancel_rec.SetWords(False)
+            cancel_rec=KaldiRecognizer(model,16000,'["para", "pare", "parar", "cancele", "cancela", "cancelar", "interrompa", "interrompe", "interromper", "chega", "espera", "calma", "calma para", "pera", "pera aí", "deixa", "deixa pra lá", "para agora", "para com isso", "não", "não para", "não calma para", "não espera", "corta"]'); cancel_rec.SetWords(False)
             self.recognizer=sr.Recognizer(); self.recognizer.operation_timeout=2.0
             q=queue.Queue(maxsize=12)
             def callback(data,frames,time_info,status):

@@ -21,6 +21,7 @@ from pathlib import Path
 SPOTIFY_REDIRECT_URI = "http://127.0.0.1:43827/callback"
 SPOTIFY_SCOPES = "user-modify-playback-state user-read-playback-state"
 OBS_REQUEST_TIMEOUT = 1.5
+OBS_STARTUP_TIMEOUT = 8.0
 
 
 def _flatpak_obs_config_path() -> Path:
@@ -123,6 +124,15 @@ def _portal_request_object_path(bus_name: str, token: str) -> str:
     return f"/org/freedesktop/portal/desktop/request/{sender}/{token}"
 
 
+def _portal_response_code_type() -> str:
+    return "uint"
+
+
+def _portal_response_slot() -> str:
+    from PySide6.QtCore import SLOT
+    return SLOT(f"receive({_portal_response_code_type()},QVariantMap)")
+
+
 def capture_screenshot(pictures_dir: str | Path, timeout: int = 45) -> Path:
     """Request a full-screen capture through the XDG portal and save it safely."""
     try:
@@ -142,14 +152,16 @@ def capture_screenshot(pictures_dir: str | Path, timeout: int = 45) -> Path:
     loop = QEventLoop()
 
     class Response(QObject):
-        @Slot(int, "QVariantMap")
+        @Slot(_portal_response_code_type(), "QVariantMap")
         def receive(self, code, data):
             result["code"] = int(code)
             result["data"] = dict(data)
             loop.quit()
 
     receiver = Response()
-    slot = "receive(uint,QVariantMap)"
+    # QDBusConnection.connect expects Qt's encoded SLOT() signature. A plain
+    # method signature is silently mangled and leaves the response unhandled.
+    slot = _portal_response_slot()
     if not bus.connect("org.freedesktop.portal.Desktop", request_path,
                        "org.freedesktop.portal.Request", "Response", receiver, slot):
         raise RuntimeError("Não consegui acompanhar a resposta do portal de captura.")
@@ -477,7 +489,30 @@ def obs_record(action: str, password: str = "", host: str = "127.0.0.1", port: i
     request_sent = False
     try:
         deadline = time.monotonic() + OBS_REQUEST_TIMEOUT
-        stream = socket.create_connection((host, int(port)), timeout=OBS_REQUEST_TIMEOUT)
+        try:
+            stream = socket.create_connection((host, int(port)), timeout=OBS_REQUEST_TIMEOUT)
+        except OSError:
+            # Start OBS only after the user approved StartRecord. Never launch
+            # it for a stop request or when its local WebSocket is disabled.
+            configured_port = obs_settings.get("server_port")
+            if not (action == "start" and obs_settings.get("server_enabled") is True
+                    and configured_port == int(port)):
+                raise
+            from aurora_core.system.apps import launch_application
+            launch_result = launch_application("OBS Studio")
+            if not launch_result.startswith("Abri "):
+                return f"Não consegui iniciar o OBS: {launch_result}"
+            startup_deadline = time.monotonic() + OBS_STARTUP_TIMEOUT
+            stream = None
+            while time.monotonic() < startup_deadline:
+                try:
+                    stream = socket.create_connection((host, int(port)), timeout=0.5)
+                    break
+                except OSError:
+                    time.sleep(0.2)
+            if stream is None:
+                return ("Abri o OBS, mas o WebSocket não ficou disponível. Confira se o servidor "
+                        f"está ativo na porta {port}; não iniciei a gravação.")
         with stream:
             _set_request_timeout(stream, deadline)
             key = base64.b64encode(secrets.token_bytes(16)).decode("ascii")

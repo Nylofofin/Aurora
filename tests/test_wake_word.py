@@ -50,7 +50,8 @@ def test_control_cancel_requires_an_exact_final_local_phrase():
     match = LocalVoice.is_final_cancel_phrase
     for phrase in ("para", "pare", "parar", "cancele", "cancela", "cancelar",
                    "interrompa", "interrompe", "chega", "espera", "calma para",
-                   "não calma para", "corta"):
+                   "não calma para", "não", "calma", "pera aí", "deixa pra lá",
+                   "para com isso", "corta"):
         assert match(phrase, True)
     assert not match("para", False)
     assert not match("para a janela", True)
