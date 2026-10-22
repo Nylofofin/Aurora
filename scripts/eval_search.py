@@ -109,7 +109,11 @@ class EvalService(QObject):
         self.active_search_context = ""
         self.response_language = "Português brasileiro"
         self.orb = OrbStub()
-        self.voice = SimpleNamespace(speaking=False, request_active=threading.Event())
+        self.voice = SimpleNamespace(
+            speaking=False,
+            request_active=threading.Event(),
+            interrupt_active=threading.Event(),
+        )
         self.voice.request_active.set()
         self.speaker = SpeakerStub()
         self.trace = None

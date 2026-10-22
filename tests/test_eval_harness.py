@@ -7,6 +7,7 @@ def test_eval_service_starts_with_one_shot_request_active():
     service = EvalService({})
 
     assert service.voice.request_active.is_set()
+    assert not service.voice.interrupt_active.is_set()
     assert service.response_language == "Português brasileiro"
 
 
