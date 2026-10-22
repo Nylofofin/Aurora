@@ -53,6 +53,7 @@ class AuroraService(QObject):
         self.voice.status.connect(self.voice_state,Qt.ConnectionType.QueuedConnection)
         self.voice.unavailable.connect(self.voice_error,Qt.ConnectionType.QueuedConnection)
         self.voice.wake.connect(self.wake,Qt.ConnectionType.QueuedConnection)
+        self.voice.cancel_control.connect(self.cancel_pending_screen_control,Qt.ConnectionType.QueuedConnection)
         self.voice.start()
         self.orb.hide(); self.check_ollama()
     def check_ollama(self):
@@ -109,6 +110,7 @@ class AuroraService(QObject):
         """Immediately cancel the current one-shot request and its pending output."""
         self.activity_generation+=1; self.request_generation+=1
         self.voice.end_request()
+        self.voice.disable_control_cancel()
         self.voice.speaking=False
         self.response_language='Português brasileiro'
         for inference in tuple(self.inferences):
@@ -119,6 +121,10 @@ class AuroraService(QObject):
         self.speaker.interrupt()
         self.context_history.clear(); self.active_search_context=''; self.response_finished=True
         self.orb.hide()
+    @Slot()
+    def cancel_pending_screen_control(self):
+        if self.pending and self.pending.get('name') in {'focus_accessible_window','type_accessible_text'}:
+            self.stop_conversation()
     @Slot(str)
     def voice_state(self,state):
         if state=='hidden':
@@ -290,6 +296,8 @@ class AuroraService(QObject):
     def request_approval(self,name,detail):
         detail['expires_at']=time.monotonic()+APPROVAL_TIMEOUT_SECONDS
         self.pending=detail
+        if name in {'focus_accessible_window','type_accessible_text'}:
+            self.voice.enable_control_cancel()
         QTimer.singleShot(APPROVAL_TIMEOUT_SECONDS*1000,
                           lambda pending=detail:self.expire_approval(pending))
         if self.orb.isVisible(): self.orb.set_mode('approval')
@@ -299,6 +307,8 @@ class AuroraService(QObject):
     def expire_approval(self,detail):
         if self.pending is not detail: return
         self.pending=None
+        if detail.get('name') in {'focus_accessible_window','type_accessible_text'}:
+            self.voice.disable_control_cancel()
         self.orb.pending=False
         detail['result']='Autorização expirou; ação cancelada.'
         detail['event'].set()
@@ -312,6 +322,8 @@ class AuroraService(QObject):
             self.expire_approval(detail)
             return
         self.pending=None; self.orb.pending=False
+        if detail.get('name') in {'focus_accessible_window','type_accessible_text'}:
+            self.voice.disable_control_cancel()
         try:
             if detail['name']=='web_search': detail['result']=True if approved else 'Ação negada pelo usuário.'
             else: detail['result']=self.execute_action(detail['name'],detail['args']) if approved else 'Ação negada pelo usuário.'
@@ -328,6 +340,7 @@ class AuroraService(QObject):
             urllib.request.urlopen(req,timeout=5).read()
         except Exception: pass
     def stop(self):
+        self.voice.disable_control_cancel()
         if self.pending:
             self.pending['result']='Ação cancelada porque Aurora está encerrando.'
             self.pending['event'].set(); self.pending=None

@@ -46,6 +46,22 @@ def test_wake_detection_stays_suppressed_until_request_finishes_but_allows_click
     assert not voice.defer_wake_detection()
 
 
+def test_control_cancel_requires_an_exact_final_local_phrase():
+    match = LocalVoice.is_final_cancel_phrase
+    for phrase in ("para", "pare", "parar", "cancele", "cancela", "cancelar"):
+        assert match(phrase, True)
+    assert not match("para", False)
+    assert not match("para a janela", True)
+
+
+def test_control_cancel_detection_can_be_enabled_and_disabled():
+    voice = LocalVoice({})
+    voice.enable_control_cancel()
+    assert voice.cancel_control_active.is_set()
+    voice.disable_control_cancel()
+    assert not voice.cancel_control_active.is_set()
+
+
 def test_recognized_command_does_not_auto_rearm_continuous_listening():
     from pathlib import Path
 
