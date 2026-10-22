@@ -9,6 +9,7 @@ import aurora
 import aurora_integrations as integrations
 import aurora_core.service as service_module
 import aurora_core.system.actions as system_actions
+import aurora_core.system.apps as apps_module
 
 
 def test_site_opening_is_separate_from_application_opening():
@@ -31,6 +32,50 @@ def test_site_opening_rejects_non_web_schemes_and_ambiguous_names():
     assert integrations.site_url_from_request("abra site javascript:alert(1)") is None
     assert integrations.site_url_from_request("abra site youtube") is None
     assert integrations.site_url_from_request("abra o site http://[::1") is None
+
+
+def test_flatpak_application_id_is_only_taken_from_exported_desktop_entries(tmp_path):
+    exported = tmp_path / "flatpak/exports/share/applications/com.obsproject.Studio.desktop"
+    native = tmp_path / "applications/com.obsproject.Studio.desktop"
+    app = {"file": exported, "name": "OBS Studio"}
+    assert apps_module._flatpak_app_id(app) == "com.obsproject.Studio"
+    assert apps_module._flatpak_app_id({"file": native}) is None
+
+
+def test_flatpak_application_launches_through_exported_desktop_entry(monkeypatch, tmp_path):
+    desktop_file = tmp_path / "flatpak/exports/share/applications/com.obsproject.Studio.desktop"
+    app = {"file": desktop_file, "name": "OBS Studio", "exec": "flatpak run com.obsproject.Studio",
+           "class": "obs"}
+    calls = []
+    monkeypatch.setattr(apps_module, "find_desktop_app", lambda _name: app)
+    monkeypatch.setattr(apps_module.shutil, "which", lambda name: "/usr/bin/gio" if name == "gio" else None)
+    monkeypatch.setattr(apps_module.subprocess, "Popen", lambda command, **_kwargs: calls.append(command))
+    assert apps_module.launch_application("OBS Studio") == "Abri OBS Studio."
+    assert calls == [["/usr/bin/gio", "launch", str(desktop_file)]]
+
+
+def test_close_flatpak_application_uses_instance_id(monkeypatch):
+    app = {"file": "/var/lib/flatpak/exports/share/applications/com.obsproject.Studio.desktop",
+           "name": "OBS Studio", "exec": "/usr/bin/flatpak run com.obsproject.Studio",
+           "class": "obs"}
+    calls = []
+    monkeypatch.setattr(apps_module, "find_desktop_app", lambda _name: app)
+    monkeypatch.setattr(apps_module.shutil, "which",
+                        lambda name: "/usr/bin/flatpak" if name == "flatpak" else None)
+
+    def fake_run(command, **_kwargs):
+        calls.append(command)
+        if command[-1] == "--json":
+            return type("Result", (), {"stdout": json.dumps([
+                {"application": "com.obsproject.Studio", "instance": "12345"},
+                {"application": "org.other.App", "instance": "99999"},
+            ])})()
+        return type("Result", (), {"stdout": ""})()
+
+    monkeypatch.setattr(apps_module.subprocess, "run", fake_run)
+    assert "Fechei OBS Studio pelo Flatpak" in apps_module.close_application("OBS Studio")
+    assert calls == [["/usr/bin/flatpak", "ps", "--json"],
+                     ["/usr/bin/flatpak", "kill", "12345"]]
 
 
 def test_local_fast_router_handles_media_capture_and_obs_requests():
@@ -91,8 +136,25 @@ def test_obs_is_loopback_only_and_never_claims_unconfirmed_success(monkeypatch):
     assert "não consegui confirmar" in integrations.obs_record("start", host="127.0.0.1", port=1).casefold()
 
 
+def test_obs_flatpak_disabled_server_gets_specific_setup_message(monkeypatch):
+    monkeypatch.setattr(integrations, "_append_action_log", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(integrations, "_flatpak_obs_settings", lambda: {
+        "server_enabled": False, "auth_required": True,
+        "server_port": 4455, "server_password": "unused-secret",
+    })
+    monkeypatch.setattr(integrations.socket, "create_connection",
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(ConnectionRefusedError()))
+    response = integrations.obs_record("start")
+    assert "WebSocket do OBS Studio Flatpak está desativado" in response
+    assert "unused-secret" not in response
+
+
 def test_obs_websocket_authenticates_and_confirms_record_request(monkeypatch):
     monkeypatch.setattr(integrations, "_append_action_log", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(integrations, "_flatpak_obs_settings", lambda: {
+        "server_enabled": True, "auth_required": True,
+        "server_port": 4455, "server_password": "secret",
+    })
     listener = socket.socket()
     listener.bind(("127.0.0.1", 0))
     listener.listen(1)
@@ -145,7 +207,7 @@ def test_obs_websocket_authenticates_and_confirms_record_request(monkeypatch):
 
     thread = threading.Thread(target=server, daemon=True)
     thread.start()
-    outcome = integrations.obs_record("start", password="secret", port=port)
+    outcome = integrations.obs_record("start", port=port)
     thread.join(timeout=3)
     assert not thread.is_alive()
     assert "iniciada" in outcome, (outcome, errors)

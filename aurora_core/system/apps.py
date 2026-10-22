@@ -1,8 +1,35 @@
 from __future__ import annotations
 
 from pathlib import Path
-import configparser, os, re, shlex, shutil, signal, subprocess
+import configparser, json, os, re, shlex, shutil, signal, subprocess
 from .files import normalize_words
+
+def _flatpak_app_id(app):
+    if not app:
+        return None
+    path = Path(app['file'])
+    if '/flatpak/exports/share/applications/' not in str(path):
+        return None
+    app_id = path.stem
+    return app_id if re.fullmatch(r'[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)+', app_id) else None
+
+def _close_flatpak_app(app):
+    """Stop matching Flatpak instances by ID without guessing sandbox PIDs."""
+    app_id = _flatpak_app_id(app)
+    flatpak = shutil.which('flatpak')
+    if not app_id or not flatpak:
+        return False
+    try:
+        listing = subprocess.run([flatpak, 'ps', '--json'], capture_output=True,
+                                 text=True, timeout=3, check=True)
+        instances = [str(item.get('instance', '')) for item in json.loads(listing.stdout)
+                     if item.get('application') == app_id and item.get('instance')]
+        for instance in instances:
+            subprocess.run([flatpak, 'kill', instance], capture_output=True,
+                           text=True, timeout=5, check=True)
+        return bool(instances)
+    except (OSError, subprocess.SubprocessError, ValueError, TypeError):
+        return False
 
 def desktop_app_entries():
     directories=(Path.home()/'.local/share/applications',Path('/usr/local/share/applications'),Path('/usr/share/applications'),Path.home()/'.local/share/flatpak/exports/share/applications',Path('/var/lib/flatpak/exports/share/applications'),Path('/var/lib/snapd/desktop/applications'))
@@ -90,6 +117,9 @@ def close_application(name):
                 for wid in ids: subprocess.run([windows,'-ic',wid],capture_output=True,timeout=2)
                 return f'Enviei o comando de fechar {query}.'
         except Exception: pass
+    app = find_desktop_app(query)
+    if _close_flatpak_app(app):
+        return f'Fechei {app["name"]} pelo Flatpak.'
     app,names=process_names_for_app(query)
     matched=[]
     for proc in Path('/proc').glob('[0-9]*'):

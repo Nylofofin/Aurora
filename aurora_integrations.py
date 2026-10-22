@@ -23,6 +23,29 @@ SPOTIFY_SCOPES = "user-modify-playback-state user-read-playback-state"
 OBS_REQUEST_TIMEOUT = 1.5
 
 
+def _flatpak_obs_config_path() -> Path:
+    return (Path.home() / ".var/app/com.obsproject.Studio/config/obs-studio/"
+            "plugin_config/obs-websocket/config.json")
+
+
+def _flatpak_obs_settings() -> dict:
+    """Read only the local OBS WebSocket settings needed by this integration."""
+    path = _flatpak_obs_config_path()
+    try:
+        if path.stat().st_size > 64_000:
+            return {}
+        data = json.loads(path.read_text(encoding="utf-8"))
+        port = int(data.get("server_port", 4455))
+        if not 1 <= port <= 65535:
+            return {}
+        return {"server_enabled": bool(data.get("server_enabled", False)),
+                "auth_required": bool(data.get("auth_required", True)),
+                "server_port": port,
+                "server_password": str(data.get("server_password", ""))}
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return {}
+
+
 def site_url_from_request(prompt: str) -> str | None:
     """Return a safe HTTP(S) URL only when speech clearly asks for a site."""
     text = " ".join(str(prompt or "").strip().split())
@@ -422,6 +445,16 @@ def obs_record(action: str, password: str = "", host: str = "127.0.0.1", port: i
     if not request_type:
         return "Ação de gravação desconhecida."
     try:
+        port = int(port)
+    except (TypeError, ValueError):
+        return "A porta do WebSocket do OBS é inválida."
+    if not 1 <= port <= 65535:
+        return "A porta do WebSocket do OBS é inválida."
+    obs_settings = _flatpak_obs_settings()
+    if port == 4455 and obs_settings.get("server_port"):
+        port = obs_settings["server_port"]
+    password = password or obs_settings.get("server_password", "")
+    try:
         stream = socket.create_connection((host, int(port)), timeout=OBS_REQUEST_TIMEOUT)
         with stream:
             stream.settimeout(OBS_REQUEST_TIMEOUT)
@@ -476,4 +509,9 @@ def obs_record(action: str, password: str = "", host: str = "127.0.0.1", port: i
         return str(exc)
     except Exception:
         _append_action_log("obs_record", "unavailable", {"action": action})
+        if (host in ("127.0.0.1", "::1", "localhost") and
+                obs_settings.get("server_enabled") is False and
+                int(port) == obs_settings.get("server_port")):
+            return ("O WebSocket do OBS Studio Flatpak está desativado. No OBS, abra "
+                    "Ferramentas → Configurações do servidor WebSocket e ative o servidor.")
         return "Não consegui confirmar a gravação no OBS; nenhuma ação foi considerada concluída."
