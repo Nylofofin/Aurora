@@ -30,6 +30,32 @@ def test_volume_status_reports_pipewire_errors_truthfully(monkeypatch):
     assert volume.control_volume("status").endswith("No default sink")
 
 
+def test_volume_up_caps_adjustment_at_100_percent(monkeypatch):
+    import aurora_core.system.volume as volume
+    from types import SimpleNamespace
+
+    calls = []
+    results = [SimpleNamespace(returncode=0, stdout="Volume: 0.980", stderr=""),
+               SimpleNamespace(returncode=0, stdout="", stderr="")]
+    monkeypatch.setattr(volume.shutil, "which", lambda _name: "/usr/bin/wpctl")
+    monkeypatch.setattr(volume.subprocess, "run", lambda *args, **kwargs: (calls.append((args, kwargs)), results.pop(0))[1])
+
+    assert volume.control_volume("up", 5) == "Volume aumentado para 100%."
+    assert calls[1][0][0][-1] == "1.000"
+
+
+def test_volume_up_does_not_mutate_when_current_volume_cannot_be_read(monkeypatch):
+    import aurora_core.system.volume as volume
+    from types import SimpleNamespace
+
+    calls = []
+    monkeypatch.setattr(volume.shutil, "which", lambda _name: "/usr/bin/wpctl")
+    monkeypatch.setattr(volume.subprocess, "run", lambda *args, **kwargs: (calls.append(args), SimpleNamespace(returncode=1, stdout="", stderr="device unavailable"))[1])
+
+    assert "não vou aumentá-lo" in volume.control_volume("up", 5)
+    assert len(calls) == 1
+
+
 def test_natural_directory_resolves_standard_folder_names(monkeypatch, tmp_path):
     documents = tmp_path / "Documentos"
     documents.mkdir()

@@ -20,13 +20,19 @@ def control_volume(action,value=5):
     if action=='set': level=f'{value}%'
     elif action=='up':
         try:
-            current=subprocess.run([wpctl,'get-volume','@DEFAULT_AUDIO_SINK@'],capture_output=True,text=True,timeout=3,check=True).stdout
-            if float(re.search(r'Volume:\s*([0-9.]+)',current).group(1))>=1.0: return 'O volume já está em 100% ou acima; não vou aumentá-lo mais.'
-        except Exception: pass
-        level=f'{max(1,value)}%+'
+            result=subprocess.run([wpctl,'get-volume','@DEFAULT_AUDIO_SINK@'],capture_output=True,text=True,timeout=3,check=True)
+            match=re.search(r'Volume:\s*([0-9.]+)',result.stdout)
+            if not match: return 'Não consegui ler o volume atual; não vou aumentá-lo sem essa confirmação.'
+            current=float(match.group(1))
+        except (subprocess.SubprocessError, ValueError) as exc:
+            detail=getattr(exc,'stderr','') or str(exc)
+            return 'Não consegui ler o volume atual; não vou aumentá-lo: '+detail.strip()
+        if current>=1.0: return 'O volume já está em 100% ou acima; não vou aumentá-lo mais.'
+        target=min(1.0,current+max(1,value)/100)
+        level=f'{target:.3f}'
     elif action=='down': level=f'{max(1,value)}%-'
     result=subprocess.run([wpctl,'set-volume','@DEFAULT_AUDIO_SINK@',level],capture_output=True,text=True,timeout=3)
-    return f'Volume ajustado para {value}%.' if action=='set' and result.returncode==0 else f'Volume aumentado em {value}%.' if action=='up' and result.returncode==0 else f'Volume reduzido em {value}%.' if action=='down' and result.returncode==0 else 'Não consegui ajustar o volume: '+result.stderr.strip()
+    return f'Volume ajustado para {value}%.' if action=='set' and result.returncode==0 else f'Volume aumentado para {round(target*100)}%.' if action=='up' and result.returncode==0 else f'Volume reduzido em {value}%.' if action=='down' and result.returncode==0 else 'Não consegui ajustar o volume: '+result.stderr.strip()
 
 def spoken_percentage(text):
     digits=re.search(r'\b(\d{1,3})(?:\s*%|\s+por cento)',text)
