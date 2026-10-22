@@ -1,11 +1,13 @@
 # Aurora — POLARIS-EDGE
 
-**Versão:** `0.1.4b1` (Beta Demo Patch 4, PEP 440) · **Build:** `AUR-20261022.BETA1.P4`
+**Versão:** `0.1.4b2` (Beta Demo Patch 5, PEP 440) · **Build:** `AUR-20261022.BETA1.P5`
 **Codinome técnico:** `POLARIS-EDGE` — identidade da build local otimizada para execução no edge, com Gemma via Ollama.
 
 > **Beta Demo incompleta.** Esta build ainda pode conter falhas de voz, busca, interface e integrações. Não é uma versão estável nem um pacote pronto para outras distribuições.
 
 **A única interface da Aurora é a bolha flutuante.** Não há janela de chat nem janela de resultados. Em espera fica escondida; ao dizer “Aurora”, aparece no canto inferior direito com entrada elástica, um halo breve e o som `assets/audio/entrada.wav`. Ao terminar, encolhe suavemente e desaparece. Cada ativação recebe um pedido; depois de responder, o microfone volta a aguardar apenas a palavra “Aurora”. O contexto curto pode ajudar em um seguimento, mas não mantém a captura de voz aberta entre ativações. Clique com o botão direito na bolha para interromper imediatamente a fala e cancelar o pedido atual. Enquanto estiver visível, você pode arrastá-la para qualquer lugar. A esfera azul-violeta permanece redonda, com brilho líquido em camadas e movimento contínuo. O rótulo de alto contraste indica se está ouvindo, pensando, buscando ou falando. Inferência do Gemma, memória e roteamento de ações são locais. Transcrição de voz, síntese de voz, busca web e serviços externos descritos abaixo usam a internet quando solicitados.
+
+**Experimento:** peça “diagnóstico da Aurora” para obter uma verificação local e somente leitura do Ollama/modelos, dependências de voz, modelo Vosk e sessão gráfica. O diagnóstico não testa microfone, serviços online, OBS ou Spotify e não altera configurações.
 
 ## Ambiente
 

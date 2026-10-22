@@ -9,6 +9,7 @@ import aurora_integrations
 from .apps import close_application, launch_application
 from .files import create_user_file, xdg_user_directory
 from .hardware import system_hardware_summary
+from .diagnostics import run_local_diagnostics
 from .accessibility import focus_accessible_window, inspect_accessible_windows, type_into_accessible_field
 from .volume import control_volume
 from .windows import manage_window
@@ -29,6 +30,7 @@ def execute_action(self,name,args):
     if name=='manage_window': return manage_window(args.get('action',''),args.get('target',''))
     if name=='volume_control': return control_volume(args.get('action','status'),args.get('value',5))
     if name in ('system_info','get_system_info'): return system_hardware_summary()
+    if name=='system_diagnostics': return run_local_diagnostics(self.cfg)
     if name=='create_file':
         try: return create_user_file(args.get('filename',''),args.get('location',''),args.get('content',''))
         except Exception as exc: return f'Não criei o arquivo: {exc}'

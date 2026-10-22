@@ -12,6 +12,8 @@ def parse_local_command(prompt):
     website=aurora_integrations.site_url_from_request(spoken)
     if website: return ('open_url',{'url':website})
     text=normalize_words(spoken)
+    if re.search(r'\b(?:diagnostico|diagnostique|verifique|cheque|teste)\b',text) and re.search(r'\b(?:aurora|assistente|instalacao)\b',text):
+        return ('system_diagnostics',{})
     match=re.fullmatch(r'(?:por favor\s+)?(?:foque|focalize|traga para frente)\s+(?:a janela\s+)?["“](.+?)["”]\s+(?:do|no|da)\s+(?:aplicativo|app)\s+["“](.+?)["”]',spoken,re.I)
     if match: return ('focus_accessible_window',{'window':match.group(1),'application':match.group(2)})
     match=re.fullmatch(r'(?:por favor\s+)?(?:inspecione|liste|mostre)\s+(?:as\s+)?janelas acessíveis\s+(?:do|no|da)\s+(?:aplicativo|app)\s+["“](.+?)["”]',spoken,re.I)
