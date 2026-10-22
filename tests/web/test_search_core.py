@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from pathlib import Path
+import urllib.request
 import pytest
 import re
 
@@ -169,6 +170,61 @@ def test_public_url_dns_validation_has_a_bounded_timeout(monkeypatch):
     with pytest.raises(TimeoutError, match="validação DNS"):
         web_security.public_http_url("https://example.test/article")
     release.set()
+
+
+def test_public_http_connection_uses_the_validated_ip_even_if_dns_changes(monkeypatch):
+    public = [(2, 1, 6, "", ("93.184.216.34", 0))]
+    private = [(2, 1, 6, "", ("127.0.0.1", 0))]
+    monkeypatch.setattr(web_security, "_resolve_public_host", lambda _host: public)
+    handler = web_security.PublicHTTPHandler()
+    request = urllib.request.Request("http://rebind.example:443/article")
+    def capture_connection(factory, req, **kwargs):
+        return factory(req.host, timeout=1, **kwargs)
+    monkeypatch.setattr(handler, "do_open", capture_connection)
+    connection = handler.http_open(request)
+    assert connection._public_addresses == ("93.184.216.34",)
+
+    connections = []
+    class ConnectedSocket:
+        def setsockopt(self, *_args): pass
+    monkeypatch.setattr(web_security, "_resolve_public_host", lambda _host: private)
+    monkeypatch.setattr(web_security.socket, "create_connection", lambda address, *args, **kwargs: (
+        connections.append(address) or ConnectedSocket()
+    ))
+    connection.connect()
+
+    assert connections == [("93.184.216.34", 443)]
+
+
+def test_pinned_https_keeps_original_hostname_for_tls_sni(monkeypatch):
+    connections = []
+    class ConnectedSocket:
+        def setsockopt(self, *_args): pass
+    class TLSContext:
+        def wrap_socket(self, sock, server_hostname):
+            self.server_hostname = server_hostname
+            return sock
+    context = TLSContext()
+    monkeypatch.setattr(web_security.socket, "create_connection", lambda address, *args, **kwargs: (
+        connections.append(address) or ConnectedSocket()
+    ))
+    connection = web_security._PinnedHTTPSConnection(
+        "example.test", ("93.184.216.34",), context=context, timeout=1
+    )
+    connection.connect()
+
+    assert connections == [("93.184.216.34", 443)]
+    assert context.server_hostname == "example.test"
+
+
+def test_public_url_rejects_a_domain_with_any_private_dns_answer(monkeypatch):
+    answers = [
+        (2, 1, 6, "", ("93.184.216.34", 0)),
+        (2, 1, 6, "", ("10.0.0.8", 0)),
+    ]
+    monkeypatch.setattr(web_security, "_resolve_public_host", lambda _host: answers)
+    with pytest.raises(ValueError, match="rede local"):
+        web_security.public_http_url("https://mixed.example/page")
 
 
 def test_question_intent_and_time_window_are_topic_independent():

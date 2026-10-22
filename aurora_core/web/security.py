@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from urllib.parse import urlparse, urljoin
-import urllib.error, urllib.request
-import ipaddress, queue, socket, threading
+import errno, http.client, ipaddress, queue, socket, ssl, threading, urllib.error, urllib.request
 
 DNS_VALIDATION_TIMEOUT=1.0
 
@@ -18,25 +17,75 @@ def _resolve_public_host(host):
     if error: raise error
     return infos
 
-def public_http_url(url):
-    parsed=urlparse(url)
-    if parsed.scheme not in ('http','https') or not parsed.hostname or parsed.username or parsed.password:
-        raise ValueError('Use apenas endereços públicos HTTP/HTTPS.')
-    if parsed.port not in (None,80,443): raise ValueError('Porta bloqueada.')
-    host=parsed.hostname.lower()
-    if host in ('localhost','localhost.localdomain'): raise ValueError('Endereços locais não podem ser acessados pelo agente web.')
+def _public_addresses(host):
+    host=host.lower()
+    if host in ('localhost','localhost.localdomain'):
+        raise ValueError('Endereços locais não podem ser acessados pelo agente web.')
     try:
         addr=ipaddress.ip_address(host)
     except ValueError:
         try: infos=_resolve_public_host(host)
         except socket.gaierror: infos=[]
+        addresses=[]
         for info in infos:
             addr=ipaddress.ip_address(info[4][0])
             if not addr.is_global: raise ValueError('Domínio resolve para uma rede local ou reservada.')
-        if not infos: raise ValueError('Não foi possível resolver o domínio.')
-    else:
-        if not addr.is_global: raise ValueError('Endereço local ou reservado bloqueado.')
+            addresses.append(str(addr))
+        if not addresses: raise ValueError('Não foi possível resolver o domínio.')
+        return tuple(dict.fromkeys(addresses))
+    if not addr.is_global: raise ValueError('Endereço local ou reservado bloqueado.')
+    return (str(addr),)
+
+def _validated_url_addresses(url):
+    parsed=urlparse(url)
+    if parsed.scheme not in ('http','https') or not parsed.hostname or parsed.username or parsed.password:
+        raise ValueError('Use apenas endereços públicos HTTP/HTTPS.')
+    if parsed.port not in (None,80,443): raise ValueError('Porta bloqueada.')
+    return parsed,_public_addresses(parsed.hostname)
+
+def public_http_url(url):
+    _validated_url_addresses(url)
     return url
+
+class _PinnedHTTPConnection(http.client.HTTPConnection):
+    def __init__(self,host,addresses,**kwargs):
+        self._public_addresses=addresses
+        super().__init__(host,**kwargs)
+    def connect(self):
+        last_error=None
+        for address in self._public_addresses:
+            try:
+                self.sock=socket.create_connection((address,self.port),self.timeout,self.source_address)
+                break
+            except OSError as exc:
+                last_error=exc
+        else:
+            raise last_error or OSError('Não foi possível conectar ao endereço público validado.')
+        try: self.sock.setsockopt(socket.IPPROTO_TCP,socket.TCP_NODELAY,1)
+        except OSError as exc:
+            if exc.errno!=errno.ENOPROTOOPT: raise
+        if self._tunnel_host: self._tunnel()
+
+class _PinnedHTTPSConnection(_PinnedHTTPConnection):
+    def __init__(self,host,addresses,context=None,**kwargs):
+        kwargs.setdefault('port',443)
+        self._tls_context=context or ssl.create_default_context()
+        super().__init__(host,addresses,**kwargs)
+    def connect(self):
+        super().connect()
+        server_hostname=self._tunnel_host or self.host
+        self.sock=self._tls_context.wrap_socket(self.sock,server_hostname=server_hostname)
+
+class PublicHTTPHandler(urllib.request.HTTPHandler):
+    def http_open(self,req):
+        _,addresses=_validated_url_addresses(req.full_url)
+        return self.do_open(lambda host,**kwargs:_PinnedHTTPConnection(host,addresses,**kwargs),req)
+
+class PublicHTTPSHandler(urllib.request.HTTPSHandler):
+    def https_open(self,req):
+        _,addresses=_validated_url_addresses(req.full_url)
+        return self.do_open(lambda host,**kwargs:_PinnedHTTPSConnection(host,addresses,**kwargs),
+                            req,context=self._context)
 
 class PublicRedirectHandler(urllib.request.HTTPRedirectHandler):
     def redirect_request(self,req,fp,code,msg,headers,newurl):
@@ -44,4 +93,5 @@ class PublicRedirectHandler(urllib.request.HTTPRedirectHandler):
         public_http_url(newurl)
         return super().redirect_request(req,fp,code,msg,headers,newurl)
 
-PUBLIC_OPENER=urllib.request.build_opener(PublicRedirectHandler)
+PUBLIC_OPENER=urllib.request.build_opener(urllib.request.ProxyHandler({}),PublicRedirectHandler,
+                                           PublicHTTPHandler,PublicHTTPSHandler)
