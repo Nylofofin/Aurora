@@ -37,5 +37,6 @@ cleanup() {
     wait "$OLLAMA_PID" 2>/dev/null || true
   fi
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 0' INT TERM
 "$APP_DIR/run.sh" 2>>"$WORK_DIR/aurora-app.log"
