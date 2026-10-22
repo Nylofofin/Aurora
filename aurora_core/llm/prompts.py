@@ -5,7 +5,7 @@ from decimal import Decimal, InvalidOperation
 import re, unicodedata
 from ..memory import user_memory_load
 from ..system.files import normalize_words
-from ..web.intent import guided_learning_intent, news_search_intent
+from ..web.intent import current_search_window, guided_learning_intent, news_search_intent
 
 def assistant_system_prompt(use_tools=False,response_language='Português brasileiro'):
     base=f'Você é Aurora, assistente pessoal integrada ao computador. Entenda a fala da pessoa em português brasileiro. Responda em {response_language}, com fala natural, direta e específica ao pedido. Em conversa cotidiana, desabafo e opinião, responda como conversa, sem iniciar pesquisa; não finja ter experiências pessoais. Comece pela resposta; não narre que pesquisou nem diga “achei resultados” ou “encontrei fontes”. Use frases curtas e próprias para voz; não repita a pergunta nem use introduções artificiais. Não use emojis nem descreva emojis. Separe fatos confirmados de inferências. Se faltarem dados, diga exatamente o que não foi possível confirmar; não invente nomes, datas, fontes, resultados ou ações concluídas. Para qualquer informação que possa ter mudado, use dados consultados agora e indique a fonte e a data disponíveis; nunca responda apenas pela memória do modelo. Se a verificação falhar, diga que não conseguiu confirmar em vez de reutilizar informação antiga. Use as mensagens anteriores para entender referências como “isso”, “lá” e “a primeira”, mas não trate respostas antigas como prova. Mantenha respostas cotidianas curtas e rápidas; pesquise apenas quando a pergunta pedir fatos externos, notícias, informações atuais ou instruções/tutoriais.'
@@ -88,6 +88,21 @@ def ground_search_answer(question,answer,evidence,sources):
     fallback='Não consegui confirmar os valores numéricos com os trechos consultados.'
     if news_search_intent(question): fallback='Não consegui confirmar notícias recentes sobre isso.'
     return _ground_numeric_answer(answer,evidence,sources,fallback_message=fallback)
+
+def ensure_current_source_attribution(question,answer,sources):
+    """Make the source and available publication date audible for current facts."""
+    text=' '.join(str(answer).split())
+    if not current_search_window(question) or news_search_intent(question): return text
+    labels=[str(source).strip() for source in sources if str(source).strip()]
+    if not labels: return text
+    missing=[]
+    for label in labels[:2]:
+        if label.casefold() not in text.casefold(): missing.append(label)
+    if not missing: return text
+    attribution=' e '.join(missing)
+    prefix='Fonte consultada' if len(missing)==1 else 'Fontes consultadas'
+    ending='' if not text or text.endswith(('.', '!', '?')) else '.'
+    return f'{text}{ending} {prefix}: {attribution}.' if text else f'{prefix}: {attribution}.'
 
 def complete_spoken_response(text):
     """Keep only full sentences when an inference stream ends mid-sentence."""

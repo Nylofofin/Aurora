@@ -11,7 +11,7 @@ import aurora_integrations
 from .config import APP_DIR, hardware_profile, local_endpoint, settings_load, settings_save
 from .llm.inference import Inference
 from .llm.warmup import ModelWarmup
-from .llm.prompts import _verified_fx_answer, ground_search_answer, search_answer_prompts
+from .llm.prompts import _verified_fx_answer, ensure_current_source_attribution, ground_search_answer, search_answer_prompts
 from .memory import user_memory_update
 from .routing import route_request
 from .system.apps import close_application, launch_application
@@ -208,6 +208,7 @@ class AuroraService(QObject):
     def quick_search_answer_done(self,text,generation,evidence,sources):
         if generation is not None and generation!=self.request_generation: return
         grounded=ground_search_answer(self.current_prompt,text,evidence,sources)
+        grounded=ensure_current_source_attribution(self.current_prompt,grounded,sources)
         context=(' '+self.active_search_context) if self.active_search_context else ''
         self.active_search_context=''
         self.quick_summary_done(grounded,generation,context)

@@ -337,6 +337,44 @@ def test_current_bing_search_rss_date_is_not_treated_as_publisher_date(monkeypat
     assert "Não consegui ler páginas com conteúdo verificável" in output
 
 
+def test_current_fact_uses_bing_news_feed_when_general_search_has_no_verified_sources(monkeypatch):
+    today=datetime.now().astimezone().strftime("%d/%m/%Y %H:%M")
+    stories=[
+        ("https://education-a.example/minister", "Ministro da Educação anuncia medida", "O atual ministro da Educação detalhou uma medida nesta semana.", today, "Educação Hoje"),
+        ("https://education-b.example/minister", "Ministro da Educação participa de evento", "O atual ministro da Educação participou de um evento nesta semana.", today, "Jornal Educação"),
+    ]
+
+    class Response:
+        def __init__(self,url,body): self.url=url; self.body=body
+        def __enter__(self): return self
+        def __exit__(self,*_args): return None
+        def geturl(self): return self.url
+        def read(self,_limit): return self.body
+
+    class Opener:
+        def open(self,request,timeout):
+            url=request.full_url
+            return Response(url,b"<rss><channel/></rss>" if "bing.com/search" in url else b"<html></html>")
+
+    monkeypatch.setattr(search_pipeline,"search_google_news",lambda *_args:"Google Notícias:\\n")
+    monkeypatch.setattr(search_pipeline,"search_bing_news",lambda *_args:stories)
+    monkeypatch.setattr(search_pipeline,"PUBLIC_OPENER",Opener())
+    monkeypatch.setattr(search_pipeline,"public_http_url",lambda url:url)
+    page_reads=[]
+
+    def read_page(url,_query,timeout=2.5):
+        page_reads.append(url)
+        return ("O atual ministro da Educação participou e explicou a medida anunciada.","")
+
+    monkeypatch.setattr(search_pipeline,"_search_page_excerpt",read_page)
+    output=search_pipeline._search_public_web_uncached("Quem é o ministro da Educação?","30d",False)
+
+    assert len(page_reads)==2
+    assert "Feed RSS: Educação Hoje" in output
+    assert "Feed RSS: Jornal Educação" in output
+    assert "Não consegui" not in output
+
+
 def test_public_redirect_handler_rejects_loopback_destinations():
     from urllib.request import Request
 
@@ -442,6 +480,31 @@ def test_question_intent_and_time_window_are_topic_independent():
     assert not aurora.factual_web_intent("Abra a calculadora")
     assert aurora.current_search_window("Qual era a concentração em 2024?") == ""
     assert aurora.current_web_query("Nexa network current measurement", "30d").endswith(str(NOW.year))
+
+
+def test_present_tense_identity_questions_require_recent_evidence_without_topic_lists():
+    assert aurora.current_search_window("Quem é o ministro da Educação?") == "30d"
+    assert aurora.current_search_window("Who is the director of the agency?") == "30d"
+    assert aurora.current_search_window("Quem foi o presidente do Brasil em 1980?") == ""
+    assert aurora.current_search_window("Quem é você?") == ""
+    assert aurora.current_search_window("Quem é Albert Einstein?") == ""
+
+
+def test_current_factual_answer_has_deterministic_source_and_date_attribution():
+    from aurora_core.llm.prompts import ensure_current_source_attribution
+
+    sources=["g1.globo.com (22/10/2026)","jr.jor.br (22/10/2026)"]
+    answer=ensure_current_source_attribution("Quem é o ministro da Educação?","Leonardo Barchini ocupa o cargo.",sources)
+    assert "Fontes consultadas: g1.globo.com (22/10/2026) e jr.jor.br (22/10/2026)." in answer
+
+    already_cited=ensure_current_source_attribution(
+        "Quem é o ministro da Educação?",
+        "Leonardo Barchini. Fonte: g1.globo.com (22/10/2026). jr.jor.br (22/10/2026)",
+        sources,
+    )
+    assert already_cited.count("g1.globo.com") == 1
+    assert already_cited.count("jr.jor.br") == 1
+    assert ensure_current_source_attribution("O que é fotossíntese?","Processo biológico.",sources)=="Processo biológico."
 
 
 def test_recent_plural_phrasing_triggers_current_search_and_compacts_request_words():

@@ -121,6 +121,37 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
         readable_candidates=[item for item in found if item.get('host')!='news.google.com']
         enough=(_independent_recent_source_count(readable_candidates,freshness)>=2) if freshness else bool(readable_candidates)
         if enough: break
+    if freshness and not news_only and _independent_recent_source_count(found,freshness)<2:
+        # Current factual questions also benefit from dated publisher URLs in
+        # the news feed, even when the user did not ask for a news roundup.
+        compact=_search_query_variants(query,freshness)[-1][1]
+        terms=_fresh_query_terms(compact)
+        news_terms={min(_search_term_forms(term),key=len) for term in terms}
+        news_query=' '.join(sorted(news_terms)) or compact
+        news_queries=[news_query]
+        if 'brasil' not in news_query.split() and not international_news_only(query):
+            news_queries.append(f'{news_query} Brasil')
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(news_queries)) as pool:
+            jobs=[pool.submit(search_bing_news,variant,2.5) for variant in news_queries]
+            for future in jobs:
+                try: rows=future.result(timeout=3.0)
+                except Exception as exc:
+                    failures.append(f'Bing Notícias: {type(exc).__name__}'); continue
+                for href,title,snippet,published,publisher in rows:
+                    try: public_http_url(href)
+                    except Exception: rejected['url']+=1; continue
+                    if not _publication_within_window(published,freshness):
+                        rejected['atualidade']+=1; continue
+                    relevance=_search_relevance(query,title,snippet)
+                    if relevance<=0:
+                        rejected['relevancia']+=1; continue
+                    key=urlparse(href)._replace(query='',fragment='').geturl().rstrip('/').casefold()
+                    if key in seen:
+                        rejected['duplicado']+=1; continue
+                    seen.add(key)
+                    host=(urlparse(href).hostname or '').removeprefix('www.')
+                    found.append({'provider':'Bing Notícias','title':title,'snippet':snippet,'url':href,'host':host,
+                        'publisher':publisher,'published':published,'feed_published':True,'score':relevance})
     window_days={'1d':1,'7d':7,'30d':30}.get(freshness,30)
     if freshness and not news_only and (not found or _independent_recent_source_count(found,freshness)<2):
         try:
@@ -138,7 +169,7 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
         # Prefer readable publisher URLs when equally relevant, while retaining
         # Google candidates as a last resort if no direct result survives.
         direct_publisher=0.5 if item.get('host')!='news.google.com' else 0
-        news_feed_priority=1.5 if news_only and item.get('provider')=='Bing Notícias' else 0
+        news_feed_priority=1.5 if freshness and item.get('provider')=='Bing Notícias' else 0
         return news_feed_priority+direct_publisher+item['score']+0.2*max(0,1-age/window_days)
     found.sort(key=rank,reverse=True)
     if not found:

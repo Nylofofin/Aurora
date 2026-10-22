@@ -33,6 +33,9 @@ def current_search_window(text):
     """Map explicit time-sensitivity language to a short freshness window."""
     plain=unicodedata.normalize('NFKD',str(text)).encode('ascii','ignore').decode('ascii').lower()
     if _is_historical_query(plain): return ''
+    # Present-tense identity questions with a definite role/entity ask for the
+    # current state even when the speaker omits "atual" or "current".
+    if re.search(r'^\s*(?:aurora[, ]*)?(?:quem e (?:o|a)|who is (?:the|a|an))\b',plain) and not re.search(r'\b(?:quem e voce|who are you)\b',plain): return '30d'
     if re.search(r'\b(hoje|agora|neste momento|neste instante|ao vivo|tempo real|ultimas 24 horas|right now|today|live)\b',plain): return '1d'
     if re.search(r'\b(ultima hora|ultimas noticias|noticias recentes|noticia recente|esta semana|nesta semana|ultimos dias|ultima semana|breaking news|news about)\b',plain): return '7d'
     if re.search(r'\b(atual|atualmente|atualizado|atualizada|mais recentes?|recentemente|recentes?|ultimo|ultima|latest|current|newest|updated|how much|quanto custa|quanto custam|quanto sai|quanto vale|cost|price|custo|preco atual|valor atual)\b',plain): return '30d'
