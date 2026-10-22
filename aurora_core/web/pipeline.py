@@ -130,22 +130,28 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
                     item['stale_page']=True
                     continue
             elif item.get('feed_published'):
-                item['unverified_page_date']=True
+                if excerpt: item['feed_date_accepted']=True
+                else: item['unverified_page_date']=True
             if item.get('provider')=='Google Notícias' and not excerpt:
                 item['page_unavailable']=True
             if excerpt:
                 item['snippet']=((item['snippet']+' | Trecho da página aberta agora: ') if item['snippet'] else 'Trecho da página aberta agora: ')+excerpt
                 item['page_opened']=True
-    if freshness: found=[item for item in found if not item.get('stale_page') and not item.get('unverified_page_date') and not item.get('page_unavailable') and (not item.get('feed_published') or item.get('page_date_verified'))]
+    if freshness: found=[item for item in found if item.get('page_opened') and not item.get('stale_page') and not item.get('unverified_page_date') and not item.get('page_unavailable') and (not item.get('feed_published') or item.get('page_date_verified') or item.get('feed_date_accepted'))]
     if not found:
-        return 'Os resultados que pareciam atuais apontam para páginas antigas. Não consegui confirmar o dado em uma página atual, então não vou repetir esse conteúdo como fato de agora.'
+        if any(item.get('stale_page') for item in selected):
+            return 'As páginas abertas estavam fora da janela pedida. Não consegui confirmar esse dado como atual.'
+        return 'Não consegui ler páginas com conteúdo verificável para confirmar esse dado atual; não vou completá-lo por memória.'
     if freshness:
         if _independent_recent_source_count(found,freshness)<2:
             return 'As fontes encontradas não bastam para confirmar esse fato atual: preciso de duas publicações independentes, recentes e datadas. Não vou completar a resposta por memória.'
     output=[]
     for item in found[:8]:
         label=item['title'][:180]
-        if item['published']: label+=f' [{item["provider"]} · {item["published"]}]'
+        if item['published']:
+            publisher=item.get('publisher') or item['provider']
+            if item.get('feed_date_accepted'): publisher='Feed RSS: '+publisher
+            label+=f' [{publisher} · {item["published"]}]'
         line=label+(f' :: {item["snippet"][:350]}' if item['snippet'] else '')+f' — {item["url"]}'
         output.append(line)
     checked=datetime.now().astimezone().strftime('%d/%m/%Y %H:%M %Z')

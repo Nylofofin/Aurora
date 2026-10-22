@@ -315,7 +315,7 @@ def test_google_news_fallback_uses_common_page_pipeline_and_caps_reads_at_two(mo
     assert "Nexa network measurement" in output
 
 
-def test_google_news_feed_date_is_not_page_date_and_failed_redirect_is_discarded(monkeypatch):
+def test_google_news_feed_candidate_with_failed_redirect_is_discarded(monkeypatch):
     _force_provider_failure(monkeypatch)
     calls = []
     today = datetime.now().astimezone().strftime("%d/%m/%Y")
@@ -324,7 +324,7 @@ def test_google_news_feed_date_is_not_page_date_and_failed_redirect_is_discarded
         if url.endswith("story-1"):
             return ("Nexa network measurement reported today in the page.", today)
         if url.endswith("story-2"):
-            return ("Nexa network measurement reported today in the page.", "")
+            raise ValueError("redirect destination failed public URL validation")
         raise ValueError("redirect destination failed public URL validation")
     monkeypatch.setattr(search_providers, "_search_page_excerpt", read)
     monkeypatch.setattr(search_pipeline, "_search_page_excerpt", read)
@@ -333,6 +333,42 @@ def test_google_news_feed_date_is_not_page_date_and_failed_redirect_is_discarded
     assert "Publisher 2" not in output
     assert "Google Notícias, publicações" not in output
     assert "não bastam para confirmar" in output
+
+
+def test_google_news_feed_date_is_accepted_when_read_page_has_no_date(monkeypatch):
+    _force_provider_failure(monkeypatch)
+    calls = []
+
+    def read(url, query, timeout=2.5):
+        calls.append(url)
+        return ("Nexa network measurement reported today in the page.", "")
+
+    monkeypatch.setattr(search_providers, "_search_page_excerpt", read)
+    monkeypatch.setattr(search_pipeline, "_search_page_excerpt", read)
+    output = aurora._search_public_web_uncached(
+        "Nexa network measurement today", "7d", False
+    )
+
+    assert len(calls) == 2
+    assert "Feed RSS: Publisher 1 ·" in output
+    assert "Feed RSS: Publisher 2 ·" in output
+    assert "Trecho da página aberta agora" in output
+
+
+def test_unread_current_pages_are_not_reported_as_stale(monkeypatch):
+    _force_provider_failure(monkeypatch)
+
+    def fail_read(*_args, **_kwargs):
+        raise ValueError("page redirect rejected")
+
+    monkeypatch.setattr(search_providers, "_search_page_excerpt", fail_read)
+    monkeypatch.setattr(search_pipeline, "_search_page_excerpt", fail_read)
+    output = aurora._search_public_web_uncached(
+        "Nexa network measurement today", "7d", False
+    )
+
+    assert "Não consegui ler páginas" in output
+    assert "páginas abertas estavam fora" not in output
 
 
 def test_subject_specific_search_adapters_are_absent():
