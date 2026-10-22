@@ -1,0 +1,60 @@
+import aurora
+
+
+def test_small_talk_and_personal_advice_do_not_trigger_web_search():
+    for prompt in (
+        "Como você tá?",
+        "Como foi seu dia?",
+        "O que você acha disso?",
+        "Quem é você?",
+        "Qual sua opinião sobre isso?",
+        "Preciso desabafar um pouco.",
+        "O que eu faço agora?",
+    ):
+        assert not aurora.factual_web_intent(prompt), prompt
+
+
+def test_news_and_how_to_requests_route_to_research_without_search_verbs():
+    assert aurora.research_request_intent("Notícias nacionais e internacionais")
+    assert aurora.research_request_intent("Me mostra um tutorial para configurar um roteador")
+    assert aurora.guided_learning_intent("Como jogar um jogo de estratégia?")
+    assert aurora.factual_web_intent("Como jogar um jogo de estratégia?" )
+    assert aurora.news_search_intent("Quais são as notícias internacionais hoje?")
+
+
+def test_international_news_scope_is_not_mistaken_for_the_topic():
+    query = "notícias internacionais de tecnologia hoje"
+    assert aurora._fresh_query_terms(query) == {"internacionais", "tecnologia"}
+    assert aurora._fresh_query_terms("World Cup") == {"world", "cup"}
+    assert aurora._news_result_relevance(
+        query, "Notícias internacionais sobre tecnologia", "Cobertura do setor"
+    ) > 0
+    assert aurora._news_result_relevance(
+        "notícias internacionais", "International news roundup", "World headlines"
+    ) > 0
+    assert aurora.international_news_only("notícias internacionais")
+    assert not aurora.international_news_only("notícias nacionais e internacionais")
+    assert aurora._news_result_relevance(
+        "notícias nacionais e internacionais", "Principais notícias do Brasil e do mundo", ""
+    ) > 0
+
+
+def test_response_language_can_be_switched_and_reset_in_portuguese():
+    assert aurora.requested_response_language("Fale comigo em inglês") == "English"
+    assert aurora.requested_response_language("Responda em espanhol") == "Spanish"
+    assert aurora.requested_response_language("Muda para francês") == "French"
+    assert aurora.requested_response_language("Volta para português brasileiro") == "Português brasileiro"
+    assert aurora.requested_response_language("Qual sua opinião?") is None
+
+
+def test_system_and_search_prompts_use_selected_response_language():
+    assert "Responda em English" in aurora.assistant_system_prompt(response_language="English")
+    prompt, system = aurora.search_answer_prompts(
+        "latest world news", "world news", ["International briefing"], response_language="English"
+    )
+    assert "em English" in prompt
+    assert "em English" in system
+    tutorial, _ = aurora.search_answer_prompts(
+        "Tutorial: como jogar um jogo de exemplo", "jogo de exemplo", ["Passo inicial"], response_language="Português brasileiro"
+    )
+    assert "até quatro passos curtos e práticos" in tutorial
