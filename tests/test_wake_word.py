@@ -12,16 +12,25 @@ def test_wake_word_requires_a_completed_exact_phrase():
     assert not match("oi, aurora", True)
 
 
-def test_conversation_session_stays_active_until_explicitly_stopped():
+def test_wake_session_is_a_single_request_gate():
     voice = aurora.LocalVoice({})
-    assert not voice.session_active.is_set()
+    assert not voice.request_active.is_set()
 
-    voice.begin_session()
-    assert voice.session_active.is_set()
+    voice.begin_request()
+    assert voice.request_active.is_set()
 
-    voice.end_session()
-    assert not voice.session_active.is_set()
+    voice.end_request()
+    assert not voice.request_active.is_set()
     assert not voice.one_shot.is_set()
+
+
+def test_recognized_command_does_not_auto_rearm_continuous_listening():
+    from pathlib import Path
+
+    source = (Path(aurora.__file__).parent / "aurora.py").read_text()
+    assert "if self.one_shot.is_set():" in source
+    assert "self.one_shot.is_set() or self.request_active.is_set()" not in source
+    assert "pcm=b''.join(buffer[-40:]); active=False" in source
 
 
 def test_speaker_interrupt_discards_queued_speech():
@@ -33,7 +42,7 @@ def test_speaker_interrupt_discards_queued_speech():
     assert speaker.q.empty()
 
 
-def test_right_click_is_wired_to_end_conversation():
+def test_right_click_is_wired_to_stop_the_current_request():
     from pathlib import Path
 
     root = Path(aurora.__file__).parent

@@ -739,6 +739,32 @@ def _search_relevance(query,title,snippet=''):
     if len(overlap)<required: return 0.0
     return len(overlap)/max(1,len(wanted))
 
+def _search_query_variants(query,freshness=''):
+    """Keep the spoken query first, then try a compact subject-focused form."""
+    original=' '.join(str(query).split())
+    cleaned=re.sub(
+        r'\b(?:por favor|poderia|gostaria de saber|quero saber|me diga|me fale|me mostra|mostra para mim|'
+        r'pesquise|pesquisar|busque|buscar|procure|procurar|encontre|encontrar|'
+        r'quais sao|qual e|quem e|quando foi|onde fica|o que e|o que voce sabe sobre|como funciona|'
+        r'tutorial|tutoriais|guias?|passo a passo|instrucoes|manuais?|como|'
+        r'jogar|jogue|play|playing|instalar|install|configurar|configure|fazer|make|montar|build|usar|use|'
+        r'a|as|o|os|um|uma|uns|umas|de|do|da|dos|das|em|no|na|nos|nas|com|por|para|pra|e|ou|que)\b',
+        ' ',original,flags=re.I)
+    cleaned=' '.join(cleaned.split()).strip(' ,.:;!?')
+    variants=[(current_web_query(original,freshness),original)]
+    if cleaned and _fresh_query_terms(cleaned) and _fresh_query_terms(cleaned)!=_fresh_query_terms(original):
+        variants.append((current_web_query(cleaned,freshness),cleaned))
+    return variants
+
+def search_failure_summary(output,query):
+    """Preserve the search pipeline's concrete failure reason for the user."""
+    first=next((line.strip() for line in str(output or '').splitlines() if line.strip()),'')
+    known=('A busca não conseguiu consultar','Os provedores responderam','Não encontrei páginas',
+           'Não encontrei publicações','As notícias encontradas','Os resultados que pareciam',
+           'As fontes encontradas','Não encontrei resultados','Não confirmei fontes')
+    if first.startswith(known): return first
+    return news_unconfirmed_message() if news_search_intent(query) else 'Não consegui confirmar uma resposta relevante e atual nos resultados da busca.'
+
 def _news_result_relevance(query,title,snippet=''):
     """Require a topical match; unqualified news requests need roundup headlines."""
     if not news_search_intent(query): return _search_relevance(query,title,snippet)
@@ -749,6 +775,11 @@ def _news_result_relevance(query,title,snippet=''):
         return 1.0 if re.search(r'\b(international|global|world|worldwide|internacional|internacionais|global|globais|mundial|mundo)\b',text) else 0.0
     roundup=r'\b(principais noticias|resumo (?:das? )?(?:principais )?noticias|noticias (?:do mundo|do dia)|destaques (?:do dia|das noticias))\b'
     return 1.0 if re.search(roundup,text) else 0.0
+
+def _result_query_relevance(query,title,snippet=''):
+    """Apply the same subject-focused relevance check after search parsing."""
+    if news_search_intent(query): return _news_result_relevance(query,title,snippet)
+    return _search_relevance(_search_query_variants(query)[-1][1],title,snippet)
 
 def news_unconfirmed_message():
     return 'Não consegui confirmar notícias recentes sobre esse assunto.'
@@ -926,7 +957,7 @@ def web_fetch(url):
 
 def read_public_page(url): return web_fetch(url)
 
-def _search_page_excerpt(url,query,timeout=2.5):
+def _search_page_excerpt(url,query,timeout=2.0):
     """Fetch a small slice of a public result page to ground the answer in its own text."""
     public_http_url(url)
     req=urllib.request.Request(url,headers={'User-Agent':'Aurora-Local/0.5 (public factual search)','Accept':'text/html,application/xhtml+xml','Cache-Control':'no-cache, no-store, max-age=0'})
@@ -1002,19 +1033,14 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
     if news_only:
         news=search_google_news(query,freshness or '7d')
         return _enrich_news_results(news,query,freshness or '7d')
-    search_query=current_web_query(query,freshness)
-    found=[]; seen=set(); failures=[]
+    found=[]; seen=set(); failures=[]; provider_counts={}; rejected={'url':0,'atualidade':0,'relevancia':0,'duplicado':0}
     # Use two genuinely different result interfaces. DDG's normal HTML endpoint
     # is frequently bot-challenged here, while Bing HTML often gives generic
     # navigational pages. DDG Lite and Bing RSS are lightweight alternatives.
-    providers=(
-        ('DuckDuckGo Lite','https://lite.duckduckgo.com/lite/?'+urlencode({'q':search_query,'kl':'br-pt'}),'ddg'),
-        ('Bing RSS','https://www.bing.com/search?'+urlencode({'q':search_query,'format':'rss','setlang':'pt-br'}),'bing-rss'),
-    )
-    def fetch_provider(provider,url,kind):
+    def fetch_provider(url,kind,timeout):
         headers={'User-Agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131 Safari/537.36','Accept':'text/html,application/rss+xml,application/xml','Cache-Control':'no-cache, no-store, max-age=0','Pragma':'no-cache'}
         req=urllib.request.Request(url,headers=headers)
-        with PUBLIC_OPENER.open(req,timeout=5) as response:
+        with PUBLIC_OPENER.open(req,timeout=timeout) as response:
             public_http_url(response.geturl()); raw=response.read(1_500_000)
         if kind=='ddg':
             parser=DuckDuckGoLiteResults(); parser.feed(raw.decode('utf-8',errors='replace')); rows=parser.results
@@ -1029,40 +1055,51 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
                 except Exception: pass
                 rows.append((href,title,snippet,published))
         return rows
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(providers)) as pool:
-        jobs=[(provider,kind,pool.submit(fetch_provider,provider,url,kind)) for provider,url,kind in providers]
-        for provider,kind,future in jobs:
-            try: rows=future.result(timeout=5.5)
-            except Exception as exc:
-                failures.append(f'{provider}: {type(exc).__name__}'); continue
-            for row in rows:
-                href,title,snippet=row[:3]; published=row[3] if len(row)>3 else ''
-                href=urljoin('https://duckduckgo.com',href) if kind=='ddg' else href
-                parsed=urlparse(href)
-                if parsed.hostname and parsed.hostname.lower().endswith('duckduckgo.com') and parsed.path=='/l/':
-                    href=(parse_qs(parsed.query).get('uddg') or [''])[0]
-                if parsed.hostname and parsed.hostname.lower().endswith('bing.com') and parsed.path=='/ck/a':
-                    encoded=(parse_qs(parsed.query).get('u') or [''])[0]
-                    if encoded.startswith('a1'):
-                        try: href=base64.urlsafe_b64decode(encoded[2:]+'='*((-len(encoded[2:]))%4)).decode('utf-8')
-                        except Exception: continue
-                try: public_http_url(href)
-                except Exception: continue
-                if freshness and (_has_expired_deadline(title+' '+snippet) or
-                        _has_stale_source_date(title+' '+snippet,freshness) or
-                        _has_stale_url_date(href,freshness) or
-                        (published and _has_stale_source_date('published '+published,freshness))): continue
-                # Rank relevance against the person's question. The query added
-                # a year for freshness; requiring every result to repeat that
-                # year would hide live/API-backed pages that omit it.
-                relevance=_search_relevance(query,title,snippet)
-                if relevance<=0: continue
-                key=urlparse(href)._replace(query='',fragment='').geturl().rstrip('/').casefold()
-                if key in seen: continue
-                seen.add(key)
-                host=(urlparse(href).hostname or '').removeprefix('www.')
-                found.append({'provider':provider,'title':title,'snippet':snippet,'url':href,'host':host,
-                    'published':published,'score':relevance})
+    def collect_query(search_query,relevance_query,timeout):
+        providers=(
+            ('DuckDuckGo Lite','https://lite.duckduckgo.com/lite/?'+urlencode({'q':search_query,'kl':'br-pt'}),'ddg'),
+            ('Bing RSS','https://www.bing.com/search?'+urlencode({'q':search_query,'format':'rss','setlang':'pt-br'}),'bing-rss'),
+        )
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(providers)) as pool:
+            jobs=[(provider,kind,pool.submit(fetch_provider,url,kind,timeout)) for provider,url,kind in providers]
+            for provider,kind,future in jobs:
+                stats=provider_counts.setdefault(provider,{'extraidos':0,'relevantes':0})
+                try: rows=future.result(timeout=timeout+0.5)
+                except Exception as exc:
+                    failures.append(f'{provider}: {type(exc).__name__}'); continue
+                stats['extraidos']+=len(rows)
+                for row in rows:
+                    href,title,snippet=row[:3]; published=row[3] if len(row)>3 else ''
+                    href=urljoin('https://duckduckgo.com',href) if kind=='ddg' else href
+                    parsed=urlparse(href)
+                    if parsed.hostname and parsed.hostname.lower().endswith('duckduckgo.com') and parsed.path=='/l/':
+                        href=(parse_qs(parsed.query).get('uddg') or [''])[0]
+                    if parsed.hostname and parsed.hostname.lower().endswith('bing.com') and parsed.path=='/ck/a':
+                        encoded=(parse_qs(parsed.query).get('u') or [''])[0]
+                        if encoded.startswith('a1'):
+                            try: href=base64.urlsafe_b64decode(encoded[2:]+'='*((-len(encoded[2:]))%4)).decode('utf-8')
+                            except Exception: continue
+                    try: public_http_url(href)
+                    except Exception: rejected['url']+=1; continue
+                    if freshness and (_has_expired_deadline(title+' '+snippet) or
+                            _has_stale_source_date(title+' '+snippet,freshness) or
+                            _has_stale_url_date(href,freshness) or
+                            (published and _has_stale_source_date('published '+published,freshness))):
+                        rejected['atualidade']+=1; continue
+                    # The alternate query removes request phrasing, not subject terms.
+                    relevance=_search_relevance(relevance_query,title,snippet)
+                    if relevance<=0: rejected['relevancia']+=1; continue
+                    stats['relevantes']+=1
+                    key=urlparse(href)._replace(query='',fragment='').geturl().rstrip('/').casefold()
+                    if key in seen: rejected['duplicado']+=1; continue
+                    seen.add(key)
+                    host=(urlparse(href).hostname or '').removeprefix('www.')
+                    found.append({'provider':provider,'title':title,'snippet':snippet,'url':href,'host':host,
+                        'published':published,'score':relevance})
+    for attempt,(search_query,relevance_query) in enumerate(_search_query_variants(query,freshness)):
+        collect_query(search_query,relevance_query,3.5 if attempt==0 else 1.8)
+        enough=(_independent_recent_source_count(found,freshness)>=2) if freshness else bool(found)
+        if enough: break
     window_days={'1d':1,'7d':7,'30d':30}.get(freshness,30)
     if freshness and (not found or _independent_recent_source_count(found,freshness)<2):
         try:
@@ -1079,7 +1116,11 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
         return item['score']+0.2*max(0,1-age/window_days)
     found.sort(key=rank,reverse=True)
     if not found:
-        return 'Não encontrei resultados suficientemente relacionados à pergunta nas fontes de busca disponíveis. Não vou completar com informação antiga ou genérica.'
+        counts='; '.join(f'{name}: {stats["extraidos"]} extraídos, {stats["relevantes"]} relacionados' for name,stats in provider_counts.items()) or 'nenhum resultado extraído'
+        drops=', '.join(f'{name} {count}' for name,count in rejected.items() if count)
+        reason=(' provedores indisponíveis: '+'; '.join(dict.fromkeys(failures))+'.') if failures else ''
+        filtered=(' descartes por '+drops+'.') if drops else ''
+        return f'Não confirmei fontes para essa pergunta. Resultados de busca ({counts}).{filtered}{reason} Não vou completar por memória.'
     # Snippets are often truncated or misleading. Open up to two relevant pages
     # in parallel so the model gets the page's own evidence without serial delay.
     selected=[]
@@ -1423,10 +1464,10 @@ class Inference(QThread):
 class LocalVoice(QThread):
     transcript=Signal(str); status=Signal(str); unavailable=Signal(str); wake=Signal()
     def __init__(self,cfg):
-        super().__init__(); self.cfg=cfg; self.running=True; self.one_shot=threading.Event(); self.session_active=threading.Event(); self.speaking=False; self.recognizer=None
+        super().__init__(); self.cfg=cfg; self.running=True; self.one_shot=threading.Event(); self.request_active=threading.Event(); self.speaking=False; self.recognizer=None
     def request_once(self): self.one_shot.set()
-    def begin_session(self): self.session_active.set()
-    def end_session(self): self.session_active.clear(); self.one_shot.clear()
+    def begin_request(self): self.request_active.set()
+    def end_request(self): self.request_active.clear(); self.one_shot.clear()
     @staticmethod
     def pcm_level(block):
         samples=array('h'); samples.frombytes(block)
@@ -1466,13 +1507,13 @@ class LocalVoice(QThread):
                 while self.running:
                     try: block=q.get(timeout=.25)
                     except queue.Empty: continue
-                    if not self.session_active.is_set() and active:
+                    if not self.request_active.is_set() and active:
                         active=False; buffer=[]; wake_audio=[]; rec.Reset(); wake_rec.Reset(); self.status.emit('hidden')
                     if self.speaking: continue
                     if not active:
                         wake_audio.append(block)
                         if len(wake_audio)>88: wake_audio=wake_audio[-88:]
-                        if self.one_shot.is_set() or self.session_active.is_set():
+                        if self.one_shot.is_set():
                             self.one_shot.clear(); active=True; buffer=[]; wake_audio=[]; started=time.monotonic(); self.status.emit('listening'); rec.Reset(); wake_rec.Reset(); continue
                     else:
                         buffer.append(block)
@@ -1480,24 +1521,23 @@ class LocalVoice(QThread):
                     active_rec=rec if active else wake_rec
                     finalized=active_rec.AcceptWaveform(block)
                     if not finalized:
-                        if active and time.monotonic()-started>22 and not self.session_active.is_set():
-                            active=False; buffer=[]; wake_audio=[]; rec.Reset(); wake_rec.Reset(); self.status.emit('hidden')
+                        if active and time.monotonic()-started>22:
+                            active=False; buffer=[]; wake_audio=[]; rec.Reset(); wake_rec.Reset(); self.end_request(); self.status.emit('hidden')
                         continue
                     text=json.loads(active_rec.Result()).get('text','').strip()
                     if active:
                         if text:
-                            pcm=b''.join(buffer[-40:]); active=self.session_active.is_set(); buffer=[]; wake_audio=[]; started=time.monotonic(); self.speaking=True; self.status.emit('thinking')
+                            pcm=b''.join(buffer[-40:]); active=False; buffer=[]; wake_audio=[]; started=time.monotonic(); self.speaking=True; self.status.emit('thinking')
                             command=self.cloud_transcribe(sr,pcm,text)
-                            if command and self.session_active.is_set(): self.transcript.emit(command)
+                            if command and self.request_active.is_set(): self.transcript.emit(command)
                             else:
-                                active=self.session_active.is_set(); started=time.monotonic(); rec.Reset(); wake_rec.Reset(); self.speaking=False
+                                active=self.request_active.is_set(); started=time.monotonic(); rec.Reset(); wake_rec.Reset(); self.speaking=False
                                 if active: self.status.emit('listening')
                         elif time.monotonic()-started>22:
-                            if not self.session_active.is_set():
-                                active=False; buffer=[]; wake_audio=[]; rec.Reset(); wake_rec.Reset(); self.status.emit('hidden')
+                            active=False; buffer=[]; wake_audio=[]; rec.Reset(); wake_rec.Reset(); self.end_request(); self.status.emit('hidden')
                     elif text:
                         if self.is_final_wake_phrase(text,finalized):
-                            self.begin_session()
+                            self.begin_request()
                             self.wake.emit(); self.status.emit('listening')
                             active=True; buffer=list(wake_audio); wake_audio=[]; started=time.monotonic(); rec.Reset(); wake_rec.Reset()
                         else:
@@ -1774,13 +1814,13 @@ class AuroraService(QObject):
         if self.pending:
             self.resolve_approval(True)
             return
-        if self.voice.session_active.is_set(): return
+        if self.voice.request_active.is_set(): return
         self.wake(); self.voice.request_once()
     @Slot()
     def wake(self):
         self.last_wake=time.monotonic()
         self.activity_generation+=1
-        self.voice.begin_session()
+        self.voice.begin_request()
         self.orb.reveal('listening'); self.feedback.play()
         if self.inf and self.inf.isRunning(): self.orb.set_mode('listening')
     @Slot()
@@ -1794,9 +1834,9 @@ class AuroraService(QObject):
         self.orb.dismiss()
     @Slot()
     def stop_conversation(self):
-        """Immediately end the active voice session and discard pending output."""
+        """Immediately cancel the current one-shot request and its pending output."""
         self.activity_generation+=1; self.request_generation+=1
-        self.voice.end_session()
+        self.voice.end_request()
         self.voice.speaking=False
         self.response_language='Português brasileiro'
         if self.inf and self.inf.isRunning(): self.inf.cancel()
@@ -1826,7 +1866,7 @@ class AuroraService(QObject):
         self.response_finished=True; self.response_summary='Não consegui iniciar o reconhecimento de voz.'; self.orb.reveal('error')
         self.speak_in_selected_language('Não consegui iniciar o reconhecimento de voz')
     def ask(self,prompt):
-        if not self.voice.session_active.is_set(): return
+        if not self.voice.request_active.is_set(): return
         prompt=prompt.strip()
         if not prompt:
             self.voice.speaking=False; self.orb.set_mode('listening'); return
@@ -1884,7 +1924,7 @@ class AuroraService(QObject):
         generation=self.request_generation
         self.inf.sentence.connect(lambda text,g=generation:self.queue_sentence(text,g)); self.inf.search.connect(lambda q,out,g=generation:self.search_update(q,out) if g==self.request_generation else None); self.inf.approval.connect(lambda name,detail,g=generation:self.request_approval(name,detail) if g==self.request_generation else None); self.inf.error.connect(lambda message,g=generation:self.answer_error(message,g)); self.inf.result.connect(lambda text,g=generation:self.answer_done(text,g)); self.inf.finished.connect(self.inference_finished); self.inf.start()
     def queue_sentence(self,text,generation):
-        if generation==self.request_generation and self.voice.session_active.is_set(): self.speaker.say(text)
+        if generation==self.request_generation and self.voice.request_active.is_set(): self.speaker.say(text)
     def run_local_action(self,name,args):
         self.orb.set_mode('thinking')
         if name=='close_application' or (name=='manage_window' and args.get('action')=='close'):
@@ -1915,9 +1955,9 @@ class AuroraService(QObject):
             host=(urlparse(url).hostname or '').removeprefix('www.')
             items.append({'title':label.strip(),'snippet':Speaker.clean(snippet),'publisher':publisher,'published':published,'host':host,'url':url})
         if self.current_prompt or query:
-            items=[item for item in items if _news_result_relevance(self.current_prompt or query,item['title'],item['snippet'])>0]
+            items=[item for item in items if _result_query_relevance(self.current_prompt or query,item['title'],item['snippet'])>0]
         if not items:
-            message=news_unconfirmed_message() if news_search_intent(self.current_prompt or query) else 'Não consegui confirmar uma resposta relevante e atual nos resultados da busca.'
+            message=search_failure_summary(output,self.current_prompt or query)
             self.quick_summary_done(message,generation); return
         asks_current_fact=bool(current_search_window(self.current_prompt))
         if asks_current_fact:
@@ -1967,8 +2007,8 @@ class AuroraService(QObject):
         language=self.response_language
         instruction=f'Traduza fielmente para {language}. Preserve números, nomes, medidas, fontes e intenção. Não acrescente nem remova fatos. Retorne somente a tradução.'
         self.inf=Inference(self.cfg,instruction+'\n\nTexto:\n'+str(text),model=self.cfg['model'],use_tools=False,history=[],system_prompt=f'Você é um tradutor. Traduza o texto para {language}, preserve todos os fatos e números, e retorne apenas a tradução.',response_language=language)
-        self.inf.result.connect(lambda translated,g=generation:self.speaker.say(translated) if g==self.request_generation and self.voice.session_active.is_set() else None)
-        self.inf.error.connect(lambda _message,g=generation:self.speaker.say(text) if g==self.request_generation and self.voice.session_active.is_set() else None)
+        self.inf.result.connect(lambda translated,g=generation:self.speaker.say(translated) if g==self.request_generation and self.voice.request_active.is_set() else None)
+        self.inf.error.connect(lambda _message,g=generation:self.speaker.say(text) if g==self.request_generation and self.voice.request_active.is_set() else None)
         self.inf.finished.connect(self.inference_finished); self.inf.start()
     def quick_search_error(self,query,message,generation=None):
         if generation is not None and generation!=self.request_generation: return
@@ -1994,29 +2034,27 @@ class AuroraService(QObject):
         self.active_search_context=''
         if not self.pending:
             self.orb.set_mode('speaking' if self.speaker.playing else 'preparing' if self.speaker.active or not self.speaker.q.empty() else 'thinking')
-        if not self.voice.session_active.is_set() and not self.speaker.active and self.speaker.q.empty(): self.schedule_dismiss(900)
+        if not self.speaker.active and self.speaker.q.empty(): self.schedule_dismiss(900)
     def speaking_changed(self,on):
         model_busy=bool(self.inf and self.inf.isRunning())
         request_busy=any(request.isRunning() for request in self.background_requests)
         self.voice.speaking=on or model_busy or request_busy or not self.speaker.q.empty()
         if on: self.orb.set_mode('speaking' if self.speaker.playing else 'preparing')
         elif not self.speaker.active and self.speaker.q.empty() and self.response_finished:
-            if self.voice.session_active.is_set() and not model_busy and not request_busy:
-                self.voice.speaking=False; self.orb.set_mode('listening')
-            else: self.schedule_dismiss(750)
+            self.schedule_dismiss(750)
     def audio_started(self): self.orb.set_mode('speaking')
     def schedule_dismiss(self,delay):
         generation=self.activity_generation
         def finish():
-            if not self.voice.session_active.is_set() and generation==self.activity_generation and self.response_finished and not self.speaker.active and self.speaker.q.empty() and not (self.inf and self.inf.isRunning()) and not self.weather_busy():
-                self.orb.dismiss()
+            if generation==self.activity_generation and self.response_finished and not self.speaker.active and self.speaker.q.empty() and not (self.inf and self.inf.isRunning()) and not self.weather_busy():
+                self.voice.end_request(); self.orb.dismiss()
         QTimer.singleShot(delay,finish)
     def inference_finished(self):
         request_busy=any(request.isRunning() for request in self.background_requests)
         model_busy=bool(self.inf and self.inf.isRunning())
         if not self.speaker.active and self.speaker.q.empty() and not model_busy:
             self.voice.speaking=request_busy
-            if self.voice.session_active.is_set() and not request_busy: self.orb.set_mode('listening')
+            if request_busy: self.orb.set_mode('thinking')
         if self.inf and self.inf.model!=self.cfg['model']: self.start_warmup()
     def request_approval(self,name,detail):
         self.pending=detail

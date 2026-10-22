@@ -292,3 +292,27 @@ def test_short_cache_avoids_duplicate_search(monkeypatch):
     assert aurora.search_public_web("Nexa current value", "30d") == "cached evidence"
     assert calls == ["Nexa current value"]
     aurora._SEARCH_CACHE.clear()
+
+
+def test_search_retries_with_subject_terms_without_question_formatting():
+    variants = aurora._search_query_variants(
+        "Me mostra um tutorial de como jogar Starfield no Linux", ""
+    )
+    assert variants[0][0] == "Me mostra um tutorial de como jogar Starfield no Linux"
+    assert variants[1][0] == "Starfield Linux"
+    assert aurora._search_relevance(variants[1][1], "Como jogar Starfield no Linux", "") > 0
+
+
+def test_final_search_filter_uses_subject_terms_not_instruction_words():
+    query = "Me mostra um tutorial de como jogar Starfield no Linux"
+    assert aurora._search_relevance(query, "Starfield Linux beginner guide", "") == 0.0
+    assert aurora._result_query_relevance(query, "Starfield Linux beginner guide", "") == 1.0
+
+
+def test_search_failure_keeps_the_pipeline_reason_instead_of_replacing_it():
+    output = "Os provedores responderam, mas nenhum resultado passou pelos filtros de endereço público, atualidade e relação com a pergunta.\n"
+    assert aurora.search_failure_summary(output, "Como jogar Starfield?") == output.splitlines()[0]
+    assert "não conseguiu consultar" in aurora.search_failure_summary(
+        "A busca não conseguiu consultar os provedores disponíveis (DuckDuckGo Lite: URLError; Bing RSS: URLError).",
+        "Qual é a versão atual?",
+    )
