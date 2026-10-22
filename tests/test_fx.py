@@ -26,6 +26,14 @@ def test_detects_named_and_code_based_quote_pairs_without_topic_branches():
     assert aurora_fx.detect_fx_intent("abra a calculadora", CATALOG) is None
 
 
+def test_relative_date_and_portuguese_prepositions_do_not_become_currency_names():
+    today = date(2026, 10, 22)
+    intent = aurora_fx.detect_fx_intent("cotação do dólar ontem", today=today)
+    assert intent == aurora_fx.FXIntent("USD", "BRL", requested_date=date(2026, 10, 21), current=False)
+    two_days_ago = aurora_fx.detect_fx_intent("taxa do euro anteontem", today=today)
+    assert two_days_ago.base == "EUR" and two_days_ago.requested_date == date(2026, 10, 20)
+
+
 class FakeResponse:
     status = 200
     headers = {}

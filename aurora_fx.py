@@ -23,6 +23,7 @@ API_TIMEOUT = 2.0
 QUOTE_CUES = re.compile(r"\b(cotacao|taxa|quanto\s+(?:vale|esta|ta)|converter|conversao)\b")
 CURRENT_CUES = re.compile(r"\b(agora|hoje|atual|atualmente|neste\s+momento|tempo\s+real|ao\s+vivo)\b")
 DATE_PATTERNS = (re.compile(r"\b(20\d{2})-(\d{2})-(\d{2})\b"), re.compile(r"\b(\d{2})/(\d{2})/(20\d{2})\b"))
+FUNCTION_WORDS = {"do", "da", "de", "dos", "das", "e", "para", "pra", "a", "o", "the", "of", "and", "to"}
 AMOUNT_RE = re.compile(r"\b(\d{1,12}(?:[.,]\d{1,8})?)\b")
 _CATALOG_CACHE = None
 
@@ -128,6 +129,8 @@ def _currency_mentions(text: str, rows):
     occupied = [(start, end) for start, end, _, priority in mentions if priority >= 2]
     for match in token_matches:
         token = match.group()
+        if token in FUNCTION_WORDS:
+            continue
         candidates = {code for code, name_tokens in aliases if token in name_tokens}
         if not candidates:
             continue
@@ -155,7 +158,12 @@ def _currency_mentions(text: str, rows):
     return [(start, end, code) for start, end, code, _ in selected]
 
 
-def _requested_date(text: str):
+def _requested_date(text: str, today=None):
+    today = today or datetime.now(LOCAL_TZ).date()
+    if re.search(r"\banteontem\b", text):
+        return today - timedelta(days=2)
+    if re.search(r"\bontem\b", text):
+        return today - timedelta(days=1)
     for index, pattern in enumerate(DATE_PATTERNS):
         match = pattern.search(text)
         if not match:
@@ -168,7 +176,7 @@ def _requested_date(text: str):
     return None
 
 
-def detect_fx_intent(prompt: str, catalog=None):
+def detect_fx_intent(prompt: str, catalog=None, today=None):
     """Recognize a quote or conversion request using ISO labels/codes."""
     text = normalize_text(prompt)
     if not QUOTE_CUES.search(text):
@@ -196,7 +204,7 @@ def detect_fx_intent(prompt: str, catalog=None):
             return None
         if amount <= 0:
             return None
-    requested_date = _requested_date(text)
+    requested_date = _requested_date(text, today)
     conversion = amount is not None or bool(re.search(r"\b(converter|conversao)\b", text))
     current = requested_date is None and not conversion
     return FXIntent(base, quote, amount, requested_date, conversion, current)
