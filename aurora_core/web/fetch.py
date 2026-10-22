@@ -58,7 +58,10 @@ def _search_page_excerpt(url,query,timeout=2.0):
     published=max(preferred_dates).strftime('%d/%m/%Y') if preferred_dates else ''
     parser=PageText(); parser.feed(raw.decode('utf-8',errors='replace'))
     body=' '.join(' '.join(parser.text).split())
-    if len(body)<120: return ''
+    # Preserve publication metadata even when a page is too short to yield an
+    # excerpt. The caller needs to distinguish an undated page from a dated,
+    # but content-poor page when reporting why search could not confirm it.
+    if len(body)<120: return '',published
     wanted=_fresh_query_terms(query)
     sentences=[s.strip() for s in re.split(r'(?<=[.!?])\s+',body) if len(s.strip())>35]
     ranked=[]

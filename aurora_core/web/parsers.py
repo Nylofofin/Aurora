@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from html.parser import HTMLParser
+import json
 
 class PageText(HTMLParser):
     def __init__(self): super().__init__(); self.skip=0; self.title_mode=False; self.title=[]; self.text=[]
@@ -21,10 +22,28 @@ class PageText(HTMLParser):
 
 class PageMetadata(HTMLParser):
     """Collect explicit publication/update dates from public article metadata."""
-    def __init__(self): super().__init__(); self.dates=[]
+    def __init__(self):
+        super().__init__(); self.dates=[]; self._jsonld=False; self._jsonld_parts=[]; self._jsonld_size=0
+
+    def _collect_jsonld_dates(self, value):
+        pending=[value]
+        while pending:
+            item=pending.pop()
+            if isinstance(item,dict):
+                for key in ('datePublished','dateModified'):
+                    date=item.get(key)
+                    if isinstance(date,str) and date.strip() and len(date)<=128:
+                        normalized='datepublished' if key=='datePublished' else 'datemodified'
+                        self.dates.append((normalized,date.strip()))
+                pending.extend(v for v in item.values() if isinstance(v,(dict,list)))
+            elif isinstance(item,list):
+                pending.extend(v for v in item if isinstance(v,(dict,list)))
+
     def handle_starttag(self,tag,attrs):
         attrs={str(k).lower():str(v) for k,v in attrs}
-        if tag=='meta':
+        if tag=='script' and 'ld+json' in attrs.get('type','').lower():
+            self._jsonld=True; self._jsonld_parts=[]; self._jsonld_size=0
+        elif tag=='meta':
             key=(attrs.get('property') or attrs.get('name') or attrs.get('itemprop') or '').lower()
             if key in ('article:published_time','article:modified_time','datepublished','datemodified','date','pubdate'):
                 value=attrs.get('content','').strip()
@@ -32,6 +51,20 @@ class PageMetadata(HTMLParser):
         elif tag=='time':
             value=attrs.get('datetime','').strip()
             if value: self.dates.append(('time',value))
+
+    def handle_data(self,data):
+        if self._jsonld and self._jsonld_size<262_144:
+            chunk=data[:262_145-self._jsonld_size]
+            self._jsonld_parts.append(chunk); self._jsonld_size+=len(chunk)
+
+    def handle_endtag(self,tag):
+        if tag!='script' or not self._jsonld: return
+        raw=''.join(self._jsonld_parts).strip()
+        self._jsonld=False; self._jsonld_parts=[]; self._jsonld_size=0
+        if not raw or len(raw)>262_144: return
+        try: parsed=json.loads(raw)
+        except (ValueError,TypeError): return
+        self._collect_jsonld_dates(parsed)
 
 class SearchResults(HTMLParser):
     """Extract organic headings from Bing's public HTML results page."""

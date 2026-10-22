@@ -154,10 +154,9 @@ def test_screenshot_does_not_request_a_second_aurora_confirmation():
     class ServiceStub:
         pending = None
         orb = Orb()
-        def execute_action(self, name, _args):
-            assert name == "take_screenshot"
-            self.executed = True
-            return "Salvei a captura."
+        def _start_screenshot_action(self, detail):
+            self.executed = detail["name"] == "take_screenshot"
+            detail["event"].set()
 
     detail = {"name": "take_screenshot", "args": {}, "event": threading.Event(),
               "explicit_user_request": True}
@@ -216,6 +215,55 @@ def test_obs_approval_runs_off_the_gui_thread(monkeypatch):
     assert observed and observed[0][0] == "start"
     assert observed[0][1] != main_thread
     assert detail["result"] == "Gravação iniciada no OBS."
+
+
+def test_direct_screenshot_runs_off_the_gui_thread_and_reports_saved_path(monkeypatch, tmp_path):
+    from PySide6.QtCore import QCoreApplication, QObject
+    app = QCoreApplication.instance() or QCoreApplication([])
+    main_thread = threading.get_ident()
+    observed = []
+    saved_path = tmp_path / "Aurora_2026-10-22.png"
+
+    def fake_capture(_pictures, cancel_event=None):
+        observed.append(threading.get_ident())
+        time.sleep(0.05)
+        saved_path.write_bytes(b"image")
+        return saved_path
+
+    monkeypatch.setattr(service_module.aurora_integrations, "capture_screenshot", fake_capture)
+    monkeypatch.setattr(service_module.aurora_integrations, "_append_action_log", lambda *_a, **_k: None)
+    monkeypatch.setattr(service_module, "xdg_user_directory", lambda _kind: str(tmp_path))
+
+    class Orb:
+        def set_mode(self, _mode): pass
+        def isVisible(self): return True
+
+    class Voice:
+        request_active = threading.Event()
+        request_active.set()
+
+    class ServiceStub(service_module.AuroraService):
+        def __init__(self):
+            QObject.__init__(self)
+            self.orb = Orb()
+            self.voice = Voice()
+            self.action_workers = []
+            self.obs_details = {}
+            self.action_cancel_event = threading.Event()
+            self.request_generation = 3
+            self.cfg = {}
+        def complete_direct_action(self, text): self.completed = text
+
+    stub = ServiceStub()
+    service_module.AuroraService.run_local_action(stub, "take_screenshot", {})
+    deadline = time.monotonic() + 2
+    while not hasattr(stub, "completed") and time.monotonic() < deadline:
+        app.processEvents()
+        time.sleep(0.01)
+
+    assert observed and observed[0] != main_thread
+    assert saved_path.read_bytes() == b"image"
+    assert stub.completed == f"Salvei a captura em {saved_path}."
 
 
 def test_tapping_pending_approval_interrupts_voice_before_execution():

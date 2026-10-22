@@ -20,7 +20,10 @@ from pathlib import Path
 
 SPOTIFY_REDIRECT_URI = "http://127.0.0.1:43827/callback"
 SPOTIFY_SCOPES = "user-modify-playback-state user-read-playback-state"
-OBS_REQUEST_TIMEOUT = 1.5
+# OBS can answer after one or two frame delays when the encoder/UI is busy.
+# Keep the whole local handshake and RPC bounded, but avoid the old 1.5 s
+# cutoff that could expire before OBS confirmed an otherwise valid request.
+OBS_REQUEST_TIMEOUT = 3.0
 OBS_STARTUP_TIMEOUT = 8.0
 
 
@@ -224,16 +227,19 @@ def capture_screenshot(pictures_dir: str | Path, timeout: int = 45,
     cancel_timer.stop()
     bus.disconnect("org.freedesktop.portal.Desktop", request_path,
                    "org.freedesktop.portal.Request", "Response", receiver, slot)
-    if cancelled["value"] or (cancel_event and cancel_event.is_set()):
-        raise RuntimeError("A captura foi cancelada; nenhum arquivo foi salvo.")
     if "code" not in result:
+        if cancelled["value"] or (cancel_event and cancel_event.is_set()):
+            raise RuntimeError("A captura foi cancelada; nenhum arquivo foi salvo.")
         raise TimeoutError("A captura expirou ou o portal aguarda uma ação do sistema.")
     if result["code"] != 0:
         raise RuntimeError("A captura foi cancelada pelo portal ou pelo usuário.")
     uri = result["data"].get("uri")
     if not uri:
         raise RuntimeError("O portal concluiu sem informar o arquivo da captura.")
-    return save_screenshot_uri(str(uri), pictures_dir, cancel_event=cancel_event)
+    # A successful portal response is the capture's commit point. Finish the
+    # local copy even if the user interrupts immediately afterwards; otherwise
+    # a completed capture could be discarded and misreported as cancelled.
+    return save_screenshot_uri(str(uri), pictures_dir)
 
 
 def _append_action_log(action: str, outcome: str, details: dict | None = None) -> None:
@@ -532,7 +538,8 @@ def obs_record(action: str, password: str = "", host: str = "127.0.0.1", port: i
     if port == 4455 and obs_settings.get("server_port"):
         port = obs_settings["server_port"]
     password = password or obs_settings.get("server_password", "")
-    request_sent = False
+    request_attempted = False
+    phase = "connect"
     if cancel_event and cancel_event.is_set():
         return "A gravação foi cancelada antes de enviar qualquer comando ao OBS."
     try:
@@ -571,6 +578,7 @@ def obs_record(action: str, password: str = "", host: str = "127.0.0.1", port: i
         with stream:
             if cancel_event and cancel_event.is_set():
                 return "A gravação foi cancelada antes de enviar qualquer comando ao OBS."
+            phase = "handshake"
             _set_request_timeout(stream, deadline)
             key = base64.b64encode(secrets.token_bytes(16)).decode("ascii")
             stream.sendall(("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\n"
@@ -591,6 +599,7 @@ def obs_record(action: str, password: str = "", host: str = "127.0.0.1", port: i
             expected = base64.b64encode(hashlib.sha1((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()).digest()).decode()
             if not secrets.compare_digest(accept, expected):
                 raise ConnectionError("A resposta do WebSocket local não passou na validação.")
+            phase = "hello"
             hello = _ws_receive(stream, deadline)
             if hello.get("op") != 0:
                 raise ConnectionError("O OBS respondeu com um protocolo inesperado.")
@@ -603,6 +612,7 @@ def obs_record(action: str, password: str = "", host: str = "127.0.0.1", port: i
                 secret = base64.b64encode(hashlib.sha256((password + auth["salt"]).encode()).digest()).decode()
                 identify["authentication"] = base64.b64encode(
                     hashlib.sha256((secret + auth["challenge"]).encode()).digest()).decode()
+            phase = "authentication"
             _ws_send(stream, {"op": 1, "d": identify}, deadline)
             identified = _ws_receive(stream, deadline)
             if identified.get("op") != 2:
@@ -610,9 +620,12 @@ def obs_record(action: str, password: str = "", host: str = "127.0.0.1", port: i
             if cancel_event and cancel_event.is_set():
                 return "A gravação foi cancelada antes de enviar qualquer comando ao OBS."
             request_id = secrets.token_hex(8)
+            phase = "request"
+            # sendall may transmit part of a frame and then raise. From this
+            # point onward Aurora must not claim the command was never sent.
+            request_attempted = True
             _ws_send(stream, {"op": 6, "d": {"requestType": request_type,
                       "requestId": request_id, "requestData": {}}}, deadline)
-            request_sent = True
             while True:
                 result = _ws_receive(stream, deadline)
                 if result.get("op") != 7:
@@ -628,17 +641,22 @@ def obs_record(action: str, password: str = "", host: str = "127.0.0.1", port: i
                 _append_action_log("obs_record", "started" if action == "start" else "stopped")
                 return "Gravação iniciada no OBS." if action == "start" else "Gravação parada no OBS."
     except RuntimeError as exc:
-        _append_action_log("obs_record", "unavailable", {"action": action, "phase": "request" if request_sent else "connect"})
+        _append_action_log("obs_record", "unavailable", {"action": action, "phase": phase,
+                            "error_type": type(exc).__name__})
         return str(exc)
-    except Exception:
-        _append_action_log("obs_record", "unavailable", {"action": action, "phase": "confirmation" if request_sent else "connect"})
+    except Exception as exc:
+        _append_action_log("obs_record", "unavailable", {"action": action, "phase": phase,
+                            "error_type": type(exc).__name__})
         if (host in ("127.0.0.1", "::1", "localhost") and
                 obs_settings.get("server_enabled") is False and
                 int(port) == obs_settings.get("server_port")):
             return ("O WebSocket do OBS Studio Flatpak está desativado. No OBS, abra "
                     "Ferramentas → Configurações do servidor WebSocket e ative o servidor.")
-        if request_sent:
+        if request_attempted:
             return ("Enviei o comando ao OBS, mas perdi a confirmação. Confira se a gravação "
                     "começou ou parou antes de tentar de novo.")
+        if isinstance(exc, (TimeoutError, socket.timeout)):
+            return (f"O OBS demorou demais na etapa de {phase}. Confira se o WebSocket está "
+                    "ativo e tente novamente; não enviei o comando de gravação.")
         return (f"O OBS não respondeu em {host}:{port}. Abra o OBS e confira se o servidor "
                 "WebSocket está ativo; não enviei o comando de gravação.")

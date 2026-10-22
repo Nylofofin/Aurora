@@ -70,6 +70,56 @@ def test_cancelled_screenshot_closes_portal_request_without_saving(monkeypatch, 
     assert not (tmp_path / "Aurora").exists()
 
 
+def test_screenshot_is_saved_if_portal_completed_before_cancel_arrived(monkeypatch, tmp_path):
+    from PySide6 import QtCore, QtDBus
+    source = tmp_path / "portal-shot.png"
+    source.write_bytes(b"completed capture")
+    cancelled = threading.Event()
+    holder = {}
+
+    class Loop:
+        def quit(self): pass
+        def exec(self):
+            holder["receiver"].receive(0, {"uri": source.as_uri()})
+            cancelled.set()  # Cancellation races after the portal's success.
+
+    class Timer:
+        class Timeout:
+            def connect(self, _callback): pass
+        def __init__(self): self.timeout = self.Timeout()
+        def setSingleShot(self, _value): pass
+        def start(self, *_args): pass
+        def stop(self): pass
+
+    class Message:
+        class MessageType:
+            ErrorMessage = object()
+        @staticmethod
+        def createMethodCall(*_args): return Message()
+        def setArguments(self, _args): pass
+        def type(self): return object()
+        def errorMessage(self): return ""
+
+    class Bus:
+        def isConnected(self): return True
+        def baseService(self): return ":1.42"
+        def connect(self, _service, _path, _interface, _signal, receiver, _slot):
+            holder["receiver"] = receiver
+            return True
+        def disconnect(self, *_args): pass
+        def call(self, *_args): return Message()
+
+    monkeypatch.setattr(QtCore, "QEventLoop", Loop)
+    monkeypatch.setattr(QtCore, "QTimer", Timer)
+    monkeypatch.setattr(QtDBus, "QDBusMessage", Message)
+    monkeypatch.setattr(QtDBus.QDBusConnection, "sessionBus", lambda: Bus())
+    saved = integrations.capture_screenshot(tmp_path / "Pictures", cancel_event=cancelled)
+
+    assert saved.is_file()
+    assert saved.read_bytes() == b"completed capture"
+
+
+
 def test_site_opening_is_separate_from_application_opening():
     assert integrations.site_url_from_request("Aurora, abra o site example.com") == "https://example.com"
     assert integrations.site_url_from_request("abre o link https://example.org/ajuda") == "https://example.org/ajuda"
@@ -479,8 +529,39 @@ def test_obs_lost_reply_after_request_warns_to_check_state_before_retry(monkeypa
 
     assert "perdi a confirmação" in outcome.casefold()
     assert "antes de tentar de novo" in outcome.casefold()
-    assert actions == [("unavailable", {"action": "start", "phase": "confirmation"})]
+    assert actions == [("unavailable", {"action": "start", "phase": "request",
+                                        "error_type": "ConnectionError"})]
     assert len(sent) == 3  # HTTP upgrade, Identify, then StartRecord request.
+
+
+def test_obs_partial_rpc_send_is_reported_as_unknown_not_never_sent(monkeypatch):
+    monkeypatch.setattr(integrations, "_flatpak_obs_settings", lambda: {})
+    actions = []
+    monkeypatch.setattr(integrations, "_append_action_log",
+                        lambda _name, outcome, details=None: actions.append((outcome, details)))
+
+    class BrokenSocket:
+        def __init__(self): self.sends = 0
+        def __enter__(self): return self
+        def __exit__(self, *_args): return False
+        def settimeout(self, _timeout): pass
+        def sendall(self, _data):
+            self.sends += 1
+            if self.sends == 3: raise BrokenPipeError("connection lost during RPC frame")
+        def recv(self, _count):
+            return b"HTTP/1.1 101 Switching Protocols\r\nSec-WebSocket-Accept: valid\r\n\r\n"
+
+    monkeypatch.setattr(integrations.socket, "create_connection", lambda *_args, **_kwargs: BrokenSocket())
+    monkeypatch.setattr(integrations.secrets, "compare_digest", lambda *_args: True)
+    received = iter(({"op": 0, "d": {"rpcVersion": 1}}, {"op": 2, "d": {"negotiatedRpcVersion": 1}}))
+    monkeypatch.setattr(integrations, "_ws_receive", lambda *_a, **_k: next(received))
+
+    outcome = integrations.obs_record("start")
+
+    assert "perdi a confirmação" in outcome.casefold()
+    assert "não enviei o comando" not in outcome.casefold()
+    assert actions == [("unavailable", {"action": "start", "phase": "request",
+                                        "error_type": "BrokenPipeError"})]
 
 
 def test_obs_websocket_frame_read_stops_at_total_deadline():

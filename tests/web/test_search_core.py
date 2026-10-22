@@ -24,6 +24,17 @@ def test_stale_publication_is_rejected_and_recent_is_accepted():
     assert metadata.dates[0][1].startswith("2025-")
 
 
+def test_page_metadata_reads_json_ld_publication_dates():
+    metadata = aurora.PageMetadata()
+    metadata.feed('''<html><script type="application/ld+json">
+      {"@context":"https://schema.org","@type":"NewsArticle",
+       "datePublished":"2026-10-21T09:30:00-03:00",
+       "dateModified":"2026-10-22T10:00:00-03:00"}
+      </script></html>''')
+    assert ("datepublished", "2026-10-21T09:30:00-03:00") in metadata.dates
+    assert ("datemodified", "2026-10-22T10:00:00-03:00") in metadata.dates
+
+
 def test_modified_timestamp_does_not_override_known_old_publication_date(monkeypatch):
     import aurora_core.web.fetch as search_fetch
     from email.message import Message
@@ -887,6 +898,22 @@ def test_unread_current_pages_are_not_reported_as_stale(monkeypatch):
     assert "páginas abertas estavam fora" not in output
 
 
+def test_stale_page_failure_reports_counts_for_each_read_filter(monkeypatch):
+    from datetime import timedelta
+    _force_provider_failure(monkeypatch)
+    old = (datetime.now().astimezone() - timedelta(days=40)).strftime("%d/%m/%Y")
+    monkeypatch.setattr(search_pipeline, "_search_page_excerpt",
+                        lambda *_args, **_kwargs: ("Nexa network measurement is discussed here.", old))
+
+    output = search_pipeline._search_public_web_uncached(
+        "Nexa network measurement today", "7d", False
+    )
+
+    assert "3 fora da janela" in output
+    assert "0 sem data verificável" in output
+    assert "0 sem trecho legível" in output
+
+
 def test_subject_specific_search_adapters_are_absent():
     source = Path(aurora.__file__).read_text().lower()
     for forbidden in ("def robux_price_answer", "def currency_rate_answer", "def minecraft_java_latest_release", "_authoritative_host"):
@@ -913,6 +940,14 @@ def test_search_retries_with_subject_terms_without_question_formatting():
     assert variants[0][0] == "Me mostra um tutorial de como jogar Starfield no Linux"
     assert variants[1][0] == "Starfield Linux"
     assert aurora._search_relevance(variants[1][1], "Como jogar Starfield no Linux", "") > 0
+
+
+def test_version_attribute_does_not_have_to_be_repeated_in_a_result_headline():
+    query = "Qual é a versão atual do Projeto Lunar?"
+    assert aurora._fresh_query_terms(query) == {"projeto", "lunar"}
+    assert aurora._search_relevance(query, "Projeto Lunar 4.2 já está disponível", "") == 1.0
+    assert aurora._search_relevance(query, "Projeto Solar publica versão 4.2", "") == 0.0
+    assert aurora._search_query_variants(query, "30d")[-1][0] == "Projeto Lunar 2026"
 
 
 def test_final_search_filter_uses_subject_terms_not_instruction_words():

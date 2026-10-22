@@ -51,6 +51,24 @@ class _ObsActionRequest(QThread):
         except Exception as exc:
             self.completed.emit(False,str(exc))
 
+class _ScreenshotActionRequest(QThread):
+    completed=Signal(object,object)
+
+    def __init__(self,pictures_dir,cancel_event):
+        super().__init__()
+        self.pictures_dir=pictures_dir; self.cancel_event=cancel_event
+
+    def run(self):
+        try:
+            path=aurora_integrations.capture_screenshot(
+                self.pictures_dir,cancel_event=self.cancel_event)
+            aurora_integrations._append_action_log('screenshot','saved')
+            self.completed.emit(True,f'Salvei a captura em {path}.')
+        except Exception as exc:
+            aurora_integrations._append_action_log(
+                'screenshot','failed',{'error_type':type(exc).__name__})
+            self.completed.emit(False,f'Não consegui confirmar a captura: {exc}')
+
 class AuroraService(QObject):
     def __init__(self,app):
         # Keep every slot connected to worker-thread signals on the GUI thread.
@@ -186,6 +204,9 @@ class AuroraService(QObject):
         if name=='obs_record':
             detail={'name':name,'args':args,'event':threading.Event(),'result':'Ação recusada.','direct':True}
             self._start_obs_action(detail); return
+        if name=='take_screenshot':
+            detail={'name':name,'args':args,'event':threading.Event(),'result':'Ação recusada.','direct':True}
+            self._start_screenshot_action(detail); return
         self.complete_direct_action(self.execute_action(name,args))
     def remember_exchange(self,user_text,assistant_text):
         user_text=' '.join(str(user_text).split())[:700]; assistant_text=' '.join(str(assistant_text).split())[:1200]
@@ -330,6 +351,9 @@ class AuroraService(QObject):
             if name=='obs_record':
                 self._start_obs_action(detail)
                 return
+            if name=='take_screenshot':
+                self._start_screenshot_action(detail)
+                return
             try:
                 detail['result']=str(self.execute_action(name,detail.get('args',{})))
             except Exception as exc:
@@ -388,6 +412,33 @@ class AuroraService(QObject):
         worker.completed.connect(self._obs_action_result)
         worker.finished.connect(lambda w=worker:self.action_workers.remove(w) if w in self.action_workers else None)
         worker.start()
+
+    def _start_screenshot_action(self,detail):
+        self.orb.set_mode('controlling')
+        detail['request_generation']=self.request_generation
+        detail['cancel_event']=self.action_cancel_event
+        worker=_ScreenshotActionRequest(xdg_user_directory('PICTURES'),self.action_cancel_event)
+        self.action_workers.append(worker)
+        self.obs_details[worker]=detail
+        worker.completed.connect(self._screenshot_action_result)
+        worker.finished.connect(lambda w=worker:self.action_workers.remove(w) if w in self.action_workers else None)
+        worker.start()
+
+    @Slot(object,object)
+    def _screenshot_action_result(self,ok,result):
+        worker=self.sender()
+        detail=self.obs_details.pop(worker,None)
+        if detail is not None:
+            self._finish_screenshot_action(detail,ok,result)
+
+    def _finish_screenshot_action(self,detail,ok,result):
+        detail['result']=str(result)
+        if detail.get('event'): detail['event'].set()
+        current=detail.get('request_generation')==self.request_generation
+        cancelled=bool(detail.get('cancel_event') and detail['cancel_event'].is_set())
+        if current and self.orb.isVisible(): self.orb.set_mode('thinking')
+        if detail.get('direct') and current and not cancelled and self.voice.request_active.is_set():
+            self.complete_direct_action(detail['result'])
     @Slot(object,object)
     def _obs_action_result(self,ok,result):
         worker=self.sender()

@@ -195,6 +195,7 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
         if freshness: return 'Não encontrei páginas com data recente verificável para confirmar esse fato. Não vou apresentar um resultado sem data como atual.'
         candidates=found[:2]
     attempted=[]
+    page_rejected={'fora_da_janela':0,'data_nao_verificada':0,'sem_conteudo':0}
     def read_page_batch(batch):
         with concurrent.futures.ThreadPoolExecutor(max_workers=min(2,len(batch))) as pool:
             jobs=[(item,pool.submit(_search_page_excerpt,item['url'],query,2.5)) for item in batch]
@@ -206,18 +207,24 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
                     item['page_date_verified']=True
                     if freshness and not _publication_within_window(published,freshness):
                         item['stale_page']=True
+                        page_rejected['fora_da_janela']+=1
                         attempted.append(item)
                         continue
                 elif item.get('feed_published'):
                     if excerpt: item['feed_date_accepted']=True
-                    else: item['unverified_page_date']=True
+                    else:
+                        item['unverified_page_date']=True
+                        page_rejected['data_nao_verificada']+=1
                 elif freshness:
                     item['unverified_page_date']=True
+                    page_rejected['data_nao_verificada']+=1
                 if item.get('provider')=='Google Notícias' and not excerpt:
                     item['page_unavailable']=True
                 if excerpt:
                     item['snippet']=((item['snippet']+' | Trecho da página aberta agora: ') if item['snippet'] else 'Trecho da página aberta agora: ')+excerpt
                     item['page_opened']=True
+                elif not item.get('stale_page'):
+                    page_rejected['sem_conteudo']+=1
                 attempted.append(item)
     def usable_pages():
         return [item for item in attempted if item.get('page_opened') and not item.get('stale_page')
@@ -233,8 +240,13 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
     if freshness: found=usable_pages()
     if not found:
         if any(item.get('stale_page') for item in attempted):
-            return 'As páginas abertas estavam fora da janela pedida. Não consegui confirmar esse dado como atual.'
-        return 'Não consegui ler páginas com conteúdo verificável para confirmar esse dado atual; não vou completá-lo por memória.'
+            return ('As páginas abertas estavam fora da janela pedida. Não consegui confirmar esse dado como atual. '
+                    f'Descartes na leitura: {page_rejected["fora_da_janela"]} fora da janela, '
+                    f'{page_rejected["data_nao_verificada"]} sem data verificável e '
+                    f'{page_rejected["sem_conteudo"]} sem trecho legível.')
+        return ('Não consegui ler páginas com conteúdo verificável para confirmar esse dado atual; não vou completá-lo por memória. '
+                f'Descartes na leitura: {page_rejected["data_nao_verificada"]} sem data verificável e '
+                f'{page_rejected["sem_conteudo"]} sem trecho legível.')
     if freshness:
         if _independent_recent_source_count(found,freshness)<2:
             return 'As fontes encontradas não bastam para confirmar esse fato atual: preciso de duas publicações independentes, recentes e datadas. Não vou completar a resposta por memória.'
