@@ -9,11 +9,21 @@ import aurora_integrations
 from .apps import close_application, launch_application
 from .files import create_user_file, xdg_user_directory
 from .hardware import system_hardware_summary
+from .accessibility import focus_accessible_window, inspect_accessible_windows, type_into_accessible_field
 from .volume import control_volume
 from .windows import manage_window
 from ..memory import user_memory_update
 
 def execute_action(self,name,args):
+    if name=='inspect_accessible_windows':
+        return inspect_accessible_windows(args.get('application',''),self.cfg.get('screen_control_apps',[]))
+    if name=='focus_accessible_window':
+        self.orb.set_mode('controlling')
+        return focus_accessible_window(args.get('application',''),args.get('window',''),self.cfg.get('screen_control_apps',[]))
+    if name=='type_accessible_text':
+        self.orb.set_mode('controlling')
+        return type_into_accessible_field(args.get('application',''),args.get('window',''),args.get('field',''),
+            args.get('text',''),self.cfg.get('screen_control_apps',[]))
     if name=='open_application': return launch_application(args.get('command',''))
     if name=='close_application': return close_application(args.get('application',''))
     if name=='manage_window': return manage_window(args.get('action',''),args.get('target',''))

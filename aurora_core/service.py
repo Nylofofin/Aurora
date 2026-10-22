@@ -145,7 +145,8 @@ class AuroraService(QObject):
     def run_local_action(self,name,args):
         self.orb.set_mode('thinking')
         if (name=='close_application' or (name=='manage_window' and args.get('action')=='close') or
-            name=='take_screenshot' or (name=='obs_record' and args.get('action')=='start')):
+            name=='take_screenshot' or name in ('focus_accessible_window','type_accessible_text') or
+            (name=='obs_record' and args.get('action')=='start')):
             detail={'name':name,'args':args,'event':threading.Event(),'result':'Ação recusada.','direct':True}
             self.request_approval(name,detail); return
         self.complete_direct_action(self.execute_action(name,args))
@@ -293,7 +294,7 @@ class AuroraService(QObject):
                           lambda pending=detail:self.expire_approval(pending))
         if self.orb.isVisible(): self.orb.set_mode('approval')
         else: self.orb.reveal('approval')
-        a=detail['args']; what={'open_url':f'abrir {a.get("url", "este endereço")}', 'open_application':f'abrir {a.get("command", "o aplicativo")}', 'close_application':f'fechar {a.get("application", "o aplicativo")}', 'manage_window':f'{a.get("action", "alterar")} a janela {a.get("target", "atual")}', 'take_screenshot':'capturar a tela e salvar a imagem', 'obs_record':'iniciar a gravação da tela no OBS'}
+        a=detail['args']; what={'open_url':f'abrir {a.get("url", "este endereço")}', 'open_application':f'abrir {a.get("command", "o aplicativo")}', 'close_application':f'fechar {a.get("application", "o aplicativo")}', 'manage_window':f'{a.get("action", "alterar")} a janela {a.get("target", "atual")}', 'take_screenshot':'capturar a tela e salvar a imagem', 'obs_record':'iniciar a gravação da tela no OBS', 'focus_accessible_window':f'focar a janela {a.get("window", "")} em {a.get("application", "")}', 'type_accessible_text':f'digitar texto no campo {a.get("field", "")} de {a.get("application", "")}' }
         self.speak_in_selected_language(f'Preciso da sua autorização para {what.get(name,"executar uma ação")}. Toque na bolha para autorizar. Clique com o botão direito para negar.')
     def expire_approval(self,detail):
         if self.pending is not detail: return

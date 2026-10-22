@@ -28,6 +28,7 @@ DEFAULTS = {
     'spotify_client_id':'',
     'obs_host':'127.0.0.1',
     'obs_port':4455,
+    'screen_control_apps':[],
 }
 
 def settings_load():

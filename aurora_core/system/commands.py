@@ -8,9 +8,18 @@ from .text import strip_wake_word
 from .volume import spoken_percentage
 
 def parse_local_command(prompt):
-    website=aurora_integrations.site_url_from_request(strip_wake_word(prompt))
+    spoken=strip_wake_word(prompt).strip()
+    website=aurora_integrations.site_url_from_request(spoken)
     if website: return ('open_url',{'url':website})
-    text=normalize_words(strip_wake_word(prompt))
+    text=normalize_words(spoken)
+    match=re.fullmatch(r'(?:por favor\s+)?(?:foque|focalize|traga para frente)\s+(?:a janela\s+)?["“](.+?)["”]\s+(?:do|no|da)\s+(?:aplicativo|app)\s+["“](.+?)["”]',spoken,re.I)
+    if match: return ('focus_accessible_window',{'window':match.group(1),'application':match.group(2)})
+    match=re.fullmatch(r'(?:por favor\s+)?(?:inspecione|liste|mostre)\s+(?:as\s+)?janelas acessíveis\s+(?:do|no|da)\s+(?:aplicativo|app)\s+["“](.+?)["”]',spoken,re.I)
+    if match: return ('inspect_accessible_windows',{'application':match.group(1)})
+    match=re.fullmatch(r'(?:por favor\s+)?(?:digite|escreva)\s+["“](.+?)["”]\s+no campo\s+["“](.+?)["”]\s+da janela\s+["“](.+?)["”]\s+(?:do|no|da)\s+(?:aplicativo|app)\s+["“](.+?)["”]',spoken,re.I)
+    if match:
+        value,field,window,application=match.groups()
+        return ('type_accessible_text',{'text':value,'field':field,'window':window,'application':application})
     if re.search(r'\b(?:e(?: depois| tambem| entao)?|depois|em seguida|entao)\s+(?:abra|abrir|abre|feche|fechar|fecha|maximize|maximizar|minimize|minimizar|aumente|aumentar|diminua|diminuir|crie|criar|salve|salvar|mude|coloque|ajuste)\b',text): return None
     if re.search(r'\b(hardware|especificacoes? (?:do|deste) (?:meu )?(?:pc|computador)|configuracoes? do sistema|componentes? do (?:meu )?(?:pc|computador)|quanto de ram|qual (?:e )?(?:meu )?(?:processador|placa de video|gpu))\b',text):
         return ('system_info',{})

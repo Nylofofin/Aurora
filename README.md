@@ -63,6 +63,10 @@ Para OBS (inclusive o Flatpak `com.obsproject.Studio`), habilite **WebSocket Ser
 
 ## Adaptação local
 
+### Controle de tela no GNOME/Wayland
+
+O portal de screenshot do desktop captura imagens sem acesso direto à tela. Para localizar e focar janelas ou preencher campos, Aurora usa AT-SPI quando o aplicativo expõe nomes acessíveis. A ponte chama o `python3` do sistema com `pyatspi` instalado pela distribuição; essa dependência é opcional e não entra no `.venv`. Por padrão, nenhum aplicativo está autorizado. Para permitir um app, edite `~/.config/aurora/aurora-settings.json` e adicione seu ID `.desktop` a `screen_control_apps`, por exemplo `"screen_control_apps": ["org.gnome.TextEditor"]`, e reinicie o serviço. Aurora lista apenas títulos e nomes/roles dos controles, sem ler o texto contido nos campos. Inserir texto pede confirmação na bolha; campos de senha, protegidos, somente leitura e campos sem rótulo associado são recusados. O conteúdo inserido não vai para o log; são registrados app, janela, campo e quantidade de caracteres. Clique com o botão direito na bolha para interromper a sessão e cancelar uma ação pendente. Alguns apps Flatpak ou interfaces sem suporte AT-SPI não expõem controles utilizáveis. O portal RemoteDesktop e atalhos globais ainda não são usados; Aurora não instala `ydotool` nem altera permissões de `/dev/uinput`.
+
 As respostas comuns mantêm o Gemma 3 1B rápido, com mais espaço de saída quando o pedido pede explicação. Tarefas com ferramentas usam mais contexto e resposta para o Gemma 4. Preferências entram na memória local apenas quando a pessoa pede explicitamente para lembrar; “lembre-se...” salva e “esqueça...” remove. Isso personaliza instruções e contexto, mas não altera os pesos do Gemma: um fine-tuning real exige exemplos de treino revisados e um processo de treinamento e avaliação, que ainda não está configurado.
 
 ## Limites atuais

@@ -111,7 +111,7 @@ class Inference(QThread):
         except Exception as e:
             self.error.emit('Não conectei ao Ollama local. Confira se ele está ativo e se o Gemma está instalado.')
     def execute_tool(self,name,args):
-        local_result=execute_local_tool(name,args)
+        local_result=execute_local_tool(name,args,self.cfg)
         if local_result is not None: return local_result
         if name=='read_web_page':
             try: return read_public_page(str(args.get('url','')))
@@ -125,7 +125,7 @@ class Inference(QThread):
             except Exception as exc: output=f'Busca não concluída: {exc}'
             self.search.emit(query,output)
             return output
-        if name not in ('close_application','manage_window','open_url','take_screenshot','spotify_play','obs_record'): return 'Ferramenta indisponível.'
+        if name not in ('close_application','manage_window','open_url','take_screenshot','spotify_play','obs_record','focus_accessible_window','type_accessible_text'): return 'Ferramenta indisponível.'
         detail={'name':name,'args':args,'event':threading.Event(),'result':'Ação recusada.'}
         self.approval.emit(name,detail)
         if not detail['event'].wait(90): return 'Autorização expirou; ação cancelada.'

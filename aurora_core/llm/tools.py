@@ -7,6 +7,7 @@ from ..system.files import create_user_file
 from ..system.hardware import system_hardware_summary
 from ..system.volume import control_volume
 from ..system.windows import manage_window
+from ..system.accessibility import inspect_accessible_windows
 import os
 
 TOOLS=[
@@ -20,6 +21,9 @@ TOOLS=[
  {'type':'function','function':{'name':'open_application','description':'Abrir um aplicativo instalado pelo nome, usando os lançadores .desktop do sistema e apelidos comuns. Use só quando o usuário pediu para abrir um app.','parameters':{'type':'object','properties':{'command':{'type':'string'}},'required':['command']}}},
  {'type':'function','function':{'name':'close_application','description':'Encerrar um aplicativo pelo nome. Só use se o usuário pediu explicitamente; a Aurora pede confirmação na bolha porque pode haver trabalho não salvo.','parameters':{'type':'object','properties':{'application':{'type':'string'}},'required':['application']}}},
  {'type':'function','function':{'name':'manage_window','description':'Maximizar, restaurar, minimizar ou fechar uma janela. target vazio indica a janela atual. Fechar pede confirmação; o suporte a maximizar/minimizar depende do sistema de janelas.','parameters':{'type':'object','properties':{'action':{'type':'string','enum':['maximize','restore','minimize','close']},'target':{'type':'string'}},'required':['action','target']}}},
+ {'type':'function','function':{'name':'inspect_accessible_windows','description':'Listar títulos e nomes/roles dos controles acessíveis de um aplicativo permitido. Não ler o texto digitado nos campos.','parameters':{'type':'object','properties':{'application':{'type':'string'}},'required':['application']}}},
+ {'type':'function','function':{'name':'focus_accessible_window','description':'Focar uma janela pelo título em um aplicativo permitido na allowlist.','parameters':{'type':'object','properties':{'application':{'type':'string'},'window':{'type':'string'}},'required':['application','window']}}},
+ {'type':'function','function':{'name':'type_accessible_text','description':'Inserir texto em campo acessível nomeado. Exige confirmação na bolha; nunca usar em senha, credencial ou campo protegido.','parameters':{'type':'object','properties':{'application':{'type':'string'},'window':{'type':'string'},'field':{'type':'string'},'text':{'type':'string'}},'required':['application','window','field','text']}}},
  {'type':'function','function':{'name':'volume_control','description':'Consultar, silenciar, reativar ou ajustar o volume de saída do PC. Em set value é percentual; em up/down é o passo percentual.','parameters':{'type':'object','properties':{'action':{'type':'string','enum':['status','mute','unmute','set','up','down']},'value':{'type':'integer'}},'required':['action','value']}}},
  {'type':'function','function':{'name':'get_system_info','description':'Identificar hardware e recursos do computador local: CPU, RAM disponível, GPU/VRAM, discos e Vulkan.','parameters':{'type':'object','properties':{},'required':[]}}},
  {'type':'function','function':{'name':'create_file','description':'Criar um arquivo novo de texto no local natural solicitado. Nunca substituir arquivos existentes. Resolva área de trabalho, documentos, downloads, pasta do projeto, pasta da Aurora, caminho completo ou nome exato de uma pasta.','parameters':{'type':'object','properties':{'filename':{'type':'string'},'location':{'type':'string'},'content':{'type':'string'}},'required':['filename','location','content']}}},
@@ -28,7 +32,9 @@ TOOLS=[
 ]
 
 
-def execute_local_tool(name,args):
+def execute_local_tool(name,args,cfg=None):
+    if name=='inspect_accessible_windows':
+        return inspect_accessible_windows(args.get('application',''),(cfg or {}).get('screen_control_apps',[]))
     if name=='get_system_info': return system_hardware_summary()
     if name=='volume_control': return control_volume(args.get('action','status'),args.get('value',5))
     if name=='manage_window' and args.get('action')!='close': return manage_window(args.get('action',''),args.get('target',''))
