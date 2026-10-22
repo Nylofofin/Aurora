@@ -143,7 +143,7 @@ def test_google_news_provider_uses_the_public_redirect_protected_opener(monkeypa
     result = search_providers.search_google_news("example", "7d")
 
     assert calls and calls[0][0].startswith("https://news.google.com/rss/search?")
-    assert calls[0][1] == 8
+    assert calls[0][1] == 3.5
     assert "Não encontrei publicações recentes" in result
 
 

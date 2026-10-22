@@ -9,7 +9,7 @@ import xml.etree.ElementTree as ET
 from .freshness import _publication_within_window
 from .intent import _fresh_query_terms, _news_result_relevance, _search_relevance, international_news_only
 
-def search_google_news(query,window):
+def search_google_news(query,window,timeout=3.5):
     seconds={'1d':86400,'7d':7*86400,'30d':30*86400}.get(window,7*86400)
     label={'1d':'24 horas','7d':'7 dias','30d':'30 dias'}.get(window,'7 dias')
     now=datetime.now().astimezone(); cutoff=now-timedelta(seconds=seconds)
@@ -17,7 +17,7 @@ def search_google_news(query,window):
     locale={'hl':'pt-BR','gl':'US','ceid':'US:pt-419'} if international else {'hl':'pt-BR','gl':'BR','ceid':'BR:pt-419'}
     url='https://news.google.com/rss/search?'+urlencode({'q':f'{query} when:{window}',**locale})
     req=urllib.request.Request(url,headers={'User-Agent':'Aurora-Local/0.4','Accept':'application/rss+xml,application/xml,text/xml','Cache-Control':'no-cache, no-store, max-age=0','Pragma':'no-cache'})
-    with PUBLIC_OPENER.open(req,timeout=8) as response:
+    with PUBLIC_OPENER.open(req,timeout=timeout) as response:
         public_http_url(response.geturl()); raw=response.read(1_500_000)
     root=ET.fromstring(raw); rows=[]; seen=set(); query_terms=_fresh_query_terms(query)
     for item in root.findall('./channel/item'):
