@@ -35,19 +35,27 @@ def _search_page_excerpt(url,query,timeout=2.0):
         raw=response.read(700_000)
     html_text=raw.decode('utf-8',errors='replace')
     metadata=PageMetadata(); metadata.feed(html_text)
-    dates=[]
-    for _,value in metadata.dates:
+    dates=[]; publication_dates=[]
+    for key,value in metadata.dates:
         try:
             parsed=datetime.fromisoformat(value.replace('Z','+00:00'))
             if parsed.tzinfo is None: parsed=parsed.replace(tzinfo=datetime.now().astimezone().tzinfo)
-            dates.append(parsed.astimezone())
+            parsed=parsed.astimezone(); dates.append(parsed)
+            if key in ('article:published_time','datepublished','pubdate','time'):
+                publication_dates.append(parsed)
         except Exception:
             for fmt in ('%Y-%m-%d','%Y/%m/%d','%d/%m/%Y'):
                 try:
                     parsed=datetime.strptime(value[:10],fmt).replace(tzinfo=datetime.now().astimezone().tzinfo)
-                    dates.append(parsed.astimezone()); break
+                    parsed=parsed.astimezone(); dates.append(parsed)
+                    if key in ('article:published_time','datepublished','pubdate','time'):
+                        publication_dates.append(parsed)
+                    break
                 except Exception: pass
-    published=max(dates).strftime('%d/%m/%Y') if dates else ''
+    # An update timestamp must not replace a known publication timestamp:
+    # otherwise an old article edited today can pass a recent-publication gate.
+    preferred_dates=publication_dates or dates
+    published=max(preferred_dates).strftime('%d/%m/%Y') if preferred_dates else ''
     parser=PageText(); parser.feed(raw.decode('utf-8',errors='replace'))
     body=' '.join(' '.join(parser.text).split())
     if len(body)<120: return ''

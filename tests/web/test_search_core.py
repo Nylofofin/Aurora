@@ -22,6 +22,31 @@ def test_stale_publication_is_rejected_and_recent_is_accepted():
     assert metadata.dates[0][1].startswith("2025-")
 
 
+def test_modified_timestamp_does_not_override_known_old_publication_date(monkeypatch):
+    import aurora_core.web.fetch as search_fetch
+    from email.message import Message
+
+    body = (FIXTURES / "edited-old-source.html").read_bytes()
+    headers = Message()
+    headers["Content-Type"] = "text/html; charset=utf-8"
+
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *_args): return None
+        def geturl(self): return "https://example.org/nexa-network-status"
+        def read(self, _limit): return body
+
+    monkeypatch.setattr(search_fetch, "public_http_url", lambda url: url)
+    monkeypatch.setattr(search_fetch.PUBLIC_OPENER, "open", lambda *_args, **_kwargs: Response())
+    Response.headers = headers
+    excerpt, published = search_fetch._search_page_excerpt(
+        "https://example.org/nexa-network-status", "Nexa network status"
+    )
+
+    assert "Nexa network status" in excerpt
+    assert published == "12/03/2024"
+
+
 def test_conflicting_current_claims_remain_relevant_as_separate_evidence():
     query = "Nexa network measured"
     claims = []
