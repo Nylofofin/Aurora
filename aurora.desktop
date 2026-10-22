@@ -2,7 +2,7 @@
 Type=Application
 Name=Aurora
 Comment=Bolha de assistente local
-Exec=/usr/bin/env bash -lc '"/home/nylofofin/Documents/Codex/2026-10-21/va/outputs/aurora/run.sh"'
+Exec=/usr/bin/env bash -lc '"/home/nylofofin/Projects/aurora/run.sh"'
 Terminal=false
 Categories=Utility;Accessibility;
 StartupNotify=false
