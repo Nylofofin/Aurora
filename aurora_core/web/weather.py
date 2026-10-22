@@ -6,14 +6,36 @@ from ..config import settings_save
 
 WMO_WEATHER={0:'céu limpo',1:'predominantemente limpo',2:'parcialmente nublado',3:'nublado',45:'neblina',48:'neblina com gelo',51:'garoa fraca',53:'garoa',55:'garoa forte',61:'chuva fraca',63:'chuva',65:'chuva forte',71:'neve fraca',73:'neve',75:'neve forte',80:'pancadas fracas',81:'pancadas de chuva',82:'pancadas fortes',95:'trovoadas',96:'trovoadas com granizo',99:'trovoadas com granizo forte'}
 
+_WEATHER_TIME_WORDS = r'hoje|amanh[ãa]|ontem|agora|cedo|(?:de\s+)?manh[ãa]|(?:de\s+)?tarde|(?:de\s+)?noite|esta\s+semana|neste\s+fim\s+de\s+semana|no\s+fim\s+de\s+semana'
+
+def _weather_place_from_prompt(prompt):
+    """Extract an explicit place without treating a forecast date as its name."""
+    text = str(prompt or '')
+    patterns = (
+        r'\b(?:na\s+cidade\s+de|em)\s+([\wÀ-ÿ][\wÀ-ÿ .-]{1,48})',
+        r'\bpara\s+([\wÀ-ÿ][\wÀ-ÿ .-]{1,48})',
+    )
+    candidates = []
+    for pattern in patterns:
+        match = re.search(pattern, text, re.I)
+        if not match:
+            continue
+        place = match.group(1).strip(' .?!,;:')
+        place = re.sub(rf'\s+(?:(?:para|no|na|de)\s+)?(?:{_WEATHER_TIME_WORDS})\b.*$', '', place, flags=re.I).strip(' .?!,;:')
+        is_time_only = bool(re.fullmatch(rf'(?:{_WEATHER_TIME_WORDS}|o\s+fim\s+de\s+semana)', place, re.I))
+        if place and not is_time_only:
+            candidates.append(place)
+    # Explicit “em [cidade]” wins over “para amanhã”; the patterns are
+    # intentionally ordered by specificity.
+    return candidates[0] if candidates else ''
+
 def _get_json(url,timeout=4):
     req=urllib.request.Request(url,headers={'User-Agent':'Aurora-Local/0.4','Accept':'application/json','Cache-Control':'no-cache, no-store, max-age=0','Pragma':'no-cache'})
     with urllib.request.urlopen(req,timeout=timeout) as r: return json.loads(r.read(300_000))
 
 def weather_now(cfg,prompt):
     """Fast, direct weather path: cached city/IP geolocation then Open-Meteo; no LLM round trip."""
-    place_match=re.search(r'\b(?:em|para|na cidade de)\s+([\wÀ-ÿ][\wÀ-ÿ .-]{1,48})',prompt,re.I)
-    place=place_match.group(1).strip(' .?!') if place_match else ''
+    place=_weather_place_from_prompt(prompt)
     cached=cfg.get('weather_location')
     now=time.time()
     if place:
