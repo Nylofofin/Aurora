@@ -1,12 +1,553 @@
 Quanto custa um PlayStation 5 hoje?
-Qual é a última versão do Python?
-Quem é o presidente do Brasil hoje?
-Quais são as notícias de hoje sobre inteligência artificial?
-Qual foi o resultado do último jogo do Corinthians?
+Quanto custa um Xbox Series X atualmente?
+Qual o preço atual do Nintendo Switch 2?
 Quanto está o dólar agora?
+Quanto está o euro hoje?
+Qual a cotação do bitcoin agora?
+Quanto está o ethereum hoje?
+Qual o preço da gasolina hoje no Brasil?
+Quanto custa o litro do etanol atualmente?
+Quanto custa um iPhone 17?
+Quanto custa um Samsung Galaxy S26?
+Qual o preço do ouro hoje?
+Quanto está a libra esterlina?
+Quanto custa uma RTX 5060?
+Quanto custa um Steam Deck?
+Qual o valor do salário mínimo atual?
+Quanto custa uma assinatura do Spotify?
+Quanto custa o Netflix hoje?
+Quanto custa o Xbox Game Pass?
+Qual o preço do Claude Pro?
+Quanto custa o ChatGPT Plus?
+Quanto custa um MacBook Air?
+Qual o preço de um Raspberry Pi 5?
+Quanto custa uma passagem de metrô em São Paulo?
+Quanto custa a passagem de ônibus em São Paulo?
+Qual o preço do barril de petróleo hoje?
+Quanto está o iene japonês?
+Quanto está o peso argentino?
+Quanto custa 1000 Robux em reais?
+Quanto custa o Minecraft Java Edition?
+Qual o preço do Windows 11 Pro?
+Quanto custa uma RX 9060 XT?
+Quanto custa um SSD NVMe de 1 TB?
+Qual o preço de 16 GB de RAM DDR4?
+Quanto custa o ingresso do cinema hoje?
+Qual o preço do café hoje?
+Quanto custa o quilo da carne?
+Qual a diferença entre o dólar comercial e o turismo hoje?
+Quanto custa um BYD Dolphin?
+Quanto custa o PS Plus?
+Quanto custa o YouTube Premium?
+Quanto custa um AirPods Pro?
+Qual o preço do Kindle?
+Quanto custa um monitor 144 Hz?
+Qual o valor da taxa Selic hoje?
+Qual a inflação acumulada em doze meses?
+Quanto rende a poupança hoje?
+Quanto custa um Big Mac no Brasil?
+Quanto custa um ingresso para a Copa do Mundo?
+Quanto custa uma placa-mãe AM5?
+Qual é a última versão do Python?
+Qual é a última versão do kernel Linux?
+Qual é a última versão do Fedora?
+Qual é a última versão do Ubuntu LTS?
+Qual é a última versão do Firefox?
+Qual é a última versão do Google Chrome?
+Qual é a última versão do Node.js?
+Qual é a última versão do Rust?
+Qual é a última versão do Go?
+Qual é a última versão do Java JDK?
 Qual é a última versão do Minecraft Java?
-O que é o Nexa Resources?
+Qual é a última versão do Minecraft Bedrock?
+Qual é a última versão do GNOME?
+Qual é a última versão do KDE Plasma?
+Qual é a última versão do Blender?
+Qual é a última versão do VLC?
+Qual é a última versão do OBS Studio?
+Qual é a última versão do Discord?
+Qual é a última versão do Ollama?
+Qual é a última versão do PySide6?
+Qual é a última versão do Docker?
+Qual é a última versão do Git?
+Qual é a última versão do VS Code?
+Qual é a última versão do Android?
+Qual é a última versão do iOS?
+Qual é a última versão do Windows 11?
+Qual é a última versão do macOS?
+Qual é a última versão do PostgreSQL?
+Qual é a última versão do Godot?
+Qual é a última versão do Unreal Engine?
+Qual é a última versão do Unity?
+Qual é a última versão do Forge para Minecraft?
+Qual é a última versão do NeoForge?
+Qual é a última versão do Fabric Loader?
+Qual é a última versão do Wine?
+Qual é a última versão do Proton?
+Qual é a última versão do Mesa?
+Qual é a última versão do NixOS?
+Qual é a última versão do TypeScript?
+Qual é a última versão do PHP?
+Qual é a última versão do React?
+Qual é a última versão do Django?
+Qual é a última versão do LibreOffice?
+Qual é a última versão do Neovim?
+Qual é a última versão do Kotlin?
+Qual é a última versão do Vue?
+Qual é a última versão do Flask?
+Qual é a última versão do Steam?
+Qual é a última versão do Mine-imator?
+Qual é a última versão do Audacity?
+Quem é o presidente do Brasil hoje?
+Quem é o vice-presidente do Brasil?
+Quem é o presidente dos Estados Unidos?
+Quem é o primeiro-ministro do Reino Unido?
+Quem é o primeiro-ministro do Japão?
+Quem é o primeiro-ministro do Canadá?
+Quem é o primeiro-ministro da Austrália?
+Quem é o primeiro-ministro da Índia?
+Quem é o chanceler da Alemanha?
+Quem é o presidente da França?
+Quem é o presidente da Argentina?
+Quem é o presidente do Chile?
+Quem é a presidente do México?
+Quem é o presidente da Rússia?
+Quem é o presidente da China?
+Quem é o papa atual?
+Quem é o secretário-geral da ONU?
+Quem é o CEO da Apple?
+Quem é o CEO da Microsoft?
+Quem é o CEO do Google?
+Quem é o CEO da Tesla?
+Quem é o CEO da Nvidia?
+Quem é o CEO da Meta?
+Quem é o CEO da OpenAI?
+Quem é o CEO da Anthropic?
+Quem é o CEO da Amazon?
+Quem é o CEO da Netflix?
+Quem é o CEO da Samsung?
+Quem é o CEO da Intel?
+Quem é a CEO da AMD?
+Quem é o presidente da Nintendo?
+Quem é o CEO da Sony?
+Quem é o prefeito de São Paulo?
+Quem é o governador de São Paulo?
+Quem é o presidente do Banco Central do Brasil?
+Quem é o ministro da Fazenda?
+Quem é o presidente da Câmara dos Deputados?
+Quem é o presidente do Senado?
+Quem é o presidente do STF?
+Quem é o técnico da seleção brasileira?
+Quem é o técnico do Corinthians?
+Quem é o técnico do Palmeiras?
+Quem é o técnico do Flamengo?
+Quem é o presidente da FIFA?
+Quem é o presidente do Comitê Olímpico Internacional?
+Quem é o presidente do Corinthians?
+Quem lidera o campeonato de Fórmula 1 hoje?
+Quem é o ministro da Educação?
+Quem é o presidente do Banco Mundial?
+Quem é o diretor do FBI?
+Quais são as notícias de hoje sobre inteligência artificial?
+Quais são as notícias de hoje sobre tecnologia?
+Quais são as notícias de hoje sobre a economia brasileira?
+Quais são as notícias de hoje sobre política no Brasil?
+Quais são as notícias de hoje sobre esportes?
+Quais são as notícias de hoje sobre Minecraft?
+Quais são as notícias de hoje sobre videogames?
+Quais são as notícias de hoje sobre Linux?
+Quais são as notícias de hoje sobre exploração espacial?
+Quais são as notícias de hoje sobre o clima?
+Quais são as notícias de hoje sobre ciência?
+Quais são as notícias de hoje sobre saúde?
+Quais são as notícias de hoje sobre a bolsa de valores?
+Quais são as notícias de hoje sobre criptomoedas?
+Quais são as notícias de hoje sobre eleições?
+Quais são as notícias de hoje sobre a Copa do Mundo?
+Quais são as notícias de hoje sobre Fórmula 1?
+Quais são as notícias de hoje sobre a NASA?
+Quais são as notícias de hoje sobre a SpaceX?
+Quais são as notícias de hoje sobre a Nvidia?
+Quais são as notícias de hoje sobre a Apple?
+Quais são as notícias de hoje sobre o Google?
+Quais são as notícias de hoje sobre a Microsoft?
+Quais são as notícias de hoje sobre a Meta?
+Quais são as notícias de hoje sobre a OpenAI?
+Quais são as notícias de hoje sobre a Anthropic?
+Quais são as notícias de hoje sobre a Steam?
+Quais são as notícias de hoje sobre a Nintendo?
+Quais são as notícias de hoje sobre o PlayStation?
+Quais são as notícias de hoje sobre o Xbox?
+Quais são as notícias de hoje sobre cibersegurança?
+Quais são as notícias de hoje sobre vazamento de dados?
+Quais são as notícias de hoje sobre chips e semicondutores?
+Quais são as notícias de hoje sobre carros elétricos?
+Quais são as notícias de hoje sobre tarifas comerciais?
+Quais são as notícias de hoje sobre petróleo?
+Quais são as notícias de hoje sobre greves?
+Quais são as notícias de hoje sobre enchentes?
+Quais são as notícias de hoje sobre vacinas?
+Quais são as notícias de hoje sobre dengue?
+Quais são as notícias de hoje sobre o Enem?
+Quais são as notícias de hoje sobre vestibulares?
+Quais são as notícias de hoje sobre a Copa do Brasil?
+Quais são as notícias de hoje sobre a Libertadores?
+Quais são as notícias de hoje sobre a NBA?
+Quais são as notícias de hoje sobre tênis?
+Quais são as notícias de hoje sobre o UFC?
+Quais são as notícias de hoje sobre cinema?
+Quais são as notícias de hoje sobre música?
+Quais são as notícias de hoje sobre séries e streaming?
+Qual foi o resultado do último jogo do Corinthians?
+Qual foi o resultado do último jogo do Palmeiras?
+Qual foi o resultado do último jogo do Flamengo?
+Qual foi o resultado do último jogo do São Paulo?
+Qual foi o resultado do último jogo do Santos?
+Qual foi o resultado do último jogo do Real Madrid?
+Qual foi o resultado do último jogo do Barcelona?
+Qual foi o resultado do último jogo do Manchester City?
+Qual foi o resultado do último jogo do Liverpool?
+Qual foi o resultado do último jogo do seleção brasileira?
+Qual foi o resultado do último jogo do Los Angeles Lakers?
+Qual foi o resultado do último jogo do Golden State Warriors?
+Qual foi o resultado do último jogo do Boston Celtics?
+Qual foi o resultado do último jogo do Ferrari?
+Qual foi o resultado do último jogo do Red Bull?
+Qual foi o resultado do último jogo do McLaren?
+Qual foi o resultado do último jogo do Fluminense?
+Como foi a última corrida da Grêmio?
+Como foi a última corrida da Internacional?
+Como foi a última corrida da Atlético Mineiro?
+Qual a tabela atual do Brasileirão?
+Quem é o artilheiro do Brasileirão hoje?
+Quando é o próximo jogo do Corinthians?
+Quando é o próximo jogo da seleção brasileira?
+Quem lidera a Premier League?
+Quem lidera a La Liga?
+Quem ganhou o último Grande Prêmio de Fórmula 1?
+Qual a classificação atual da Fórmula 1?
+Quem é o campeão da Libertadores atual?
+Quem ganhou a última Champions League?
+Quem ganhou o último campeonato da NBA?
+Quem é o número 1 do ranking de tênis?
+Quem ganhou o último Grand Slam?
+Qual foi o último resultado do UFC?
+Quem é o atual campeão peso-pesado do UFC?
+Quem ganhou a última Copa do Brasil?
+Quem ganhou o último Super Bowl?
+Quem é o líder do campeonato de MotoGP?
+Quantos gols o Neymar tem na seleção?
+Qual a posição do Corinthians na tabela hoje?
+Quem ganhou a última Copa do Mundo?
+Qual o placar do jogo de ontem do Palmeiras?
+Quais são os jogos de hoje na TV?
+Quem ganhou o último Roland Garros?
+Qual o recorde atual dos 100 metros rasos?
+Quem foi o campeão brasileiro do ano passado?
+Como está o tempo em São Paulo agora?
+Como está o tempo em Rio de Janeiro agora?
+Como está o tempo em Curitiba agora?
+Como está o tempo em Porto Alegre agora?
+Como está o tempo em Salvador agora?
+Como está o tempo em Brasília agora?
+Como está o tempo em Recife agora?
+Como está o tempo em Manaus agora?
+Como está o tempo em Tóquio agora?
+Como está o tempo em Londres agora?
+Como está o tempo em Nova York agora?
+Como está o tempo em Paris agora?
+Como está o tempo em Lisboa agora?
+Como está o tempo em Berlim agora?
+Como está o tempo em Buenos Aires agora?
+Como está o tempo em Santiago agora?
+Como está o tempo em Sydney agora?
+Como está o tempo em Dubai agora?
+Como está o tempo em Toronto agora?
+Como está o tempo em Roma agora?
+Que dia é hoje?
+Que horas são?
+Que dia da semana é hoje?
+Em que mês estamos?
+Em que ano estamos?
+Que horas são em Tóquio agora?
+Que horas são em Londres agora?
+Que horas são em Nova York agora?
+Quantos dias faltam para o Natal?
+Vai chover amanhã?
 Qual é a capital da França?
+Qual é a capital da Austrália?
+Qual é a capital do Canadá?
+Qual é a capital do Japão?
+Qual é a capital da Turquia?
+Qual é o maior oceano do mundo?
+Qual é o maior planeta do sistema solar?
+Qual é o rio mais longo do mundo?
+Qual é a montanha mais alta do mundo?
+Quantos continentes existem?
 Quanto é 15 vezes 12?
+Quanto é 144 dividido por 12?
+Quanto é a raiz quadrada de 81?
+Quanto é 7 ao cubo?
+Quanto é 25 por cento de 480?
+Quanto é 1000 menos 387?
+Quantos segundos tem uma hora?
+Quantos metros tem um quilômetro?
+Quanto é 13 vezes 13?
+Qual é o valor aproximado de pi?
 Como funciona a fotossíntese?
-E a versão anterior?
+O que é a gravidade?
+Por que o céu é azul?
+Como se forma um arco-íris?
+O que é uma célula?
+O que é DNA?
+Como funciona a respiração celular?
+O que é um átomo?
+Qual a fórmula química da água?
+Qual a fórmula química do sal de cozinha?
+O que causa as estações do ano?
+Como surgem os terremotos?
+O que é um buraco negro?
+O que é a velocidade da luz?
+Quem descobriu a penicilina?
+Quem escreveu Dom Casmurro?
+Quem pintou a Mona Lisa?
+Quem foi Santos Dumont?
+Quando foi proclamada a independência do Brasil?
+Quando começou a Segunda Guerra Mundial?
+Quem descobriu o Brasil?
+O que foi a Revolução Francesa?
+Quem foi Napoleão Bonaparte?
+O que foi a Guerra Fria?
+Quem foi Albert Einstein?
+O que é um substantivo?
+O que é um verbo?
+Qual a diferença entre mas e mais?
+Como se conjuga o verbo ser no presente?
+Qual o plural de cidadão?
+O que é uma metáfora?
+O que é uma função em programação?
+O que é uma variável?
+O que é recursão?
+O que é um loop for?
+O que é orientação a objetos?
+O que é uma API?
+O que é Git?
+O que é um banco de dados?
+O que é HTTP?
+O que é DNS?
+O que é um processador?
+O que é memória RAM?
+O que é um SSD?
+O que é Linux?
+O que é Wayland?
+O que é uma GPU?
+O que é inteligência artificial?
+O que é aprendizado de máquina?
+O que é um token em um modelo de linguagem?
+Me conta uma piada.
+Me dá uma dica de produtividade.
+Como faço um bolo de cenoura?
+Como fazer arroz soltinho?
+Quantas calorias tem uma banana?
+Qual a diferença entre vírus e bactéria?
+Como funciona um avião?
+Para que serve o mouse?
+O que significa a palavra efêmero?
+Traduz bom dia para inglês.
+Como se diz obrigado em japonês?
+Quanto é 20 mais 35?
+Qual a cor resultante da mistura de azul e amarelo?
+Qual o maior animal do mundo?
+Quantos lados tem um hexágono?
+O que é inflação?
+Como funciona o juros composto?
+O que é o mod WaylandCraft e quais as novidades mais recentes?
+O que é a Nexa Resources e quais as novidades mais recentes?
+O que é o mod Create do Minecraft e quais as novidades mais recentes?
+O que é o mod Sodium e quais as novidades mais recentes?
+O que é o Iris Shaders e quais as novidades mais recentes?
+O que é o Geyser para Minecraft e quais as novidades mais recentes?
+O que é o Floodgate e quais as novidades mais recentes?
+O que é o Hytale e quais as novidades mais recentes?
+O que é o Vintage Story e quais as novidades mais recentes?
+O que é o Hyprland e quais as novidades mais recentes?
+O que é o Sway e quais as novidades mais recentes?
+O que é o Home Manager do Nix e quais as novidades mais recentes?
+O que é a linguagem Zig e quais as novidades mais recentes?
+O que é a linguagem Odin e quais as novidades mais recentes?
+O que é a linguagem Nim e quais as novidades mais recentes?
+O que é o editor Helix e quais as novidades mais recentes?
+O que é o Zellij e quais as novidades mais recentes?
+O que é o framework Tauri e quais as novidades mais recentes?
+O que é o Bun e quais as novidades mais recentes?
+O que é o Deno e quais as novidades mais recentes?
+O que é o Vosk e quais as novidades mais recentes?
+O que é o Piper TTS e quais as novidades mais recentes?
+O que é o whisper.cpp e quais as novidades mais recentes?
+O que é o llama.cpp e quais as novidades mais recentes?
+O que é o modelo Gemma e quais as novidades mais recentes?
+O que é o modelo Qwen e quais as novidades mais recentes?
+O que é o SearXNG e quais as novidades mais recentes?
+O que é o Jellyfin e quais as novidades mais recentes?
+O que é o Immich e quais as novidades mais recentes?
+O que é o Syncthing e quais as novidades mais recentes?
+O que é o Obsidian e quais as novidades mais recentes?
+O que é o Logseq e quais as novidades mais recentes?
+O que é o Bevy e quais as novidades mais recentes?
+O que é o Raylib e quais as novidades mais recentes?
+O que é o Aseprite e quais as novidades mais recentes?
+O que é o Krita e quais as novidades mais recentes?
+O que é o Kdenive e quais as novidades mais recentes?
+O que é o Ardour e quais as novidades mais recentes?
+O que é o Bitwig e quais as novidades mais recentes?
+O que é o LMMS e quais as novidades mais recentes?
+O que é o Cataclysm DDA e quais as novidades mais recentes?
+O que é o Dwarf Fortress e quais as novidades mais recentes?
+O que é o Factorio e quais as novidades mais recentes?
+O que é o Satisfactory e quais as novidades mais recentes?
+O que é o Hollow Knight Silksong e quais as novidades mais recentes?
+O que é o jogo Dead by Daylight e quais as novidades mais recentes?
+O que é o Mine-imator e quais as novidades mais recentes?
+O que é a distro Bazzite e quais as novidades mais recentes?
+O que é o Universal Blue e quais as novidades mais recentes?
+O que é o Flatpak e quais as novidades mais recentes?
+O que é o projeto Asahi Linux?
+O que é o COSMIC desktop da System76?
+Quais as novidades do Rust no Linux?
+O que é o RISC-V e como está seu mercado?
+O que é o Framework Laptop?
+O que é a Valve Steam Frame?
+O que é o Ladybird browser?
+O que é o Servo browser?
+O que é o Zed editor?
+O que é o Ghostty terminal?
+Qual é a última versão do Fedora?
+E a anterior?
+Quanto custa um PlayStation 5?
+E o Xbox?
+Quem é o presidente do Brasil?
+E o vice?
+Qual a cotação do dólar hoje?
+E o euro?
+Qual a última versão do Python?
+Quando ela foi lançada?
+Como está o tempo em São Paulo?
+E no Rio de Janeiro?
+Quem ganhou o último Grande Prêmio de Fórmula 1?
+E quem ficou em segundo?
+Qual a última versão do Minecraft Java?
+E a anterior?
+Quem é o CEO da Nvidia?
+Desde quando ele está no cargo?
+Qual o preço do bitcoin?
+E o ethereum?
+Qual a última versão do GNOME?
+Quais as novidades dela?
+Qual foi o último jogo do Corinthians?
+E o próximo?
+Quem é o técnico da seleção brasileira?
+Quem foi o anterior?
+Quanto custa o Spotify?
+E o YouTube Premium?
+Quem é o primeiro-ministro do Japão?
+E o do Reino Unido?
+Qual a capital da França?
+E a população dela?
+Quanto é 15 vezes 12?
+E dividido por 3?
+O que é o Wayland?
+E o X11?
+Quais as notícias de hoje sobre inteligência artificial?
+Me conta mais sobre a primeira.
+Qual a última versão do kernel Linux?
+Isso é LTS?
+Qual a última versão do Windows 12?
+Quem ganhou a Copa do Mundo de 2050?
+Qual o preço de um produto que não existe chamado Zorblax 9000?
+Quem é o presidente do Brasil em 1950?
+Qual o melhor processador hoje?
+Qual a melhor placa de vídeo custo-benefício agora?
+Qual o melhor celular para comprar este mês?
+Vale a pena comprar um PS5 agora ou esperar?
+Qual é melhor, Fedora ou Ubuntu atualmente?
+Qual o melhor modelo de IA local para um PC com 12 GB de RAM?
+Qual a melhor distro Linux para jogos hoje?
+Qual o melhor mod loader de Minecraft agora?
+O Minecraft vai receber atualização esta semana?
+Qual o melhor lugar para investir hoje?
+Qual é o melhor navegador atualmente?
+Quando sai o próximo GTA?
+Quando sai o próximo Minecraft update?
+Quando sai o próximo Fedora?
+Quando sai o próximo iPhone?
+Quando sai o próximo episódio de uma série famosa?
+Quanto custa pesquisar um preço que ninguém publicou?
+Quem inventou a internet e quem lidera ela hoje?
+Me diz a senha do wifi do vizinho.
+Pesquisa na internet sobre abelhas.
+Procura no site da Wikipédia sobre o Brasil.
+Qual o preço do dólar há 10 anos?
+Qual era a cotação do bitcoin em 2020?
+Quem era o presidente dos EUA em 2010?
+Qual foi a última versão do Python 2?
+Qual a última versão do Internet Explorer?
+O que aconteceu hoje na história?
+O que aconteceu na semana passada no mundo da tecnologia?
+Tem alguma promoção de jogos na Steam agora?
+Quais jogos estão grátis na Epic hoje?
+Qual o jogo mais jogado na Steam neste momento?
+Quais os filmes em cartaz nos cinemas?
+Qual o filme mais assistido esta semana?
+Qual a música mais ouvida do Brasil hoje?
+Qual o álbum número 1 da Billboard?
+Qual o vídeo mais visto do YouTube hoje?
+Qual a população do Brasil atualmente?
+Qual a população mundial hoje?
+Qual o PIB do Brasil mais recente?
+Qual a taxa de desemprego do Brasil agora?
+Qual o IPCA do último mês?
+Quanto está o CDI hoje?
+Qual o valor do dólar na abertura de hoje?
+Qual o índice Ibovespa agora?
+Qual o valor de mercado da Nvidia hoje?
+Qual a empresa mais valiosa do mundo agora?
+Quem é a pessoa mais rica do mundo hoje?
+Qual o país com mais medalhas nas últimas Olimpíadas?
+Onde serão as próximas Olimpíadas?
+Onde será a próxima Copa do Mundo?
+Quando é o próximo eclipse solar?
+Quando é a próxima lua cheia?
+Quando é o próximo feriado?
+Qual o próximo lançamento da SpaceX?
+Qual foi o último foguete lançado pela NASA?
+Quantos astronautas estão na Estação Espacial agora?
+Qual o maior terremoto recente?
+Qual o último prêmio Nobel de Física?
+Quem ganhou o último Nobel da Paz?
+Quem ganhou o último Oscar de melhor filme?
+Qual foi o último filme da Marvel lançado?
+Qual o último jogo da série Zelda?
+Qual o último Pokémon lançado?
+Qual a última atualização do Dead by Daylight?
+Qual o último patch do Minecraft?
+Quais as novidades do Minecraft Wilderness Bound?
+O que mudou no último update do Fortnite?
+Qual o último lançamento da Nvidia?
+Qual o último processador lançado pela AMD?
+Qual o último processador lançado pela Intel?
+Qual o último modelo de IA lançado pela Google?
+Qual o último modelo lançado pela OpenAI?
+Qual o último modelo lançado pela Anthropic?
+Qual o último Raspberry Pi lançado?
+Qual o último Pixel lançado?
+Qual o último lançamento da Tesla?
+Qual a última vulnerabilidade crítica divulgada no Linux?
+Qual foi o último grande ataque hacker noticiado?
+Quais são os principais riscos de segurança divulgados esta semana?
+Qual o status do Fedora 44?
+Qual a data de lançamento do Fedora 45?
+Quando acaba o suporte do Windows 10?
+Qual o suporte do Fedora 42?
+Quando acaba o suporte do Ubuntu 22.04?
+Qual a previsão do tempo para o fim de semana em São Paulo?
+Qual a qualidade do ar em São Paulo hoje?

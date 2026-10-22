@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import queue
 import re
 import threading
@@ -18,6 +19,8 @@ import aurora
 ROOT = Path(__file__).resolve().parents[1]
 QUESTIONS = ROOT / "tests" / "eval" / "questions.txt"
 PROVIDER_HOSTS = ("lite.duckduckgo.com", "bing.com", "news.google.com")
+CONTEXT_PAIR_START = 427
+CONTEXT_PAIR_END = 466
 
 
 class Trace:
@@ -234,10 +237,11 @@ def restore_trace(originals):
     aurora.urllib.request.Request = originals["Request"]
 
 
-def evaluate(question, cfg, timeout_seconds):
+def evaluate(line_number, question, cfg, timeout_seconds, history=None, context_note=""):
     trace = Trace()
     should_search, why = decision_explanation(question)
     service = EvalService(cfg)
+    service.context_history = list(history or [])
     service.trace = trace
     loop = QEventLoop()
     service.completed.connect(loop.quit)
@@ -262,7 +266,10 @@ def evaluate(question, cfg, timeout_seconds):
         restore_trace(originals)
         timer.stop()
 
-    lines = [f"## {question}", "", f"- **Decisão:** {'busca' if should_search else 'sem busca web'} — {why}."]
+    lines = [f"## Linha {line_number}: {question}", ""]
+    if context_note:
+        lines.append(f"- **Contexto:** {context_note}.")
+    lines.append(f"- **Decisão:** {'busca' if should_search else 'sem busca web'} — {why}.")
     if trace.search_calls:
         lines.append("- **Consulta(s) passada(s) ao caminho de busca:** " + "; ".join(
             f"`{call['query']}` (janela={call['freshness'] or 'sem janela'}, notícias={call['news_only']})"
@@ -274,7 +281,10 @@ def evaluate(question, cfg, timeout_seconds):
     lines.extend(f"  - `{url}`" for url in trace.provider_requests)
     if not trace.provider_requests:
         lines.append("  - nenhuma capturada")
-    lines.append("- **Resultados normalizados recebidos do provedor, antes da resposta do LLM:**")
+    lines.append(
+        "- **Resultados da busca antes da resposta do LLM** "
+        "(normalizados/filtrados pelo pipeline; o HTML bruto não é exposto):"
+    )
     rows = parse_provider_result_lines(trace.raw_result_text)
     if rows:
         lines.extend(f"  - {title} — `{domain}` — {date} — {url}" for title, domain, date, url in rows)
@@ -292,30 +302,77 @@ def evaluate(question, cfg, timeout_seconds):
         answer = f"tempo limite após {timeout_seconds:g}s; sem resposta final"
     lines.append("- **Resposta final:** " + (answer or "sem resposta final capturada"))
     lines.append(f"- **Tempo total:** {elapsed:.2f}s")
-    return "\n".join(lines)
+    return "\n".join(lines), answer
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", metavar="ARQUIVO.md", help="salva o trace em Markdown")
+    parser.add_argument("--de", type=int, default=1, metavar="N", help="primeira linha inclusiva (padrão: 1)")
+    parser.add_argument("--ate", type=int, metavar="M", help="última linha inclusiva (padrão: última pergunta)")
     parser.add_argument("--timeout", type=float, default=240, help="tempo máximo por pergunta (segundos)")
     args = parser.parse_args()
     if not QUESTIONS.is_file():
         parser.error(f"arquivo de perguntas não encontrado: {QUESTIONS}")
-    questions = [line.strip() for line in QUESTIONS.read_text(encoding="utf-8").splitlines() if line.strip()]
-    if not questions:
+    questions = QUESTIONS.read_text(encoding="utf-8").splitlines()
+    if not questions or any(not line.strip() for line in questions):
         parser.error(f"nenhuma pergunta em {QUESTIONS}")
+    first_line = args.de
+    last_line = args.ate if args.ate is not None else len(questions)
+    if first_line < 1 or last_line > len(questions) or first_line > last_line:
+        parser.error(f"intervalo inválido; use 1 <= --de <= --ate <= {len(questions)}")
+
+    destination = Path(args.out).expanduser().resolve() if args.out else ROOT / "eval-search.md"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with destination.open("x", encoding="utf-8") as output:
+            output.write(
+                f"# Avaliação da busca Aurora\n\nLinhas {first_line}–{last_line} de {len(questions)}. "
+                "Trace persistido incrementalmente após cada pergunta.\n"
+            )
+            output.flush()
+            os.fsync(output.fileno())
+    except FileExistsError:
+        parser.error(f"o arquivo de saída já existe; escolha outro caminho: {destination}")
+
     app = QCoreApplication.instance() or QCoreApplication([])
     cfg = aurora.settings_load()
-    report = "# Avaliação da busca Aurora\n\n" + "\n\n---\n\n".join(
-        evaluate(question, cfg, args.timeout) for question in questions
-    ) + "\n"
-    print(report, end="")
-    if args.out:
-        destination = Path(args.out).expanduser().resolve()
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text(report, encoding="utf-8")
-        print(f"\nTrace salvo em: {destination}")
+    answers = {}
+    paired_second_lines = set(range(CONTEXT_PAIR_START + 1, CONTEXT_PAIR_END + 1, 2))
+    for line_number in range(first_line, last_line + 1):
+        history = None
+        context_note = ""
+        if line_number in paired_second_lines:
+            first_pair_line = line_number - 1
+            if first_pair_line not in answers:
+                # A range may start on the second half of a pair. Run its first
+                # line only as hidden context setup; the report still contains
+                # exactly the requested --de/--ate interval.
+                first_question = questions[first_pair_line - 1].strip()
+                _, first_answer = evaluate(
+                    first_pair_line, first_question, cfg, args.timeout,
+                    context_note="preparação de contexto fora do intervalo solicitado",
+                )
+                answers[first_pair_line] = (first_question, first_answer)
+                context_note = f"linha {first_pair_line} executada como preparação de contexto fora do intervalo"
+            first_question, first_answer = answers[first_pair_line]
+            if not context_note:
+                context_note = f"histórico da linha {first_pair_line} fornecido ao caminho AuroraService.ask"
+            history = [
+                {"role": "user", "content": first_question},
+                {"role": "assistant", "content": first_answer},
+            ]
+        question = questions[line_number - 1].strip()
+        block, answer = evaluate(
+            line_number, question, cfg, args.timeout, history=history, context_note=context_note
+        )
+        answers[line_number] = (question, answer)
+        with destination.open("a", encoding="utf-8") as output:
+            output.write("\n\n---\n\n" + block + "\n")
+            output.flush()
+            os.fsync(output.fileno())
+        print(block + "\n", flush=True)
+    print(f"Trace salvo incrementalmente em: {destination}", flush=True)
     return app
 
 
