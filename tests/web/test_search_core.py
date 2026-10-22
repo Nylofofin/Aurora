@@ -144,6 +144,18 @@ def test_news_prompt_never_turns_headline_into_price_request():
     assert "manchete isolada em resposta sobre preço" in system
 
 
+def test_missing_page_date_uses_feed_timestamp_only_for_current_news(monkeypatch):
+    monkeypatch.setattr(aurora, "_search_page_excerpt", lambda *_args, **_kwargs: ("", ""))
+    rss = "Google Notícias\nManchete [Jornal · 22/10/2026 10:30] :: resumo do feed — https://example.org/noticia"
+    current = aurora._enrich_news_results(rss, "notícias de tecnologia hoje", "1d")
+    assert "[Feed RSS: Jornal · 22/10/2026 10:30]" in current
+    prompt, system = aurora.search_answer_prompts("notícias de tecnologia hoje", "tecnologia", [current])
+    assert "segundo o feed, de [hora]" in prompt
+    assert "segundo o feed, de [hora]" in system
+    non_current = aurora._enrich_news_results(rss, "notícias de tecnologia", "7d")
+    assert "Feed RSS:" not in non_current
+
+
 def test_numeric_guard_decimal_currency_percent_and_spelled_number_edges():
     fallback = "Não consegui confirmar os valores numéricos com os trechos consultados. Fontes: fonte."
     assert aurora._ground_numeric_answer("O valor é 5.40.", ["O valor é 5,40."], ["fonte"]) == "O valor é 5.40."
