@@ -23,7 +23,7 @@ API_TIMEOUT = 2.0
 QUOTE_CUES = re.compile(r"\b(cotacao|taxa|quanto\s+(?:vale|esta|ta)|converter|conversao)\b")
 CURRENT_CUES = re.compile(r"\b(agora|hoje|atual|atualmente|neste\s+momento|tempo\s+real|ao\s+vivo)\b")
 DATE_PATTERNS = (re.compile(r"\b(20\d{2})-(\d{2})-(\d{2})\b"), re.compile(r"\b(\d{2})/(\d{2})/(20\d{2})\b"))
-FUNCTION_WORDS = {"do", "da", "de", "dos", "das", "e", "para", "pra", "a", "o", "the", "of", "and", "to"}
+FUNCTION_WORDS = {"do", "de", "da", "em", "para", "por", "no", "na", "o", "a", "e", "um", "ao", "as", "dos", "das", "pra", "the", "of", "and", "to"}
 AMOUNT_RE = re.compile(r"\b(\d{1,12}(?:[.,]\d{1,8})?)\b")
 _CATALOG_CACHE = None
 
@@ -131,7 +131,7 @@ def _currency_mentions(text: str, rows):
         token = match.group()
         if token in FUNCTION_WORDS:
             continue
-        candidates = {code for code, name_tokens in aliases if token in name_tokens}
+        candidates = {code for code, name_tokens in aliases if name_tokens and token in {name_tokens[0], name_tokens[-1]}}
         if not candidates:
             continue
         start, end = match.span()

@@ -34,6 +34,16 @@ def test_relative_date_and_portuguese_prepositions_do_not_become_currency_names(
     assert two_days_ago.base == "EUR" and two_days_ago.requested_date == date(2026, 10, 20)
 
 
+@pytest.mark.parametrize(("phrase", "expected"), [
+    ("quanto está o dólar do Brasil", ["USD"]),
+    ("valor do euro em reais", ["EUR", "BRL"]),
+    ("100 reais em dólares", ["BRL", "USD"]),
+])
+def test_currency_function_words_are_never_detected_as_currency_names(phrase, expected):
+    mentions = aurora_fx._currency_mentions(phrase, aurora_fx.currency_catalog())
+    assert [code for _, _, code in mentions] == expected
+
+
 class FakeResponse:
     status = 200
     headers = {}
