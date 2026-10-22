@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 from ..system.files import normalize_words
 from .intent import _search_query_variants, _search_relevance, current_search_window, news_search_intent
 from .freshness import _has_expired_deadline, _has_stale_source_date, _has_stale_url_date, _publication_within_window, _parse_publication_date, _independent_recent_source_count
-from .providers import search_google_news, _google_news_pipeline_items
+from .providers import search_google_news, search_searxng, _google_news_pipeline_items
 from .fetch import _search_page_excerpt
 from .parsers import DuckDuckGoLiteResults
 from .security import PUBLIC_OPENER, public_http_url
@@ -52,8 +52,9 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
             ('DuckDuckGo Lite','https://lite.duckduckgo.com/lite/?'+urlencode({'q':search_query,'kl':'br-pt'}),'ddg'),
             ('Bing RSS','https://www.bing.com/search?'+urlencode({'q':search_query,'format':'rss','setlang':'pt-br'}),'bing-rss'),
         )
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(providers)) as pool:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(providers)+1) as pool:
             jobs=[(provider,kind,pool.submit(fetch_provider,url,kind,timeout)) for provider,url,kind in providers]
+            jobs.append(('SearXNG','searxng',pool.submit(search_searxng,search_query,freshness,news_only,timeout)))
             for provider,kind,future in jobs:
                 stats=provider_counts.setdefault(provider,{'extraidos':0,'relevantes':0})
                 try: rows=future.result(timeout=timeout+0.5)

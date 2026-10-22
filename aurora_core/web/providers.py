@@ -1,13 +1,62 @@
 from __future__ import annotations
 
 from .security import PUBLIC_OPENER, public_http_url
+from ..config import local_endpoint
 from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
-from urllib.parse import urlencode
-import html, re, urllib.error, urllib.request
+from urllib.parse import urlencode, urlsplit
+import html, json, os, re, urllib.error, urllib.request
 import xml.etree.ElementTree as ET
 from .freshness import _publication_within_window
 from .intent import _fresh_query_terms, _news_result_relevance, _search_relevance, international_news_only
+
+def search_searxng(query,window='',news_only=False,timeout=2.0):
+    """Query an optional same-machine SearXNG metasearch instance.
+
+    Search results are leads only: callers still validate source URLs, dates,
+    page contents, relevance, and independent publishers. Never follow a
+    redirect from the local endpoint because it could disclose the query.
+    """
+    base=os.environ.get('AURORA_SEARXNG_URL','http://127.0.0.1:8080').strip().rstrip('/')
+    parsed=urlsplit(base)
+    if not local_endpoint(base) or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ValueError('SearXNG precisa estar configurado em um endereço local.')
+    endpoint=base if parsed.path.rstrip('/').endswith('/search') else base+'/search'
+    params={'q':query,'format':'json','language':'pt-BR','categories':'news' if news_only else 'general','safesearch':'0'}
+    if window:
+        # SearXNG only accepts day/month/year. For a seven-day window omit this
+        # provider hint and let Aurora's own publication-date filter enforce it.
+        time_range={'1d':'day','30d':'month'}.get(window)
+        if time_range: params['time_range']=time_range
+    request=urllib.request.Request(endpoint+'?'+urlencode(params),headers={
+        'User-Agent':'Aurora-Local/0.4','Accept':'application/json','Cache-Control':'no-cache, no-store, max-age=0'})
+
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self,*_args,**_kwargs): return None
+
+    opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect)
+    # Keep this optional provider from stretching the live assistant's search
+    # deadline, even if a caller accidentally supplies a larger timeout.
+    timeout=min(max(float(timeout),0.2),2.0)
+    with opener.open(request,timeout=timeout) as response:
+        if response.getcode()!=200: raise urllib.error.HTTPError(endpoint,response.getcode(),'Unexpected status',response.headers,None)
+        if 'application/json' not in response.headers.get('Content-Type','').lower():
+            raise ValueError('SearXNG não retornou JSON.')
+        raw=response.read(1_500_001)
+    if len(raw)>1_500_000: raise ValueError('Resposta SearXNG excedeu o limite de tamanho.')
+    payload=json.loads(raw)
+    if not isinstance(payload,dict) or not isinstance(payload.get('results'),list):
+        raise ValueError('Resposta SearXNG sem lista de resultados válida.')
+    rows=[]
+    for item in payload['results']:
+        if not isinstance(item,dict): continue
+        href=str(item.get('url') or '').strip()
+        title=' '.join(str(item.get('title') or '').split())
+        snippet=' '.join(str(item.get('content') or '').split())
+        published=item.get('publishedDate')
+        published=' '.join(str(published).split()) if isinstance(published,str) else ''
+        if href and title: rows.append((href,title,snippet,published))
+    return rows
 
 def search_google_news(query,window):
     seconds={'1d':86400,'7d':7*86400,'30d':30*86400}.get(window,7*86400)

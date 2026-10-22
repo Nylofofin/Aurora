@@ -147,6 +147,129 @@ def test_google_news_provider_uses_the_public_redirect_protected_opener(monkeypa
     assert "Não encontrei publicações recentes" in result
 
 
+def test_searxng_local_json_provider_maps_results_and_requests_time_range(monkeypatch):
+    import json
+    from email.message import Message
+    from urllib.parse import parse_qs, urlsplit
+
+    calls=[]
+    class Response:
+        headers=Message()
+        headers['Content-Type']='application/json; charset=utf-8'
+        def __enter__(self): return self
+        def __exit__(self,*_args): return None
+        def getcode(self): return 200
+        def read(self,_limit):
+            return json.dumps({'results':[{'url':'https://example.org/story','title':'Nexa network update',
+                'content':'New measurement details','publishedDate':'2026-10-21T12:30:00Z'}],
+                'answers':['must not be used as evidence']}).encode()
+    class Opener:
+        def open(self,request,timeout):
+            calls.append((request,timeout)); return Response()
+    monkeypatch.setenv('AURORA_SEARXNG_URL','http://127.0.0.1:8080')
+    monkeypatch.setattr(search_providers.urllib.request,'build_opener',lambda *_args:Opener())
+
+    rows=search_providers.search_searxng('Nexa network today','1d',timeout=1.25)
+
+    assert rows==[('https://example.org/story','Nexa network update','New measurement details','2026-10-21T12:30:00Z')]
+    request,timeout=calls[0]
+    params=parse_qs(urlsplit(request.full_url).query)
+    assert timeout==1.25
+    assert params['format']==['json'] and params['categories']==['general']
+    assert params['time_range']==['day'] and params['language']==['pt-BR']
+
+
+def test_searxng_local_provider_rejects_public_endpoint_before_network(monkeypatch):
+    monkeypatch.setenv('AURORA_SEARXNG_URL','https://search.example.org')
+    monkeypatch.setattr(search_providers.urllib.request,'build_opener',
+                        lambda *_args:(_ for _ in ()).throw(AssertionError('network must not be opened')))
+    with pytest.raises(ValueError,match='endereço local'):
+        search_providers.search_searxng('private query')
+
+
+def test_searxng_omits_unsupported_seven_day_hint_and_caps_timeout(monkeypatch):
+    import json
+    from email.message import Message
+    from urllib.parse import parse_qs, urlsplit
+
+    calls=[]
+    class Response:
+        headers=Message()
+        headers['Content-Type']='application/json'
+        def __enter__(self): return self
+        def __exit__(self,*_args): return None
+        def getcode(self): return 200
+        def read(self,_limit): return json.dumps({'results':[]}).encode()
+    class Opener:
+        def open(self,request,timeout):
+            calls.append((request,timeout)); return Response()
+    monkeypatch.setenv('AURORA_SEARXNG_URL','http://localhost:8080')
+    monkeypatch.setattr(search_providers.urllib.request,'build_opener',lambda *_args:Opener())
+
+    assert search_providers.search_searxng('fresh query','7d',timeout=8)==[]
+
+    request,timeout=calls[0]
+    params=parse_qs(urlsplit(request.full_url).query)
+    assert 'time_range' not in params
+    assert timeout==2.0
+
+
+@pytest.mark.parametrize('content_type,body',[
+    ('text/html',b'<html>captcha</html>'),
+    ('application/json',b'{invalid json'),
+    ('application/json',b'{"answers":[]}'),
+])
+def test_searxng_rejects_non_json_malformed_and_wrong_shape(monkeypatch,content_type,body):
+    from email.message import Message
+
+    class Response:
+        headers=Message()
+        def __enter__(self): return self
+        def __exit__(self,*_args): return None
+        def getcode(self): return 200
+        def read(self,_limit): return body
+    Response.headers['Content-Type']=content_type
+    class Opener:
+        def open(self,*_args,**_kwargs): return Response()
+    monkeypatch.setenv('AURORA_SEARXNG_URL','http://127.0.0.1:8080')
+    monkeypatch.setattr(search_providers.urllib.request,'build_opener',lambda *_args:Opener())
+
+    with pytest.raises((ValueError, __import__('json').JSONDecodeError)):
+        search_providers.search_searxng('query')
+
+
+def test_searxng_does_not_follow_local_endpoint_redirect(monkeypatch):
+    import urllib.error
+
+    class Opener:
+        def open(self,*_args,**_kwargs):
+            raise urllib.error.HTTPError('http://127.0.0.1:8080/search',302,'redirect',{},None)
+    monkeypatch.setenv('AURORA_SEARXNG_URL','http://127.0.0.1:8080')
+    monkeypatch.setattr(search_providers.urllib.request,'build_opener',lambda *_args:Opener())
+
+    with pytest.raises(urllib.error.HTTPError):
+        search_providers.search_searxng('query')
+
+
+def test_searxng_candidates_still_flow_through_existing_relevance_and_page_reader(monkeypatch):
+    import urllib.error
+
+    monkeypatch.setattr(search_pipeline,'search_searxng',lambda *_args,**_kwargs:[
+        ('https://source.example/nexa-network','Nexa network measurement','Measurement update','')])
+    monkeypatch.setattr(search_pipeline,'public_http_url',lambda url:url)
+    monkeypatch.setattr(search_pipeline.PUBLIC_OPENER,'open',
+                        lambda *_args,**_kwargs:(_ for _ in ()).throw(urllib.error.URLError('offline')))
+    monkeypatch.setattr(search_pipeline,'_search_page_excerpt',
+                        lambda _url,_query:('The Nexa network measured 18 units.',''))
+
+    result=search_pipeline._search_public_web_uncached(
+        'Nexa network measurement',freshness=False,news_only=False)
+
+    assert 'SearXNG' in result
+    assert 'The Nexa network measured 18 units.' in result
+    assert 'https://source.example/nexa-network' in result
+
+
 def test_public_redirect_handler_rejects_loopback_destinations():
     from urllib.request import Request
 
