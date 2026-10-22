@@ -2,7 +2,21 @@ from __future__ import annotations
 
 from urllib.parse import urlparse, urljoin
 import urllib.error, urllib.request
-import socket, ipaddress
+import ipaddress, queue, socket, threading
+
+DNS_VALIDATION_TIMEOUT=1.0
+
+def _resolve_public_host(host):
+    result=queue.Queue(maxsize=1)
+    def resolve():
+        try: result.put((socket.getaddrinfo(host,None,type=socket.SOCK_STREAM),None))
+        except Exception as exc: result.put((None,exc))
+    worker=threading.Thread(target=resolve,name='aurora-public-dns',daemon=True)
+    worker.start(); worker.join(DNS_VALIDATION_TIMEOUT)
+    if worker.is_alive(): raise TimeoutError('A validação DNS excedeu o tempo limite.')
+    infos,error=result.get_nowait()
+    if error: raise error
+    return infos
 
 def public_http_url(url):
     parsed=urlparse(url)
@@ -14,7 +28,7 @@ def public_http_url(url):
     try:
         addr=ipaddress.ip_address(host)
     except ValueError:
-        try: infos=socket.getaddrinfo(host,None,type=socket.SOCK_STREAM)
+        try: infos=_resolve_public_host(host)
         except socket.gaierror: infos=[]
         for info in infos:
             addr=ipaddress.ip_address(info[4][0])

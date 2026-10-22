@@ -155,6 +155,22 @@ def test_public_redirect_handler_rejects_loopback_destinations():
         handler.redirect_request(request, None, 302, "Found", {}, "http://127.0.0.1/")
 
 
+def test_public_url_dns_validation_has_a_bounded_timeout(monkeypatch):
+    import threading
+
+    release = threading.Event()
+    monkeypatch.setattr(web_security, "DNS_VALIDATION_TIMEOUT", 0.02)
+
+    def slow_dns(*_args, **_kwargs):
+        release.wait(0.5)
+        return [(2, 1, 6, "", ("93.184.216.34", 0))]
+
+    monkeypatch.setattr(web_security.socket, "getaddrinfo", slow_dns)
+    with pytest.raises(TimeoutError, match="validação DNS"):
+        web_security.public_http_url("https://example.test/article")
+    release.set()
+
+
 def test_question_intent_and_time_window_are_topic_independent():
     assert aurora.factual_web_intent("Qual é a concentração atual da amostra?")
     assert aurora.current_search_window("Qual é a concentração atual da amostra?") == "30d"
