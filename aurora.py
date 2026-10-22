@@ -833,6 +833,25 @@ def search_google_news(query,window):
     if not rows: return f'Não encontrei publicações recentes relevantes sobre “{query}” nos últimos {label}. Busca atualizada em {checked}; não vou preencher com páginas antigas ou sem relação.'
     return f'Google Notícias, publicações dos últimos {label}; consulta atualizada em {checked}:\n'+'\n'.join(rows)
 
+def _google_news_pipeline_items(results,query,window):
+    """Translate RSS rows into common candidates; feed dates remain separate metadata."""
+    rows=[]
+    for line in results.splitlines()[1:]:
+        if ' — ' not in line: continue
+        label,url=line.rsplit(' — ',1); snippet=''
+        if ' :: ' in label: label,snippet=label.split(' :: ',1)
+        match=re.search(r'\s*\[([^\]]+?)\s*[·|]\s*(\d{2}/\d{2}/\d{4})(?:\s+\d{2}:\d{2})?\]$',label)
+        if not match: continue
+        publisher,published=match.groups(); title=label[:match.start()].strip()
+        try: public_http_url(url)
+        except Exception: continue
+        score=_search_relevance(query,title,snippet)
+        if score<=0 or not _publication_within_window(published,window): continue
+        rows.append({'provider':'Google Notícias','title':title,'snippet':snippet,'url':url,
+            'host':'news.google.com','publisher':publisher,'published':published,
+            'feed_published':True,'score':score})
+    return rows
+
 def web_fetch(url):
     public_http_url(url)
     req=urllib.request.Request(url,headers={'User-Agent':'Aurora-Local/0.1 (public-page reader)','Accept':'text/html,application/xhtml+xml'})
@@ -985,6 +1004,14 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
                 found.append({'provider':provider,'title':title,'snippet':snippet,'url':href,'host':host,
                     'published':published,'score':relevance})
     window_days={'1d':1,'7d':7,'30d':30}.get(freshness,30)
+    if freshness and (not found or _independent_recent_source_count(found,freshness)<2):
+        try:
+            recent=search_google_news(query,freshness)
+            for item in _google_news_pipeline_items(recent,query,freshness):
+                key=urlparse(item['url'])._replace(query='',fragment='').geturl().rstrip('/').casefold()
+                if key not in seen:
+                    seen.add(key); found.append(item)
+        except Exception: pass
     today=datetime.now().astimezone().date()
     def rank(item):
         try: age=max(0,(today-datetime.strptime(item['published'].split()[0],'%d/%m/%Y').date()).days)
@@ -992,12 +1019,6 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
         return item['score']+0.2*max(0,1-age/window_days)
     found.sort(key=rank,reverse=True)
     if not found:
-        if freshness:
-            try:
-                recent=search_google_news(query,freshness)
-                if any(' — ' in line for line in recent.splitlines()[1:]):
-                    return recent
-            except Exception: pass
         return 'Não encontrei resultados suficientemente relacionados à pergunta nas fontes de busca disponíveis. Não vou completar com informação antiga ou genérica.'
     # Snippets are often truncated or misleading. Open up to two relevant pages
     # in parallel so the model gets the page's own evidence without serial delay.
@@ -1005,7 +1026,7 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
     for item in found:
         if freshness and not _publication_within_window(item['published'],freshness): continue
         selected.append(item)
-        if len(selected)>=3: break
+        if len(selected)>=2: break
     if not selected:
         if freshness: return 'Não encontrei páginas com data recente verificável para confirmar esse fato. Não vou apresentar um resultado sem data como atual.'
         selected=found[:3]
@@ -1016,29 +1037,27 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
             except Exception: excerpt,published='',''
             if published:
                 item['published']=published
+                if item.get('feed_published'): item['page_date_verified']=True
                 if freshness and not _publication_within_window(published,freshness):
                     item['stale_page']=True
                     continue
+            elif item.get('feed_published'):
+                item['unverified_page_date']=True
+            if item.get('provider')=='Google Notícias' and not excerpt:
+                item['page_unavailable']=True
             if excerpt:
                 item['snippet']=((item['snippet']+' | Trecho da página aberta agora: ') if item['snippet'] else 'Trecho da página aberta agora: ')+excerpt
                 item['page_opened']=True
-    if freshness: found=[item for item in found if not item.get('stale_page')]
+    if freshness: found=[item for item in found if not item.get('stale_page') and not item.get('unverified_page_date') and not item.get('page_unavailable') and (not item.get('feed_published') or item.get('page_date_verified'))]
     if not found:
         return 'Os resultados que pareciam atuais apontam para páginas antigas. Não consegui confirmar o dado em uma página atual, então não vou repetir esse conteúdo como fato de agora.'
     if freshness:
         if _independent_recent_source_count(found,freshness)<2:
-            try: recent=search_google_news(query,freshness)
-            except Exception: recent=''
-            publishers=set()
-            for line in recent.splitlines():
-                match=re.search(r'\[([^\]]+?)\s*[·|]\s*(\d{2}/\d{2}/\d{4})',line)
-                if match and _publication_within_window(match.group(2),freshness): publishers.add(match.group(1).strip())
-            if len(publishers)>=2: return recent
             return 'As fontes encontradas não bastam para confirmar esse fato atual: preciso de duas publicações independentes, recentes e datadas. Não vou completar a resposta por memória.'
     output=[]
     for item in found[:8]:
         label=item['title'][:180]
-        if item['published']: label+=f' [Bing · {item["published"]}]'
+        if item['published']: label+=f' [{item["provider"]} · {item["published"]}]'
         line=label+(f' :: {item["snippet"][:350]}' if item['snippet'] else '')+f' — {item["url"]}'
         output.append(line)
     checked=datetime.now().astimezone().strftime('%d/%m/%Y %H:%M %Z')
