@@ -78,6 +78,38 @@ def test_close_flatpak_application_uses_instance_id(monkeypatch):
                      ["/usr/bin/flatpak", "kill", "12345"]]
 
 
+def test_close_application_does_not_claim_wmctrl_failure(monkeypatch):
+    monkeypatch.setattr(apps_module.shutil, "which",
+                        lambda name: "/usr/bin/wmctrl" if name == "wmctrl" else None)
+
+    def fail_close(command, **kwargs):
+        if command[1:] == ["-l", "-x"]:
+            return type("Result", (), {"stdout": "0x0001 0 0 host obs.OBS  OBS Studio"})()
+        raise apps_module.subprocess.CalledProcessError(1, command)
+
+    monkeypatch.setattr(apps_module.subprocess, "run", fail_close)
+    monkeypatch.setattr(apps_module, "find_desktop_app", lambda _name: None)
+    monkeypatch.setattr(apps_module, "process_names_for_app", lambda _name: (None, set()))
+    result = apps_module.close_application("OBS Studio")
+    assert "Enviei o comando" not in result
+    assert "Não encontrei" in result
+
+
+def test_close_application_reports_sigterm_permission_failure(monkeypatch, tmp_path):
+    process = tmp_path / "123456"
+    process.mkdir()
+    (process / "comm").write_text("obs")
+    app = {"file": tmp_path / "native.desktop", "name": "OBS Studio"}
+    monkeypatch.setattr(apps_module.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(apps_module, "process_names_for_app", lambda _name: (app, {"obs"}))
+    monkeypatch.setattr(apps_module.Path, "glob", lambda _self, _pattern: iter([process]))
+    monkeypatch.setattr(apps_module.os, "readlink", lambda _path: "/usr/bin/obs")
+    monkeypatch.setattr(apps_module.os, "kill", lambda *_args: (_ for _ in ()).throw(PermissionError()))
+    result = apps_module.close_application("OBS Studio")
+    assert "não consegui encerrar" in result.casefold()
+    assert "Enviei o sinal" not in result
+
+
 def test_local_fast_router_handles_media_capture_and_obs_requests():
     assert aurora.parse_local_command("toca a música Dreams") == (
         "spotify_play", {"query": "dreams"}

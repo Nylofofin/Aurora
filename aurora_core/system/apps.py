@@ -114,8 +114,13 @@ def close_application(name):
                 parts=row.split(maxsplit=5)
                 if len(parts)>=6 and (match in normalize_words(parts[3]) or match in normalize_words(parts[5])): ids.append(parts[0])
             if ids:
-                for wid in ids: subprocess.run([windows,'-ic',wid],capture_output=True,timeout=2)
-                return f'Enviei o comando de fechar {query}.'
+                sent=[]
+                for wid in dict.fromkeys(ids):
+                    try:
+                        subprocess.run([windows,'-ic',wid],capture_output=True,timeout=2,check=True)
+                        sent.append(wid)
+                    except (OSError,subprocess.SubprocessError): pass
+                if sent: return f'Enviei o comando de fechar {query}.'
         except Exception: pass
     app = find_desktop_app(query)
     if _close_flatpak_app(app):
@@ -131,9 +136,15 @@ def close_application(name):
             if comm in names or exe in names: matched.append(pid)
         except (OSError,ValueError): continue
     if not matched: return f'Não encontrei uma janela ou processo ativo de {app["name"] if app else query}.'
-    for pid in matched:
-        try: os.kill(pid,signal.SIGTERM)
-        except ProcessLookupError: pass
-        except PermissionError: pass
     label=app['name'] if app else query
-    return f'Enviei o sinal de encerramento para {label}. O aplicativo pode pedir para salvar alterações.'
+    sent=0; denied=0
+    for pid in matched:
+        try:
+            os.kill(pid,signal.SIGTERM); sent+=1
+        except ProcessLookupError: pass
+        except PermissionError: denied+=1
+    if sent:
+        return f'Enviei o sinal de encerramento para {label}. O aplicativo pode pedir para salvar alterações.'
+    if denied:
+        return f'Não consegui encerrar {label}: o sistema negou permissão.'
+    return f'{label} já não está em execução.'
