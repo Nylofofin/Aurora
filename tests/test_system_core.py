@@ -30,6 +30,16 @@ def test_volume_status_reports_pipewire_errors_truthfully(monkeypatch):
     assert volume.control_volume("status").endswith("No default sink")
 
 
+def test_volume_status_converts_pipewire_ratio_to_percent_and_reports_mute(monkeypatch):
+    import aurora_core.system.volume as volume
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(volume.shutil, "which", lambda _name: "/usr/bin/wpctl")
+    monkeypatch.setattr(volume.subprocess, "run", lambda *_args, **_kwargs: SimpleNamespace(
+        returncode=0, stdout="Volume: 1.25 [MUTED]", stderr=""))
+    assert volume.control_volume("status") == "Volume do PC: 125%; acima de 100%; som silenciado."
+
+
 def test_volume_up_caps_adjustment_at_100_percent(monkeypatch):
     import aurora_core.system.volume as volume
     from types import SimpleNamespace

@@ -18,7 +18,12 @@ def control_volume(action,value=5):
     if action=='status':
         result=_run_wpctl(wpctl,'get-volume','@DEFAULT_AUDIO_SINK@')
         if result.returncode: return 'Não consegui consultar o volume: '+result.stderr.strip()
-        return 'Volume do PC: '+result.stdout.strip().replace('Volume: ','')
+        match=re.search(r'Volume:\s*([0-9.]+)',result.stdout)
+        if not match: return 'Não consegui interpretar o volume informado pelo PipeWire.'
+        percent=round(float(match.group(1))*100)
+        state='; som silenciado' if '[MUTED]' in result.stdout else ''
+        amplified='; acima de 100%' if percent>100 else ''
+        return f'Volume do PC: {percent}%{amplified}{state}.'
     if action in ('mute','unmute'):
         result=_run_wpctl(wpctl,'set-mute','@DEFAULT_AUDIO_SINK@','1' if action=='mute' else '0')
         if result.returncode: return 'Não consegui mudar o mudo: '+result.stderr.strip()
