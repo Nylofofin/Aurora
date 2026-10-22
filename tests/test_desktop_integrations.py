@@ -74,6 +74,25 @@ def test_flatpak_application_launches_through_exported_desktop_entry(monkeypatch
     assert calls == [["/usr/bin/gio", "launch", str(desktop_file)]]
 
 
+def test_roblox_app_request_resolves_to_installed_sober_flatpak(monkeypatch, tmp_path):
+    desktop_file = tmp_path / "flatpak/exports/share/applications/org.vinegarhq.Sober.desktop"
+    app = {"file": desktop_file, "name": "Sober", "exec": "flatpak run org.vinegarhq.Sober",
+           "class": "org.vinegarhq.Sober"}
+    monkeypatch.setattr(apps_module, "desktop_app_entries", lambda: iter([app]))
+    monkeypatch.setattr(apps_module.shutil, "which", lambda name: "/usr/bin/gio" if name == "gio" else None)
+    calls = []
+    monkeypatch.setattr(apps_module.subprocess, "run", lambda command, **_kwargs: (
+        calls.append(command) or type("Result", (), {"returncode": 0, "stderr": ""})()
+    ))
+
+    assert aurora.parse_local_command("abre Roblox") == (
+        "open_application", {"command": "roblox"}
+    )
+    assert apps_module.find_desktop_app("Roblox") == app
+    assert apps_module.launch_application("Roblox") == "Abri Sober."
+    assert calls == [["/usr/bin/gio", "launch", str(desktop_file)]]
+
+
 def test_flatpak_application_launch_failure_is_not_reported_as_success(monkeypatch, tmp_path):
     desktop_file = tmp_path / "flatpak/exports/share/applications/com.obsproject.Studio.desktop"
     app = {"file": desktop_file, "name": "OBS Studio", "exec": "flatpak run com.obsproject.Studio",

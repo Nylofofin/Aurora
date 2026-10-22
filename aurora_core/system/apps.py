@@ -60,6 +60,7 @@ def find_desktop_app(query):
         'terminal':['terminal','console','ptyxis','gnome terminal'],
         'arquivos':['files','nautilus','gerenciador de arquivos'],
         'gerenciador de arquivos':['files','nautilus','gerenciador de arquivos'],
+        'roblox':['sober'],
     }
     wanted=aliases.get(name,[name]); entries=list(desktop_app_entries())
     preferred=[]

@@ -35,6 +35,8 @@ O serviço usa `start-alpha.sh`, que procura Ollama em `PATH` ou no runtime opci
 
 Capturas usam o portal de tela da sessão e só são salvas após a resposta de autorização do sistema. Ao iniciar gravação, se o OBS Flatpak estiver fechado e o WebSocket estiver ativo nas configurações, Aurora abre o OBS e aguarda até 8 segundos pelo servidor antes de enviar o comando aprovado; parar a gravação nunca abre o OBS. Durante processamento e fala, comandos locais como “para”, “calma”, “espera” e “deixa pra lá” interrompem a solicitação. Tocar a bolha para aprovar também corta imediatamente o aviso falado.
 
+Ao pedir para abrir o Roblox, Aurora usa o aplicativo Sober instalado (Flatpak `org.vinegarhq.Sober`).
+
 As configurações ativas ficam em `~/.config/aurora/aurora-settings.json`, com permissões privadas para o usuário (diretório `700`, arquivo `600`); na primeira inicialização, uma configuração antiga em `aurora-settings.json` na pasta do app é migrada sem apagar o arquivo legado. O `aurora-settings.json` versionado é apenas um modelo sem localização ou preferências pessoais. Endpoint remoto não é aceito: prompt e resposta só vão a `localhost`.
 
 ### Testes da busca
