@@ -137,7 +137,7 @@ def focus(desktop, request):
         actions = window.queryAction()
         for index in range(actions.nActions):
             name = normalized(actions.getName(index))
-            if name in {"activate", "raise", "focus"}:
+            if name.rsplit(".", 1)[-1] in {"activate", "raise", "focus"}:
                 focused = bool(actions.doAction(index)) or focused
                 break
     except Exception:

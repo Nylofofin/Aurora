@@ -81,6 +81,37 @@ def test_worker_rejects_credential_fields_before_insertion():
         })
 
 
+def test_worker_focus_accepts_namespaced_atspi_window_activate_action():
+    class Action:
+        nActions = 1
+        def getName(self, _index): return "default.activate"
+        def doAction(self, _index): return True
+
+    class Component:
+        def grabFocus(self): return False
+
+    class Window:
+        name = "Editor"
+        childCount = 0
+        def getRoleName(self): return "frame"
+        def queryComponent(self): return Component()
+        def queryAction(self): return Action()
+
+    class App:
+        name = "Example Editor"
+        childCount = 1
+        def getRoleName(self): return "application"
+        def getChildAtIndex(self, _index): return Window()
+
+    class Desktop:
+        childCount = 1
+        def getChildAtIndex(self, _index): return App()
+
+    assert worker.focus(Desktop(), {
+        "accessible_names": ["Example Editor"], "window": "Editor",
+    }) == {"ok": True, "window": "Editor"}
+
+
 def test_accessible_listing_never_reads_editable_control_value():
     class Entry:
         childCount = 0
