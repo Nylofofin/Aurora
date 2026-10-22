@@ -131,8 +131,24 @@ def test_screen_approval_explains_voice_cancellation(monkeypatch):
     service_module.AuroraService.request_approval(stub, detail["name"], detail)
 
     assert stub.voice.enabled
-    assert "Diga “cancelar”" in stub.spoken
+    assert "Diga “parar”" in stub.spoken
     assert "clique com o botão direito" in stub.spoken
+
+
+def test_tapping_pending_approval_interrupts_voice_before_execution():
+    sequence = []
+    class Speaker:
+        def interrupt(self): sequence.append("interrupt")
+    class Voice:
+        request_active = threading.Event()
+    class ServiceStub:
+        pending = {"action": "pending"}
+        speaker = Speaker()
+        voice = Voice()
+        def resolve_approval(self, approved):
+            sequence.append(("resolve", approved))
+    service_module.AuroraService.listen_once(ServiceStub())
+    assert sequence == ["interrupt", ("resolve", True)]
 
 
 def test_expiration_callback_for_old_approval_does_not_clear_new_one():

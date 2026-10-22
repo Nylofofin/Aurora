@@ -48,10 +48,22 @@ def test_wake_detection_stays_suppressed_until_request_finishes_but_allows_click
 
 def test_control_cancel_requires_an_exact_final_local_phrase():
     match = LocalVoice.is_final_cancel_phrase
-    for phrase in ("para", "pare", "parar", "cancele", "cancela", "cancelar"):
+    for phrase in ("para", "pare", "parar", "cancele", "cancela", "cancelar",
+                   "interrompa", "interrompe", "chega", "espera", "calma para",
+                   "não calma para", "corta"):
         assert match(phrase, True)
     assert not match("para", False)
     assert not match("para a janela", True)
+
+
+def test_new_wake_request_resets_interrupt_listener():
+    voice = LocalVoice({})
+    voice.interrupt_active.set()
+    voice.begin_request()
+    assert not voice.interrupt_active.is_set()
+    voice.interrupt_active.set()
+    voice.end_request()
+    assert not voice.interrupt_active.is_set()
 
 
 def test_control_cancel_detection_can_be_enabled_and_disabled():

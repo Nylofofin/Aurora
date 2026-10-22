@@ -12,6 +12,12 @@ import aurora_core.system.actions as system_actions
 import aurora_core.system.apps as apps_module
 
 
+def test_screenshot_portal_request_path_preserves_sender_prefix():
+    assert integrations._portal_request_object_path(":1.42", "aurora_token") == (
+        "/org/freedesktop/portal/desktop/request/_1_42/aurora_token"
+    )
+
+
 def test_site_opening_is_separate_from_application_opening():
     assert integrations.site_url_from_request("Aurora, abra o site example.com") == "https://example.com"
     assert integrations.site_url_from_request("abre o link https://example.org/ajuda") == "https://example.org/ajuda"

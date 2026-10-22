@@ -53,7 +53,7 @@ class AuroraService(QObject):
         self.voice.status.connect(self.voice_state,Qt.ConnectionType.QueuedConnection)
         self.voice.unavailable.connect(self.voice_error,Qt.ConnectionType.QueuedConnection)
         self.voice.wake.connect(self.wake,Qt.ConnectionType.QueuedConnection)
-        self.voice.cancel_control.connect(self.cancel_pending_screen_control,Qt.ConnectionType.QueuedConnection)
+        self.voice.cancel_control.connect(self.stop_conversation,Qt.ConnectionType.QueuedConnection)
         self.voice.start()
         self.orb.hide(); self.check_ollama()
     def check_ollama(self):
@@ -85,6 +85,9 @@ class AuroraService(QObject):
         # While an action awaits approval, a click on the orb is the explicit
         # approval gesture described to the user, not a new recording request.
         if self.pending:
+            # Stop the spoken permission prompt before performing the approved
+            # action, so it cannot continue talking over the operation.
+            self.speaker.interrupt()
             self.resolve_approval(True)
             return
         if self.voice.request_active.is_set(): return
@@ -145,6 +148,9 @@ class AuroraService(QObject):
         self.response_finished=True; self.response_summary='Não consegui iniciar o reconhecimento de voz.'; self.orb.reveal('error')
         self.speak_in_selected_language('Não consegui iniciar o reconhecimento de voz')
     def ask(self,prompt):
+        # After command transcription completes, keep a tiny local cancel
+        # recognizer active during the request and its spoken response.
+        self.voice.interrupt_active.set()
         route_request(self,prompt)
     def queue_sentence(self,text,generation):
         if generation==self.request_generation and self.voice.request_active.is_set(): self.speaker.say(text)
@@ -303,7 +309,7 @@ class AuroraService(QObject):
         if self.orb.isVisible(): self.orb.set_mode('approval')
         else: self.orb.reveal('approval')
         a=detail['args']; what={'open_url':f'abrir {a.get("url", "este endereço")}', 'open_application':f'abrir {a.get("command", "o aplicativo")}', 'close_application':f'fechar {a.get("application", "o aplicativo")}', 'manage_window':f'{a.get("action", "alterar")} a janela {a.get("target", "atual")}', 'take_screenshot':'capturar a tela e salvar a imagem', 'obs_record':'iniciar a gravação da tela no OBS', 'focus_accessible_window':f'focar a janela {a.get("window", "")} em {a.get("application", "")}', 'type_accessible_text':f'digitar texto no campo {a.get("field", "")} de {a.get("application", "")}' }
-        cancel_tip='Diga “cancelar” ou clique com o botão direito para negar.' if name in {'focus_accessible_window','type_accessible_text'} else 'Clique com o botão direito para negar.'
+        cancel_tip='Diga “parar” ou clique com o botão direito para negar.'
         self.speak_in_selected_language(f'Preciso da sua autorização para {what.get(name,"executar uma ação")}. Toque na bolha para autorizar. {cancel_tip}')
     def expire_approval(self,detail):
         if self.pending is not detail: return

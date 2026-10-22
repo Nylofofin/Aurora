@@ -11,10 +11,10 @@ from ..system.text import strip_wake_word
 class LocalVoice(QThread):
     transcript=Signal(str); status=Signal(str); unavailable=Signal(str); wake=Signal(); cancel_control=Signal()
     def __init__(self,cfg):
-        super().__init__(); self.cfg=cfg; self.running=True; self.one_shot=threading.Event(); self.request_active=threading.Event(); self.cancel_control_active=threading.Event(); self.speaking=False; self.recognizer=None
+        super().__init__(); self.cfg=cfg; self.running=True; self.one_shot=threading.Event(); self.request_active=threading.Event(); self.interrupt_active=threading.Event(); self.cancel_control_active=threading.Event(); self.speaking=False; self.recognizer=None
     def request_once(self): self.one_shot.set()
-    def begin_request(self): self.request_active.set()
-    def end_request(self): self.request_active.clear(); self.one_shot.clear()
+    def begin_request(self): self.request_active.set(); self.interrupt_active.clear()
+    def end_request(self): self.request_active.clear(); self.one_shot.clear(); self.interrupt_active.clear()
     def enable_control_cancel(self): self.cancel_control_active.set()
     def disable_control_cancel(self): self.cancel_control_active.clear()
     def defer_wake_detection(self):
@@ -36,7 +36,11 @@ class LocalVoice(QThread):
         return bool(re.fullmatch(r'(?:ei\s+|ola\s+)?aurora',normalize_words(text)))
     @staticmethod
     def is_final_cancel_phrase(text,finalized):
-        return finalized and normalize_words(text) in {'para','pare','parar','cancele','cancela','cancelar'}
+        return finalized and normalize_words(text) in {
+            'para','pare','parar','cancele','cancela','cancelar','interrompa',
+            'interrompe','interromper','chega','espera','calma para',
+            'nao para','nao calma para','nao espera','corta'
+        }
     def cloud_transcribe(self,sr,pcm,fallback):
         try: command=self.recognizer.recognize_google(sr.AudioData(pcm,16000,2),language='pt-BR')
         except Exception: command=fallback
@@ -51,7 +55,7 @@ class LocalVoice(QThread):
             if not VOSK_PATH.exists(): raise RuntimeError(f'Modelo Vosk local não encontrado em {VOSK_PATH}')
             model=Model(str(VOSK_PATH)); rec=KaldiRecognizer(model,16000); rec.SetWords(False)
             wake_rec=KaldiRecognizer(model,16000,'["aurora", "ei aurora", "olá aurora"]'); wake_rec.SetWords(False)
-            cancel_rec=KaldiRecognizer(model,16000,'["para", "pare", "parar", "cancele", "cancela", "cancelar"]'); cancel_rec.SetWords(False)
+            cancel_rec=KaldiRecognizer(model,16000,'["para", "pare", "parar", "cancele", "cancela", "cancelar", "interrompa", "interrompe", "interromper", "chega", "espera", "calma para", "não para", "não calma para", "não espera", "corta"]'); cancel_rec.SetWords(False)
             self.recognizer=sr.Recognizer(); self.recognizer.operation_timeout=2.0
             q=queue.Queue(maxsize=12)
             def callback(data,frames,time_info,status):
@@ -65,15 +69,18 @@ class LocalVoice(QThread):
                     except queue.Empty: continue
                     if not self.request_active.is_set() and active:
                         active=False; buffer=[]; wake_audio=[]; rec.Reset(); wake_rec.Reset(); self.status.emit('hidden')
-                    if self.speaking: continue
-                    if self.cancel_control_active.is_set():
+                    if self.interrupt_active.is_set() or self.cancel_control_active.is_set():
                         finalized_cancel=cancel_rec.AcceptWaveform(block)
                         if finalized_cancel:
                             cancel_text=json.loads(cancel_rec.Result()).get('text','').strip()
                             cancel_rec.Reset()
                             if self.is_final_cancel_phrase(cancel_text,True):
-                                self.cancel_control_active.clear(); self.cancel_control.emit()
-                        continue
+                                self.cancel_control_active.clear(); self.interrupt_active.clear(); self.cancel_control.emit()
+                        # The active request owns the microphone while Aurora is
+                        # processing or speaking; only the short cancel grammar
+                        # is listened to until the user interrupts or it ends.
+                        if self.speaking or self.interrupt_active.is_set() or self.cancel_control_active.is_set(): continue
+                    if self.speaking: continue
                     cancel_rec.Reset()
                     if not active and self.defer_wake_detection(): continue
                     if not active:

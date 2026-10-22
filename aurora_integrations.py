@@ -118,6 +118,11 @@ def save_screenshot_uri(uri: str, pictures_dir: str | Path, now: datetime | None
     return target
 
 
+def _portal_request_object_path(bus_name: str, token: str) -> str:
+    sender = bus_name.replace(":", "_").replace(".", "_")
+    return f"/org/freedesktop/portal/desktop/request/{sender}/{token}"
+
+
 def capture_screenshot(pictures_dir: str | Path, timeout: int = 45) -> Path:
     """Request a full-screen capture through the XDG portal and save it safely."""
     try:
@@ -129,8 +134,10 @@ def capture_screenshot(pictures_dir: str | Path, timeout: int = 45) -> Path:
     if not bus.isConnected():
         raise RuntimeError("Não conectei ao portal de captura da sessão gráfica.")
     token = "aurora_" + secrets.token_hex(8)
-    sender = bus.baseService().lstrip(":").replace(".", "_")
-    request_path = f"/org/freedesktop/portal/desktop/request/{sender}/{token}"
+    # xdg-desktop-portal derives the Request object path from the caller's
+    # unique bus name by replacing both ':' and '.' with '_'. Keeping the
+    # leading underscore is required (for example :1.42 -> _1_42).
+    request_path = _portal_request_object_path(bus.baseService(), token)
     result = {}
     loop = QEventLoop()
 
