@@ -67,6 +67,13 @@ def test_question_intent_and_time_window_are_topic_independent():
     assert aurora.current_web_query("Nexa network current measurement", "30d").endswith(str(NOW.year))
 
 
+def test_current_dollar_question_does_not_require_question_words_for_relevance():
+    query = "Quanto está o dólar agora"
+    assert aurora._fresh_query_terms(query) == {"dolar"}
+    assert aurora._search_relevance(query, "Dólar hoje fica estável", "Cotação da moeda americana") == 1.0
+    assert aurora._search_relevance(query, "Quanto - Dicio", "Significado da palavra quanto") == 0.0
+
+
 def test_subject_specific_search_adapters_are_absent():
     source = Path(aurora.__file__).read_text().lower()
     for forbidden in ("def robux_price_answer", "def currency_rate_answer", "def minecraft_java_latest_release", "_authoritative_host"):
