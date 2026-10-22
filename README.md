@@ -1,11 +1,11 @@
 # Aurora — POLARIS-EDGE
 
-**Versão:** `0.1.0b1` (Beta Demo, PEP 440) · **Build:** `AUR-20261022.BETA1`
+**Versão:** `0.1.1b1` (Beta Demo Patch 1, PEP 440) · **Build:** `AUR-20261022.BETA1.P1`
 **Codinome técnico:** `POLARIS-EDGE` — identidade da build local otimizada para execução no edge, com Gemma via Ollama e alvo gráfico AMD Polaris.
 
 > **Beta Demo privada e incompleta.** Esta build é para uso e refinamento pessoal; ainda pode conter falhas de voz, busca, interface e integrações. Não é uma versão estável nem um pacote pronto para outras distribuições. Mantenha o repositório e a release do GitHub privados.
 
-**A única interface da Aurora é a bolha flutuante.** Não há janela de chat nem janela de resultados. Em espera fica escondida; ao dizer “Aurora”, aparece no canto inferior direito com uma entrada animada e o som `assets/audio/entrada.wav`. Cada ativação recebe um pedido; depois de responder, a bolha desaparece e o microfone volta a aguardar apenas a palavra “Aurora”. O contexto curto pode ajudar em um seguimento, mas não mantém a captura de voz aberta entre ativações. Clique com o botão direito na bolha para interromper imediatamente a fala e cancelar o pedido atual. Enquanto estiver visível, você pode arrastá-la para qualquer lugar. A esfera compacta mistura azul e violeta em camadas luminosas com animação contínua; o rótulo de alto contraste indica se está ouvindo, pensando, buscando ou falando. Inferência do Gemma, memória e roteamento de ações são locais. Transcrição de voz, síntese de voz, busca web e serviços externos descritos abaixo usam a internet quando solicitados.
+**A única interface da Aurora é a bolha flutuante.** Não há janela de chat nem janela de resultados. Em espera fica escondida; ao dizer “Aurora”, aparece no canto inferior direito com uma entrada animada e o som `assets/audio/entrada.wav`. Cada ativação recebe um pedido; depois de responder, a bolha desaparece e o microfone volta a aguardar apenas a palavra “Aurora”. O contexto curto pode ajudar em um seguimento, mas não mantém a captura de voz aberta entre ativações. Clique com o botão direito na bolha para interromper imediatamente a fala e cancelar o pedido atual. Enquanto estiver visível, você pode arrastá-la para qualquer lugar. A bolha azul-violeta tem contorno orgânico elástico e brilho em camadas; sua deformação muda suavemente entre escuta, pensamento e fala. O rótulo de alto contraste indica o estado atual. Inferência do Gemma, memória e roteamento de ações são locais. Transcrição de voz, síntese de voz, busca web e serviços externos descritos abaixo usam a internet quando solicitados.
 
 ## Perfil deste computador
 

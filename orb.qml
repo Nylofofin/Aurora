@@ -10,6 +10,13 @@ Item {
     property string mode: "idle"
     property bool motionEnabled: false
     property real revealScale: 1.0
+    // Slow phase-continuous motion animates the silhouette, not just its glow.
+    property real morphPhase: 0
+    readonly property real shapeTension: ({
+        listening: 0.160, thinking: 0.115, searching: 0.125,
+        weather: 0.110, preparing: 0.105, speaking: 0.200,
+        approval: 0.055, controlling: 0.090, error: 0.045, idle: 0.045
+    })[mode] || 0.020
     property bool dragging: false
     property real pressX: 0
     property real pressY: 0
@@ -25,6 +32,13 @@ Item {
     signal dragMoved(int x, int y)
 
     scale: revealScale
+
+    NumberAnimation {
+        target: root; property: "morphPhase"
+        from: 0; to: Math.PI * 2; duration: 7600
+        loops: Animation.Infinite; running: root.motionEnabled
+        easing.type: Easing.Linear
+    }
 
     readonly property string statusText: ({
         listening: "OUVINDO", thinking: "PENSANDO", searching: "BUSCANDO",
@@ -62,6 +76,11 @@ Item {
         id: sphere
         x: 16; y: 2; width: 104; height: 104
         transformOrigin: Item.Center
+        transform: Scale {
+            origin.x: 52; origin.y: 52
+            xScale: 1 + 0.080 * Math.sin(root.morphPhase * 2) + root.shapeTension * 0.24
+            yScale: 1 + 0.075 * Math.sin(root.morphPhase * 2 + 1.5708) - root.shapeTension * 0.18
+        }
 
         // A slow, independent breath keeps the orb alive while the inner light
         // drifts. The small range avoids making the desktop widget feel busy.
@@ -75,8 +94,8 @@ Item {
         Shape {
             anchors.fill: parent
             ShapePath {
-                strokeColor: "transparent"
-                strokeWidth: 0
+                strokeColor: "#58ffffff"
+                strokeWidth: 1
                 fillGradient: LinearGradient {
                     x1: 14; y1: 0; x2: 88; y2: 104
                     GradientStop { position: 0.00; color: "#fffdfd" }
@@ -87,7 +106,40 @@ Item {
                     GradientStop { position: 0.86; color: "#405ce9" }
                     GradientStop { position: 1.00; color: "#762bd8" }
                 }
-                PathAngleArc { centerX: 52; centerY: 52; radiusX: 52; radiusY: 52; startAngle: 0; sweepAngle: 360 }
+                startX: 52 + 9.0 * Math.sin(root.morphPhase)
+                startY: 4 + 6.0 * Math.sin(root.morphPhase + 1.1)
+                PathCubic {
+                    control1X: 80 + 7.5 * Math.sin(root.morphPhase + 0.4)
+                    control1Y: 3 + 8.0 * Math.sin(root.morphPhase + 1.8)
+                    control2X: 101 + 7.5 * Math.sin(root.morphPhase + 2.5)
+                    control2Y: 24 + 7.0 * Math.sin(root.morphPhase + 3.2)
+                    x: 100 + 7.5 * Math.sin(root.morphPhase + 2.0)
+                    y: 52 + 9.0 * Math.sin(root.morphPhase + 3.0)
+                }
+                PathCubic {
+                    control1X: 101 + 7.5 * Math.sin(root.morphPhase + 2.4)
+                    control1Y: 80 + 7.0 * Math.sin(root.morphPhase + 3.5)
+                    control2X: 80 + 7.5 * Math.sin(root.morphPhase + 4.1)
+                    control2Y: 100 + 7.0 * Math.sin(root.morphPhase + 4.7)
+                    x: 52 + 9.0 * Math.sin(root.morphPhase + 4.0)
+                    y: 100 + 7.0 * Math.sin(root.morphPhase + 5.0)
+                }
+                PathCubic {
+                    control1X: 24 + 7.5 * Math.sin(root.morphPhase + 4.5)
+                    control1Y: 100 + 7.0 * Math.sin(root.morphPhase + 5.5)
+                    control2X: 3 + 7.5 * Math.sin(root.morphPhase + 0.2)
+                    control2Y: 80 + 7.0 * Math.sin(root.morphPhase + 1.0)
+                    x: 4 + 7.5 * Math.sin(root.morphPhase + 0.7)
+                    y: 52 + 9.0 * Math.sin(root.morphPhase + 1.7)
+                }
+                PathCubic {
+                    control1X: 3 + 7.5 * Math.sin(root.morphPhase + 1.4)
+                    control1Y: 24 + 7.0 * Math.sin(root.morphPhase + 2.2)
+                    control2X: 24 + 7.5 * Math.sin(root.morphPhase + 2.8)
+                    control2Y: 3 + 8.0 * Math.sin(root.morphPhase + 3.7)
+                    x: 52 + 9.0 * Math.sin(root.morphPhase)
+                    y: 4 + 6.0 * Math.sin(root.morphPhase + 1.1)
+                }
             }
         }
 
@@ -151,14 +203,6 @@ Item {
                     }
                 }
             }
-        }
-
-        Rectangle {
-            anchors.fill: parent
-            radius: width / 2
-            color: "transparent"
-            border.width: 1
-            border.color: "#55ffffff"
         }
 
         Item {

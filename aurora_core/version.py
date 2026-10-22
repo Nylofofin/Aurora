@@ -4,8 +4,8 @@ from __future__ import annotations
 
 """Release identity for the Aurora local desktop build."""
 
-__version__ = "0.1.0b1"
+__version__ = "0.1.1b1"
 
 CODENAME = "POLARIS-EDGE"
 
-BUILD_ID = "AUR-20261022.BETA1"
+BUILD_ID = "AUR-20261022.BETA1.P1"
