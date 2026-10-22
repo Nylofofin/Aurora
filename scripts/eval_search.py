@@ -120,6 +120,9 @@ class EvalService(QObject):
             self.trace.raw_result_text = output
         aurora.AuroraService.quick_search_done(self, query, output, generation)
 
+    def quick_search_answer_done(self, text, generation, evidence, sources):
+        aurora.AuroraService.quick_search_answer_done(self, text, generation, evidence, sources)
+
     def fx_lookup_done(self, lookup, generation=None):
         if self.trace is not None:
             quote = lookup.quote
