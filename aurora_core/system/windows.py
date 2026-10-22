@@ -7,6 +7,8 @@ from .files import normalize_words
 def manage_window(action,target=''):
     wmctrl=shutil.which('wmctrl'); xdotool=shutil.which('xdotool')
     action=str(action).casefold(); query=normalize_words(target)
+    if action not in ('maximize','restore','minimize','close'):
+        return 'Ação de janela desconhecida.'
     if query:
         app=find_desktop_app(target)
         if app:

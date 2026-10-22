@@ -110,6 +110,16 @@ def test_close_application_reports_sigterm_permission_failure(monkeypatch, tmp_p
     assert "Enviei o sinal" not in result
 
 
+def test_window_manager_rejects_unknown_action_before_running_tools(monkeypatch):
+    import aurora_core.system.windows as windows_module
+
+    calls = []
+    monkeypatch.setattr(windows_module.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(windows_module.subprocess, "run", lambda *args, **kwargs: calls.append(args))
+    assert windows_module.manage_window("do-nothing", "Editor") == "Ação de janela desconhecida."
+    assert calls == []
+
+
 def test_local_fast_router_handles_media_capture_and_obs_requests():
     assert aurora.parse_local_command("toca a música Dreams") == (
         "spotify_play", {"query": "dreams"}
