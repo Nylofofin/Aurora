@@ -1138,7 +1138,7 @@ def _ground_numeric_answer(answer,evidence,sources):
                 separator=separators[0]
                 left,right=number.rsplit(separator,1)
                 if len(right)==3 and not left.startswith('0'):
-                    return number+('%' if percent else '')
+                    return number.replace(separator,'')+('%' if percent else '')
                 number=left+'.'+right
             try:
                 number=format(Decimal(number).normalize(),'f')
@@ -1174,8 +1174,11 @@ def _verified_fx_answer(answer,quote):
     if quote.quote_time: evidence.append(quote.quote_time)
     if quote.retrieved_at: evidence.append(quote.retrieved_at.strftime('%H:%M:%S'))
     if quote.amount is not None: evidence.append(str(quote.amount))
-    if quote.converted is not None: evidence.append(str(quote.converted))
-    source=f'{quote.source} ({quote.quote_time or "taxa de referência diária"} de {quote.quote_date:%d/%m/%Y})'
+    if quote.converted is not None:
+        evidence.extend((str(quote.converted),'duas casas decimais'))
+    consultation=quote.retrieved_at.strftime('%H:%M:%S BRT') if quote.retrieved_at else 'horário de consulta indisponível'
+    quote_stamp=f'{quote.quote_time} de {quote.quote_date:%d/%m/%Y}' if quote.quote_time else f'taxa de referência diária de {quote.quote_date:%d/%m/%Y}'
+    source=f'{quote.source} ({quote_stamp}; consulta às {consultation})'
     grounded=_ground_numeric_answer(answer,evidence,[source])
     def canonical(value):
         value=''.join(value.split())
@@ -1185,11 +1188,16 @@ def _verified_fx_answer(answer,quote):
             decimal=',' if value.rfind(',')>value.rfind('.') else '.'
             thousands='.' if decimal==',' else ','
             value=value.replace(thousands,'').replace(decimal,'.')
-        elif ',' in value: value=value.replace(',','.')
+        elif ',' in value or '.' in value:
+            separator=',' if ',' in value else '.'
+            left,right=value.rsplit(separator,1)
+            if len(right)==3 and not left.startswith('0'): value=left+right
+            else: value=left+'.'+right
         try: return format(Decimal(value).normalize(),'f')+suffix
         except InvalidOperation: return value+suffix
     answer_values={canonical(value) for value in re.findall(r'(?<!\w)\d+(?:[.,]\d+)*(?:\s*%)?(?!\w)',grounded)}
-    required=[quote.bid,quote.ask] if quote.bid is not None and quote.ask is not None else [quote.converted if quote.converted is not None else quote.rate]
+    required=[quote.bid,quote.ask] if quote.bid is not None and quote.ask is not None else [quote.rate]
+    if quote.converted is not None: required.append(quote.converted)
     if grounded!=str(answer) or not all(canonical(str(value)) in answer_values for value in required):
         return f'Não confirmei o valor numérico. Fonte: {source}.'
     return grounded

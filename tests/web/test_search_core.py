@@ -89,6 +89,7 @@ def test_numeric_answers_must_use_numbers_literal_in_evidence():
 def test_numeric_guard_decimal_currency_percent_and_spelled_number_edges():
     fallback = "Não consegui confirmar os valores numéricos com os trechos consultados. Fontes: fonte."
     assert aurora._ground_numeric_answer("O valor é 5.40.", ["O valor é 5,40."], ["fonte"]) == "O valor é 5.40."
+    assert aurora._ground_numeric_answer("O valor é 5,041.", ["O valor é 5.041."], ["fonte"]) == "O valor é 5,041."
     assert aurora._ground_numeric_answer("Custa R$ 5,40.", ["O valor é 5.40."], ["fonte"]) == "Custa R$ 5,40."
     assert aurora._ground_numeric_answer("A taxa é 0.5%.", ["A taxa é 0,5%."], ["fonte"]) == "A taxa é 0.5%."
     assert aurora._ground_numeric_answer("A taxa é 0,5%.", ["A taxa é 0,5."], ["fonte"]) == fallback
@@ -111,6 +112,19 @@ def test_structured_fx_answer_must_say_api_values_and_accept_equivalent_decimal_
     assert aurora._verified_fx_answer(incomplete, quote) == incomplete
     spoken = "Compra R$ 5,04 e venda R$ 5,05, conforme a cotação."
     assert aurora._verified_fx_answer(spoken, quote) == spoken
+
+
+def test_structured_conversion_requires_both_rate_and_converted_value():
+    from datetime import date, datetime
+    from decimal import Decimal
+    quote = aurora.aurora_fx.FXQuote(
+        "Frankfurter", "USD", "BRL", Decimal("5.6528"), date(2026, 10, 22),
+        amount=Decimal("100"), converted=Decimal("565.28"),
+        retrieved_at=datetime(2026, 10, 22, 12, 50, 31, tzinfo=aurora.aurora_fx.LOCAL_TZ),
+    )
+    answer = aurora.aurora_fx.format_quote(quote)
+    assert aurora._verified_fx_answer(answer, quote) == answer
+    assert aurora._verified_fx_answer("100 USD equivalem a R$ 565,28.", quote).startswith("Não confirmei o valor numérico.")
 
 
 def _google_news_test_rows(count=3):
