@@ -194,7 +194,9 @@ class AuroraService(QObject):
     def quick_search_answer_done(self,text,generation,evidence,sources):
         if generation is not None and generation!=self.request_generation: return
         grounded=ground_search_answer(self.current_prompt,text,evidence,sources)
-        self.quick_summary_done(grounded,generation)
+        context=(' '+self.active_search_context) if self.active_search_context else ''
+        self.active_search_context=''
+        self.quick_summary_done(grounded,generation,context)
     def fx_lookup_done(self,lookup,generation=None):
         if generation is not None and generation!=self.request_generation: return
         self.fx_api_timings=lookup.api_timings
