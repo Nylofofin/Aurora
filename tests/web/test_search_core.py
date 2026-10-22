@@ -5,6 +5,7 @@ import re
 import aurora
 import aurora_core.web.pipeline as search_pipeline
 import aurora_core.web.security as web_security
+import aurora_core.web.providers as search_providers
 
 FIXTURES = Path(__file__).parent / "fixtures"
 NOW = datetime(2026, 10, 22, 12, tzinfo=timezone.utc)
@@ -147,7 +148,7 @@ def test_news_prompt_never_turns_headline_into_price_request():
 
 
 def test_missing_page_date_uses_feed_timestamp_only_for_current_news(monkeypatch):
-    monkeypatch.setattr(search_pipeline, "_search_page_excerpt", lambda *_args, **_kwargs: ("", ""))
+    monkeypatch.setattr(search_providers, "_search_page_excerpt", lambda *_args, **_kwargs: ("", ""))
     rss = "Google Notícias\nManchete [Jornal · 22/10/2026 10:30] :: resumo do feed — https://example.org/noticia"
     current = aurora._enrich_news_results(rss, "notícias de tecnologia hoje", "1d")
     assert "[Feed RSS: Jornal · 22/10/2026 10:30]" in current
@@ -250,6 +251,7 @@ def test_google_news_fallback_uses_common_page_pipeline_and_caps_reads_at_two(mo
     def read(url, query, timeout=2.5):
         calls.append((url, timeout))
         return ("Nexa network measurement reported today in the page.", published)
+    monkeypatch.setattr(search_providers, "_search_page_excerpt", read)
     monkeypatch.setattr(search_pipeline, "_search_page_excerpt", read)
     output = aurora._search_public_web_uncached("Nexa network measurement today", "7d", False)
     assert len(calls) == 2
@@ -269,6 +271,7 @@ def test_google_news_feed_date_is_not_page_date_and_failed_redirect_is_discarded
         if url.endswith("story-2"):
             return ("Nexa network measurement reported today in the page.", "")
         raise ValueError("redirect destination failed public URL validation")
+    monkeypatch.setattr(search_providers, "_search_page_excerpt", read)
     monkeypatch.setattr(search_pipeline, "_search_page_excerpt", read)
     output = aurora._search_public_web_uncached("Nexa network measurement today", "7d", False)
     assert len(calls) == 2

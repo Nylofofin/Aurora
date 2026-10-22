@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QObject, QThread, Signal, Slot, QTimer, QUrl
+from PySide6.QtCore import Qt, QObject, Slot, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtMultimedia import QSoundEffect
 from PySide6.QtWidgets import QApplication
@@ -10,9 +10,12 @@ import aurora_fx
 import aurora_integrations
 from .config import APP_DIR, hardware_profile, local_endpoint, settings_load, settings_save
 from .llm.inference import Inference
-from .llm.prompts import _verified_fx_answer, assistant_system_prompt, ground_search_answer, search_answer_prompts
+from .llm.warmup import ModelWarmup
+from .llm.prompts import _verified_fx_answer, ground_search_answer, search_answer_prompts
 from .memory import user_memory_update
+from .routing import route_request
 from .system.apps import close_application, launch_application
+from .system.actions import execute_action as dispatch_action
 from .system.commands import parse_local_command
 from .system.files import create_user_file, normalize_words, xdg_user_directory
 from .system.hardware import system_hardware_summary
@@ -21,42 +24,9 @@ from .system.windows import manage_window
 from .ui.orb import AuroraOrb
 from .voice.tts import Speaker
 from .voice.wake import LocalVoice
-from .web.pipeline import _independent_recent_source_count, _result_query_relevance, contextual_followup, contextual_source_request, current_search_window, factual_web_intent, local_datetime_answer, news_search_intent, news_unconfirmed_message, requested_response_language, research_request_intent, search_failure_summary, search_intent, search_public_web
-from .web.weather import weather_now
-
-class WeatherRequest(QThread):
-    result=Signal(str); error=Signal(str)
-    def __init__(self,cfg,prompt): super().__init__(); self.cfg=cfg; self.prompt=prompt
-    def run(self):
-        try: self.result.emit(weather_now(self.cfg,self.prompt))
-        except Exception as exc: self.error.emit(str(exc))
-
-class SearchRequest(QThread):
-    result=Signal(str,str); error=Signal(str,str)
-    def __init__(self,query,freshness=None,news_only=False): super().__init__(); self.query=query; self.freshness=freshness; self.news_only=news_only
-    def run(self):
-        try: self.result.emit(self.query,search_public_web(self.query,self.freshness,self.news_only))
-        except Exception as exc: self.error.emit(self.query,str(exc))
-
-class FXRequest(QThread):
-    result=Signal(object); error=Signal(str)
-    def __init__(self,intent,prompt): super().__init__(); self.intent=intent; self.prompt=prompt
-    def run(self):
-        try:
-            fallback=lambda _intent: search_public_web(self.prompt,current_search_window(self.prompt),news_search_intent(self.prompt))
-            self.result.emit(aurora_fx.get_quote(self.intent,search_fallback=fallback,timeout=aurora_fx.API_TIMEOUT))
-        except Exception as exc: self.error.emit(str(exc))
-
-class ModelWarmup(QThread):
-    def __init__(self,cfg): super().__init__(); self.cfg=cfg
-    def run(self):
-        try:
-            ep=self.cfg['endpoint'].rstrip('/')
-            payload={'model':self.cfg['model'],'messages':[{'role':'system','content':assistant_system_prompt()},{'role':'user','content':'Responda apenas: Pronto.'}],
-                'stream':False,'keep_alive':-1,'think':False,'options':{'num_ctx':int(self.cfg['num_ctx']),'num_thread':int(self.cfg['num_thread']),'num_gpu':int(self.cfg['num_gpu']),'num_batch':128,'temperature':0.1,'num_predict':2}}
-            req=urllib.request.Request(ep+'/api/chat',data=json.dumps(payload).encode(),headers={'Content-Type':'application/json'})
-            with urllib.request.urlopen(req,timeout=120) as r: r.read()
-        except Exception: pass
+from .web.freshness import _independent_recent_source_count
+from .web.intent import _result_query_relevance, contextual_followup, contextual_source_request, current_search_window, factual_web_intent, local_datetime_answer, news_search_intent, news_unconfirmed_message, requested_response_language, research_request_intent, search_failure_summary, search_intent
+from .web.requests import FXRequest, SearchRequest, WeatherRequest
 
 class AuroraService(QObject):
     def __init__(self,app):
@@ -160,63 +130,7 @@ class AuroraService(QObject):
         self.response_finished=True; self.response_summary='Não consegui iniciar o reconhecimento de voz.'; self.orb.reveal('error')
         self.speak_in_selected_language('Não consegui iniciar o reconhecimento de voz')
     def ask(self,prompt):
-        if not self.voice.request_active.is_set(): return
-        prompt=prompt.strip()
-        if not prompt:
-            self.voice.speaking=False; self.orb.set_mode('listening'); return
-        if self.inf and self.inf.isRunning(): return
-        self.activity_generation+=1; self.request_generation+=1
-        requested_language=requested_response_language(prompt)
-        if requested_language: self.response_language=requested_language
-        if self.orb.isVisible(): self.orb.set_mode('thinking')
-        else: self.orb.reveal('thinking')
-        self.response_finished=False; self.current_prompt=prompt; self.active_search_context=''
-        self.voice.speaking=True
-        source_followup=bool(self.context_history and contextual_source_request(prompt))
-        direct=None if source_followup else parse_local_command(prompt)
-        if direct:
-            self.run_local_action(*direct); return
-        local_answer=local_datetime_answer(prompt)
-        if local_answer:
-            self.quick_summary_done(local_answer,self.request_generation); return
-        normalized=normalize_words(prompt)
-        asks_hardware_temperature=bool(re.search(r'\b(cpu|gpu|processador|placa de video|computador|pc|hardware|placa grafica)\b',normalized))
-        if not asks_hardware_temperature and re.search(r'\b(tempo|clima|previs[aã]o|temperatura|vai chover|chove)\b',prompt,re.I):
-            self.orb.set_mode('weather')
-            generation=self.request_generation
-            self.weather=WeatherRequest(self.cfg,prompt)
-            self.weather.result.connect(lambda text,g=generation: self.weather_done(text,g))
-            self.weather.error.connect(lambda message,g=generation: self.weather_error(message,g))
-            self.start_background_request(self.weather); return
-        fx_intent=aurora_fx.detect_fx_intent(prompt)
-        if fx_intent:
-            self.orb.set_mode('searching')
-            generation=self.request_generation
-            self.fx_request=FXRequest(fx_intent,prompt)
-            self.fx_request.result.connect(lambda lookup,g=generation: self.fx_lookup_done(lookup,g),Qt.ConnectionType.QueuedConnection)
-            self.fx_request.error.connect(lambda message,g=generation: self.quick_search_error(prompt,message,g),Qt.ConnectionType.QueuedConnection)
-            self.start_background_request(self.fx_request); return
-        freshness=current_search_window(prompt)
-        query=search_intent(prompt)
-        is_followup=bool(self.context_history and contextual_followup(prompt))
-        relative_reference=bool(re.search(r'\b(isso|disso|nisso|desse|dessa|dele|dela|essa fonte|esse resultado|essa noticia|essa resposta|a primeira fonte|o primeiro resultado|a segunda fonte|o segundo resultado|a terceira fonte|o terceiro resultado)\b',normalized))
-        needs_context_search=bool(is_followup and relative_reference and (query or freshness))
-        if needs_context_search: query=''
-        if not query and ((freshness and not needs_context_search) or ((factual_web_intent(prompt) or research_request_intent(prompt)) and not is_followup)):
-            query=LocalVoice.strip_wake_word(prompt).strip(' \t,.:;!?')
-        if query:
-            self.orb.set_mode('searching')
-            generation=self.request_generation
-            self.quick_search=SearchRequest(query,freshness,news_search_intent(prompt))
-            self.quick_search.result.connect(lambda q,out,g=generation: self.quick_search_done(q,out,g))
-            self.quick_search.error.connect(lambda q,message,g=generation: self.quick_search_error(q,message,g))
-            self.start_background_request(self.quick_search); return
-        refers_to_source=bool(self.context_history and re.search(r'\b(fonte|link|noticia|artigo|resultado)\b',normalized))
-        agent_intent=source_followup or refers_to_source or needs_context_search or bool(re.search(r'\b(abra|abrir|abre|aberto|aberta|inicie|iniciar|execute|executar|rode|rodar|clique|clicar|digite|digitar|escreva|escrever|controle o computador|controle o pc|crie|criar|faca|gere|gerar|lembre|lembrar|esqueca|esquecer|salve|salvar|salve como|salvar como|leia|ler|acesse|acessar|lance|lancar|bote|coloque|minimize|minimizar|maximize|maximizar|feche|fechar|fecha|encerre|encerrar|encerra|aumente|aumentar|diminua|diminuir|baixe|baixar|silencie|mute|pesquise|pesquisar|busque|buscar|procure|procurar|investigue|investigar)\b',normalized))
-        model=self.cfg.get('agent_model','gemma4:e2b-it-q4_K_M') if agent_intent else self.cfg['model']
-        self.inf=Inference(self.cfg,prompt,model=model,use_tools=agent_intent,history=self.context_history[-6:],response_language=self.response_language)
-        generation=self.request_generation
-        self.inf.sentence.connect(lambda text,g=generation:self.queue_sentence(text,g)); self.inf.search.connect(lambda q,out,g=generation:self.search_update(q,out) if g==self.request_generation else None); self.inf.approval.connect(lambda name,detail,g=generation:self.request_approval(name,detail) if g==self.request_generation else None); self.inf.error.connect(lambda message,g=generation:self.answer_error(message,g)); self.inf.result.connect(lambda text,g=generation:self.answer_done(text,g)); self.inf.finished.connect(self.inference_finished); self.inf.start()
+        route_request(self,prompt)
     def queue_sentence(self,text,generation):
         if generation==self.request_generation and self.voice.request_active.is_set(): self.speaker.say(text)
     def run_local_action(self,name,args):
@@ -355,7 +269,7 @@ class AuroraService(QObject):
         self.pending=detail
         if self.orb.isVisible(): self.orb.set_mode('approval')
         else: self.orb.reveal('approval')
-        a=detail['args']; what={'open_url':f'abrir {a.get("url", "este endereço")}', 'open_application':f'abrir {a.get("command", "o aplicativo")}', 'close_application':f'fechar {a.get("application", "o aplicativo")}', 'manage_window':f'{a.get("action", "alterar")} a janela {a.get("target", "atual")}', 'take_screenshot':'capturar a tela e salvar a imagem', 'obs_record':'iniciar a gravação da tela no OBS', 'type_text':'digitar texto na janela ativa', 'click_screen':f'clicar na tela em {a.get("x")}, {a.get("y")}'}
+        a=detail['args']; what={'open_url':f'abrir {a.get("url", "este endereço")}', 'open_application':f'abrir {a.get("command", "o aplicativo")}', 'close_application':f'fechar {a.get("application", "o aplicativo")}', 'manage_window':f'{a.get("action", "alterar")} a janela {a.get("target", "atual")}', 'take_screenshot':'capturar a tela e salvar a imagem', 'obs_record':'iniciar a gravação da tela no OBS'}
         self.speak_in_selected_language(f'Preciso da sua autorização para {what.get(name,"executar uma ação")}. Toque na bolha para autorizar. Clique com o botão direito para negar.')
     def resolve_approval(self,approved):
         detail=self.pending
@@ -368,58 +282,7 @@ class AuroraService(QObject):
         detail['event'].set(); self.orb.set_mode('thinking')
         if detail.get('direct'): self.complete_direct_action(detail['result'] if approved else 'Tudo bem, não executei essa ação.')
     def execute_action(self,name,args):
-        if name=='open_application': return launch_application(args.get('command',''))
-        if name=='close_application': return close_application(args.get('application',''))
-        if name=='manage_window': return manage_window(args.get('action',''),args.get('target',''))
-        if name=='volume_control': return control_volume(args.get('action','status'),args.get('value',5))
-        if name=='get_system_info': return system_hardware_summary()
-        if name=='create_file':
-            try: return create_user_file(args.get('filename',''),args.get('location',''),args.get('content',''))
-            except Exception as exc: return f'Não criei o arquivo: {exc}'
-        if name=='remember_preference': return user_memory_update(args.get('preference',''))
-        if name=='forget_preference': return user_memory_update(args.get('preference',''),forget=True)
-        if name=='open_url':
-            url=str(args.get('url','')).strip(); u=urlparse(url)
-            if u.scheme not in ('http','https') or not u.hostname: return 'URL rejeitada por formato inválido.'
-            opened=QDesktopServices.openUrl(QUrl(url))
-            aurora_integrations._append_action_log('open_website','opened' if opened else 'failed')
-            return 'Abri o site no navegador padrão.' if opened else 'Não consegui abrir o site no navegador padrão.'
-        if name=='clarify_open_target':
-            target=str(args.get('target','')).strip()
-            if re.search(r'\b(site|pagina|link|url|endereco)\b',target):
-                return 'Qual é o domínio ou endereço completo do site?'
-            return f'Você quer abrir o aplicativo “{target}” ou o site dele?'
-        if name=='take_screenshot':
-            self.orb.set_mode('controlling')
-            QApplication.processEvents()
-            if not self.voice.request_active.is_set(): return 'A captura foi cancelada.'
-            try:
-                path=aurora_integrations.capture_screenshot(xdg_user_directory('PICTURES'))
-                aurora_integrations._append_action_log('screenshot','saved',{'path':str(path)})
-                return f'Salvei a captura em {path}.'
-            except Exception as exc:
-                aurora_integrations._append_action_log('screenshot','failed')
-                return f'Não consegui confirmar a captura: {exc}'
-        if name=='spotify_authorize':
-            return aurora_integrations.start_spotify_authorization(
-                self.cfg.get('spotify_client_id',''), lambda url: QDesktopServices.openUrl(QUrl(url)))
-        if name=='spotify_play':
-            return aurora_integrations.play_spotify_track(args.get('query',''),self.cfg.get('spotify_client_id',''))
-        if name=='obs_record':
-            self.orb.set_mode('controlling')
-            QApplication.processEvents()
-            if not self.voice.request_active.is_set(): return 'A gravação foi cancelada.'
-            return aurora_integrations.obs_record(args.get('action',''),os.environ.get('AURORA_OBS_PASSWORD',''),
-                self.cfg.get('obs_host','127.0.0.1'),self.cfg.get('obs_port',4455))
-        if name in ('type_text','click_screen'):
-            if os.environ.get('WAYLAND_DISPLAY') or not os.environ.get('DISPLAY'): return 'Mouse e teclado só estão disponíveis numa sessão X11; esta sessão Wayland bloqueia injeção de eventos.'
-            try: import pyautogui
-            except ImportError: return 'Controle X11 não instalado.'
-            if name=='type_text': pyautogui.write(str(args.get('text',''))[:500],interval=.01); return 'Texto digitado.'
-            x=int(args.get('x',-1)); y=int(args.get('y',-1)); w,h=pyautogui.size()
-            if not (0<=x<w and 0<=y<h): return 'Coordenada fora da tela.'
-            pyautogui.click(x,y); return 'Clique enviado.'
-        return 'Ação não disponível.'
+        return dispatch_action(self,name,args)
     def unload_model(self,model=None):
         model=model or self.cfg['model']
         try:

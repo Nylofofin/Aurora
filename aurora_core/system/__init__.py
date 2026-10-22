@@ -1,5 +1,2 @@
-from __future__ import annotations
-
-
-
 """Aurora system components."""
+from __future__ import annotations

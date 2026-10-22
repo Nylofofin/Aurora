@@ -27,6 +27,10 @@ import aurora
 import aurora_core.service as aurora_service
 import aurora_core.web.pipeline as web_pipeline
 import aurora_core.web.security as web_security
+import aurora_core.web.fetch as web_fetch
+import aurora_core.web.providers as web_providers
+import aurora_core.web.intent as web_intent
+import aurora_core.web.freshness as web_freshness
 
 ROOT = Path(__file__).resolve().parents[1]
 QUESTIONS = ROOT / "tests" / "eval" / "questions.txt"
@@ -309,15 +313,15 @@ class ResponseCapture:
 def install_trace(trace):
     originals = {}
     original_search = web_pipeline.search_public_web
-    original_page = web_pipeline._search_page_excerpt
+    original_page = web_fetch._search_page_excerpt
     original_open = web_pipeline.PUBLIC_OPENER.open
     original_urlopen = urllib.request.urlopen
     original_ddg_feed = web_pipeline.DuckDuckGoLiteResults.feed
     original_xml_fromstring = ET.fromstring
     original_fx_read_json = aurora.aurora_fx._read_json
-    original_relevance = web_pipeline._search_relevance
-    original_publication_window = web_pipeline._publication_within_window
-    original_public_url = web_pipeline.public_http_url
+    original_relevance = web_intent._search_relevance
+    original_publication_window = web_freshness._publication_within_window
+    original_public_url = web_security.public_http_url
     original_redirect = web_security.PublicRedirectHandler.redirect_request
     request_context = threading.local()
 
@@ -533,13 +537,21 @@ def install_trace(trace):
     web_pipeline.search_public_web = traced_search
     aurora_service.search_public_web = traced_search
     web_pipeline._search_page_excerpt = traced_page
+    web_fetch._search_page_excerpt = traced_page
+    web_providers._search_page_excerpt = traced_page
     web_pipeline.PUBLIC_OPENER.open = instrumented_open(original_open)
     urllib.request.urlopen = instrumented_open(original_urlopen)
     web_pipeline.DuckDuckGoLiteResults.feed = traced_ddg_feed
     ET.fromstring = traced_xml_fromstring
     aurora.aurora_fx._read_json = traced_fx_read_json
     web_pipeline._search_relevance = traced_relevance
+    web_intent._search_relevance = traced_relevance
+    web_providers._search_relevance = traced_relevance
     web_pipeline._publication_within_window = traced_publication
+    web_freshness._publication_within_window = traced_publication
+    web_providers._publication_within_window = traced_publication
+    web_providers.public_http_url = traced_public_url
+    web_fetch.public_http_url = traced_public_url
     web_pipeline.public_http_url = traced_public_url
     web_security.public_http_url = traced_public_url
     web_security.PublicRedirectHandler.redirect_request = traced_redirect
@@ -550,14 +562,22 @@ def restore_trace(originals):
     web_pipeline.search_public_web = originals["search_public_web"]
     aurora_service.search_public_web = originals["search_public_web"]
     web_pipeline._search_page_excerpt = originals["_search_page_excerpt"]
+    web_fetch._search_page_excerpt = originals["_search_page_excerpt"]
+    web_providers._search_page_excerpt = originals["_search_page_excerpt"]
     web_pipeline.PUBLIC_OPENER.open = originals["opener_open"]
     urllib.request.urlopen = originals["urlopen"]
     web_pipeline.DuckDuckGoLiteResults.feed = originals["ddg_feed"]
     ET.fromstring = originals["xml_fromstring"]
     aurora.aurora_fx._read_json = originals["fx_read_json"]
     web_pipeline._search_relevance = originals["relevance"]
+    web_intent._search_relevance = originals["relevance"]
+    web_providers._search_relevance = originals["relevance"]
     web_pipeline._publication_within_window = originals["publication_window"]
+    web_freshness._publication_within_window = originals["publication_window"]
+    web_providers._publication_within_window = originals["publication_window"]
     web_pipeline.public_http_url = originals["public_url"]
+    web_providers.public_http_url = originals["public_url"]
+    web_fetch.public_http_url = originals["public_url"]
     web_security.public_http_url = originals["public_url"]
     web_security.PublicRedirectHandler.redirect_request = originals["redirect_request"]
 

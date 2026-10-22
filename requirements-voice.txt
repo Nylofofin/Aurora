@@ -1,4 +1,2 @@
-sounddevice>=0.5
-vosk>=0.3.45
-SpeechRecognition>=3.14
-edge-tts>=7.2
+# Compatibilidade com setup-voice.sh: o runtime completo já inclui as dependências de voz.
+-r requirements.txt

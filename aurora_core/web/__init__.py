@@ -1,5 +1,2 @@
-from __future__ import annotations
-
-
-
 """Aurora web components."""
+from __future__ import annotations

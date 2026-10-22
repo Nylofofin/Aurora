@@ -1,18 +1,15 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QThread, Signal
-from pathlib import Path
-import json, os, re, threading, urllib.error, urllib.request
+import json, re, threading, urllib.error, urllib.request
 from ..config import local_endpoint
-from .prompts import TOOLS, assistant_system_prompt, complete_spoken_response
-from ..memory import user_memory_update
-from ..system.apps import launch_application
-from ..system.files import create_user_file, normalize_words
-from ..system.hardware import system_hardware_summary
-from ..system.volume import control_volume
-from ..system.windows import manage_window
+from .prompts import assistant_system_prompt, complete_spoken_response
+from .tools import TOOLS, execute_local_tool
+from ..system.files import normalize_words
 from ..web.language import likely_english, likely_portuguese
-from ..web.pipeline import _is_historical_query, current_search_window, guided_learning_intent, read_public_page, search_public_web
+from ..web.intent import _is_historical_query, current_search_window, guided_learning_intent
+from ..web.fetch import read_public_page
+from ..web.pipeline import search_public_web
 
 class Inference(QThread):
     phrase=Signal(str); sentence=Signal(str); state=Signal(str); approval=Signal(str,object); result=Signal(str); error=Signal(str); search=Signal(str,str)
@@ -107,27 +104,8 @@ class Inference(QThread):
         except Exception as e:
             self.error.emit('Não conectei ao Ollama local. Confira se ele está ativo e se o Gemma está instalado.')
     def execute_tool(self,name,args):
-        if name=='get_system_info': return system_hardware_summary()
-        if name=='volume_control': return control_volume(args.get('action','status'),args.get('value',5))
-        if name=='manage_window' and args.get('action')!='close': return manage_window(args.get('action',''),args.get('target',''))
-        if name=='open_application': return launch_application(args.get('command',''))
-        if name=='create_file':
-            try: return create_user_file(args.get('filename',''),args.get('location',''),args.get('content',''))
-            except Exception as exc: return f'Não criei o arquivo: {exc}'
-        if name=='remember_preference': return user_memory_update(args.get('preference',''))
-        if name=='forget_preference': return user_memory_update(args.get('preference',''),forget=True)
-        if name=='search_files':
-            query=str(args.get('query','')).lower().strip()
-            if not query: return 'Busca sem termo.'
-            hits=[]; skip={'.cache','.local','.mozilla','.var','node_modules','.git'}
-            for root,dirs,files in os.walk(Path.home()):
-                dirs[:]=[d for d in dirs if d not in skip]
-                for filename in files:
-                    if query in filename.lower():
-                        hits.append(str(Path(root)/filename))
-                        if len(hits)>=25: break
-                if len(hits)>=25: break
-            return '\n'.join(hits) if hits else 'Nenhum arquivo encontrado pelo nome.'
+        local_result=execute_local_tool(name,args)
+        if local_result is not None: return local_result
         if name=='read_web_page':
             try: return read_public_page(str(args.get('url','')))
             except Exception as exc: return f'Página não lida: {exc}'
@@ -140,7 +118,7 @@ class Inference(QThread):
             except Exception as exc: output=f'Busca não concluída: {exc}'
             self.search.emit(query,output)
             return output
-        if name not in ('close_application','manage_window','open_url','take_screenshot','spotify_play','obs_record','type_text','click_screen'): return 'Ferramenta indisponível.'
+        if name not in ('close_application','manage_window','open_url','take_screenshot','spotify_play','obs_record'): return 'Ferramenta indisponível.'
         detail={'name':name,'args':args,'event':threading.Event(),'result':'Ação recusada.'}
         self.approval.emit(name,detail)
         if not detail['event'].wait(90): return 'Autorização expirou; ação cancelada.'

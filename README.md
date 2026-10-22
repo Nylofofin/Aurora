@@ -35,7 +35,7 @@ Rode a suíte local de parsers, intenção, atualidade, relevância, fontes inde
 - Compilação: `./.venv/bin/python -m compileall -q aurora.py aurora_core aurora_fx.py aurora_integrations.py scripts`.
 - Rodar na sessão gráfica: `./run.sh` (ou `./start-alpha.sh` para o runtime local de desenvolvimento).
 - Ver logs do serviço: `journalctl --user -u aurora.service -f`.
-- Ferramentas X11 opcionais: `requirements-control.txt` contém `pyautogui`; mouse/teclado sintético não é habilitado em Wayland. O controle de janelas depende de `wmctrl`/`xdotool` quando presentes.
+- O arquivo legado `requirements-control.txt` ainda lista `pyautogui`, mas nenhuma ferramenta da Aurora o utiliza ou expõe; a dependência ficou fora do caminho de instalação. A remoção do arquivo é uma decisão pendente conforme a regra do projeto. O controle de janelas depende de `wmctrl`/`xdotool` quando presentes.
 
 ## Voz
 

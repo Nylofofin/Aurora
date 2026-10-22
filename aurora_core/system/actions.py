@@ -1,0 +1,60 @@
+from __future__ import annotations
+
+from PySide6.QtCore import QUrl
+from PySide6.QtGui import QDesktopServices
+from PySide6.QtWidgets import QApplication
+from urllib.parse import urlparse
+import os, re
+import aurora_integrations
+from .apps import close_application, launch_application
+from .files import create_user_file, xdg_user_directory
+from .hardware import system_hardware_summary
+from .volume import control_volume
+from .windows import manage_window
+from ..memory import user_memory_update
+
+def execute_action(self,name,args):
+    if name=='open_application': return launch_application(args.get('command',''))
+    if name=='close_application': return close_application(args.get('application',''))
+    if name=='manage_window': return manage_window(args.get('action',''),args.get('target',''))
+    if name=='volume_control': return control_volume(args.get('action','status'),args.get('value',5))
+    if name in ('system_info','get_system_info'): return system_hardware_summary()
+    if name=='create_file':
+        try: return create_user_file(args.get('filename',''),args.get('location',''),args.get('content',''))
+        except Exception as exc: return f'Não criei o arquivo: {exc}'
+    if name=='remember_preference': return user_memory_update(args.get('preference',''))
+    if name=='forget_preference': return user_memory_update(args.get('preference',''),forget=True)
+    if name=='open_url':
+        url=str(args.get('url','')).strip(); u=urlparse(url)
+        if u.scheme not in ('http','https') or not u.hostname: return 'URL rejeitada por formato inválido.'
+        opened=QDesktopServices.openUrl(QUrl(url))
+        aurora_integrations._append_action_log('open_website','opened' if opened else 'failed')
+        return 'Abri o site no navegador padrão.' if opened else 'Não consegui abrir o site no navegador padrão.'
+    if name=='clarify_open_target':
+        target=str(args.get('target','')).strip()
+        if re.search(r'\b(site|pagina|link|url|endereco)\b',target):
+            return 'Qual é o domínio ou endereço completo do site?'
+        return f'Você quer abrir o aplicativo “{target}” ou o site dele?'
+    if name=='take_screenshot':
+        self.orb.set_mode('controlling')
+        QApplication.processEvents()
+        if not self.voice.request_active.is_set(): return 'A captura foi cancelada.'
+        try:
+            path=aurora_integrations.capture_screenshot(xdg_user_directory('PICTURES'))
+            aurora_integrations._append_action_log('screenshot','saved',{'path':str(path)})
+            return f'Salvei a captura em {path}.'
+        except Exception as exc:
+            aurora_integrations._append_action_log('screenshot','failed')
+            return f'Não consegui confirmar a captura: {exc}'
+    if name=='spotify_authorize':
+        return aurora_integrations.start_spotify_authorization(
+            self.cfg.get('spotify_client_id',''), lambda url: QDesktopServices.openUrl(QUrl(url)))
+    if name=='spotify_play':
+        return aurora_integrations.play_spotify_track(args.get('query',''),self.cfg.get('spotify_client_id',''))
+    if name=='obs_record':
+        self.orb.set_mode('controlling')
+        QApplication.processEvents()
+        if not self.voice.request_active.is_set(): return 'A gravação foi cancelada.'
+        return aurora_integrations.obs_record(args.get('action',''),os.environ.get('AURORA_OBS_PASSWORD',''),
+            self.cfg.get('obs_host','127.0.0.1'),self.cfg.get('obs_port',4455))
+    return 'Ação não disponível.'

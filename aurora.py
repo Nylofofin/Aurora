@@ -30,6 +30,9 @@ from aurora_core.system.files import (
 from aurora_core.system.hardware import (
     system_hardware_summary,
 )
+from aurora_core.system.actions import (
+    execute_action,
+)
 from aurora_core.system.apps import (
     close_application,
     desktop_app_entries,
@@ -70,24 +73,11 @@ from aurora_core.web.weather import (
     _get_json,
     weather_now,
 )
-from aurora_core.web.pipeline import (
-    _SEARCH_CACHE,
-    _SEARCH_CACHE_LOCK,
-    _SEARCH_CACHE_TTL,
-    _enrich_news_results,
+from aurora_core.web.intent import (
     _fresh_query_terms,
-    _google_news_pipeline_items,
-    _has_expired_deadline,
-    _has_stale_source_date,
-    _has_stale_url_date,
-    _independent_recent_source_count,
     _is_historical_query,
     _news_result_relevance,
-    _parse_publication_date,
-    _publication_within_window,
     _result_query_relevance,
-    _search_page_excerpt,
-    _search_public_web_uncached,
     _search_query_variants,
     _search_relevance,
     contextual_followup,
@@ -97,20 +87,40 @@ from aurora_core.web.pipeline import (
     factual_web_intent,
     guided_learning_intent,
     international_news_only,
-    local_datetime_answer,
     news_search_intent,
     news_unconfirmed_message,
-    read_public_page,
     requested_response_language,
     research_request_intent,
     search_failure_summary,
-    search_google_news,
     search_intent,
-    search_public_web,
+    local_datetime_answer,
+)
+from aurora_core.web.freshness import (
+    _has_expired_deadline,
+    _has_stale_source_date,
+    _has_stale_url_date,
+    _independent_recent_source_count,
+    _parse_publication_date,
+    _publication_within_window,
+)
+from aurora_core.web.providers import (
+    _enrich_news_results,
+    _google_news_pipeline_items,
+    search_google_news,
+)
+from aurora_core.web.fetch import (
+    _search_page_excerpt,
+    read_public_page,
     web_fetch,
 )
+from aurora_core.web.pipeline import (
+    _SEARCH_CACHE,
+    _SEARCH_CACHE_LOCK,
+    _SEARCH_CACHE_TTL,
+    _search_public_web_uncached,
+    search_public_web,
+)
 from aurora_core.llm.prompts import (
-    TOOLS,
     _ground_numeric_answer,
     _verified_fx_answer,
     assistant_system_prompt,
@@ -119,6 +129,7 @@ from aurora_core.llm.prompts import (
     numeric_answer_intent,
     search_answer_prompts,
 )
+from aurora_core.llm.tools import TOOLS
 from aurora_core.llm.inference import (
     Inference,
 )
@@ -131,13 +142,9 @@ from aurora_core.voice.tts import (
 from aurora_core.ui.orb import (
     AuroraOrb,
 )
-from aurora_core.service import (
-    AuroraService,
-    FXRequest,
-    ModelWarmup,
-    SearchRequest,
-    WeatherRequest,
-)
+from aurora_core.service import AuroraService
+from aurora_core.web.requests import FXRequest, SearchRequest, WeatherRequest
+from aurora_core.llm.warmup import ModelWarmup
 from aurora_core.main import (
     main,
 )

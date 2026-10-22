@@ -7,6 +7,8 @@ import threading
 
 import aurora
 import aurora_integrations as integrations
+import aurora_core.service as service_module
+import aurora_core.system.actions as system_actions
 
 
 def test_site_opening_is_separate_from_application_opening():
@@ -43,6 +45,12 @@ def test_local_fast_router_handles_media_capture_and_obs_requests():
     assert aurora.parse_local_command("pare de gravar a tela") == (
         "obs_record", {"action": "stop"}
     )
+
+
+def test_hardware_fast_route_reaches_the_system_info_executor(monkeypatch):
+    monkeypatch.setattr(system_actions, "system_hardware_summary", lambda: "hardware confirmado")
+    assert aurora.parse_local_command("mostre o hardware do meu PC") == ("system_info", {})
+    assert service_module.AuroraService.execute_action(object(), "system_info", {}) == "hardware confirmado"
 
 
 def test_screenshot_saves_unique_timestamped_files_without_overwriting(tmp_path):
