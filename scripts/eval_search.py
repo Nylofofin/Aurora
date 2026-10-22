@@ -6,6 +6,7 @@ import argparse
 import os
 import queue
 import re
+import sys
 import threading
 import time
 from pathlib import Path
@@ -14,6 +15,7 @@ from urllib.parse import urlparse
 
 from PySide6.QtCore import QCoreApplication, QEventLoop, QObject, QTimer, Signal
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import aurora
 
 ROOT = Path(__file__).resolve().parents[1]
