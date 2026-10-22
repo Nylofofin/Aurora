@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import json
 import os
 import queue
 import re
@@ -33,6 +34,11 @@ class Trace:
         self.raw_result_text = ""
         self.pages_read = []
         self.current_query = ""
+        self.fx_api_json = []
+        self.fx_guard = None
+        self.fx_quote = None
+        self.fx_api_timings = ()
+        self.filter_counts = {"relevancia": 0, "data_fonte": 0, "data_pagina_ausente": 0, "url": 0, "redirecionamento": 0}
 
     def append(self, name, value):
         with self.lock:
@@ -115,6 +121,24 @@ class EvalService(QObject):
         aurora.AuroraService.quick_search_done(self, query, output, generation)
 
     def fx_lookup_done(self, lookup, generation=None):
+        if self.trace is not None:
+            quote = lookup.quote
+            self.trace.fx_api_timings = lookup.api_timings
+            if quote:
+                formatted = aurora.aurora_fx.format_quote(quote)
+                checked = aurora._verified_fx_answer(formatted, quote)
+                self.trace.fx_guard = {"approved": checked == formatted, "formatted": formatted, "checked": checked}
+                self.trace.fx_quote = {
+                    "source": quote.source, "pair": f"{quote.base}/{quote.quote}",
+                    "rate": str(quote.rate), "bid": str(quote.bid) if quote.bid is not None else None,
+                    "ask": str(quote.ask) if quote.ask is not None else None,
+                    "quote_date": quote.quote_date.isoformat(), "quote_time": quote.quote_time or None,
+                    "amount": str(quote.amount) if quote.amount is not None else None,
+                    "converted": str(quote.converted) if quote.converted is not None else None,
+                    "retrieved_at": quote.retrieved_at.isoformat() if quote.retrieved_at else None,
+                }
+            elif lookup.fallback_output:
+                self.trace.fx_guard = {"approved": False, "checked": "fallback para busca web"}
         aurora.AuroraService.fx_lookup_done(self, lookup, generation)
         self._finish()
 
@@ -277,7 +301,51 @@ def install_trace(trace):
     original_urlopen = aurora.urllib.request.urlopen
     original_ddg_feed = aurora.DuckDuckGoLiteResults.feed
     original_xml_fromstring = aurora.ET.fromstring
+    original_fx_read_json = aurora.aurora_fx._read_json
+    original_relevance = aurora._search_relevance
+    original_publication_window = aurora._publication_within_window
+    original_public_url = aurora.public_http_url
+    original_redirect = aurora.PublicRedirectHandler.redirect_request
     request_context = threading.local()
+
+    def traced_fx_read_json(url, *args, **kwargs):
+        started = time.perf_counter()
+        payload = original_fx_read_json(url, *args, **kwargs)
+        if "awesomeapi" in url:
+            key = next(iter(payload), "") if isinstance(payload, dict) else ""
+            row = payload.get(key, {}) if isinstance(payload, dict) else {}
+            fields = {name: row.get(name) for name in ("code", "codein", "bid", "ask", "create_date")}
+        else:
+            fields = {name: payload.get(name) for name in ("base", "quote", "rate", "date")} if isinstance(payload, dict) else payload
+        trace.append("fx_api_json", {"url": url, "fields": fields, "elapsed_ms": round((time.perf_counter() - started) * 1000)})
+        return payload
+
+    def traced_relevance(*args, **kwargs):
+        score = original_relevance(*args, **kwargs)
+        if score <= 0:
+            trace.filter_counts["relevancia"] += 1
+        return score
+
+    def traced_publication(value, window, *args, **kwargs):
+        accepted = original_publication_window(value, window, *args, **kwargs)
+        if not accepted:
+            trace.filter_counts["data_fonte"] += 1
+        return accepted
+
+    def traced_public_url(url):
+        try:
+            return original_public_url(url)
+        except Exception:
+            key = "redirecionamento" if getattr(request_context, "checking_redirect", False) else "url"
+            trace.filter_counts[key] += 1
+            raise
+
+    def traced_redirect(self, req, fp, code, msg, headers, newurl):
+        request_context.checking_redirect = True
+        try:
+            return original_redirect(self, req, fp, code, msg, headers, newurl)
+        finally:
+            request_context.checking_redirect = False
 
     def request_kind(url):
         if getattr(request_context, "reading_page", False):
@@ -300,7 +368,7 @@ def install_trace(trace):
     def diagnostic_item(title, url, snippet, published, provider, publisher="", domain_hint=""):
         resolved = canonical_result_url(url, provider)
         domain = domain_hint or (urlparse(resolved).hostname or "domínio desconhecido")
-        score = aurora._search_relevance(trace.current_query, title, snippet)
+        score = original_relevance(trace.current_query, title, snippet)
         return {
             "title": title,
             "domain": domain.removeprefix("www."),
@@ -430,6 +498,8 @@ def install_trace(trace):
             else:
                 excerpt, published = result, ""
             page.update({"excerpt": excerpt, "date": published or "sem data"})
+            if not published:
+                trace.filter_counts["data_pagina_ausente"] += 1
             return result
         except Exception as exc:
             page["error"] = f"{type(exc).__name__}: {exc}"
@@ -443,6 +513,9 @@ def install_trace(trace):
         "search_public_web": original_search, "_search_page_excerpt": original_page,
         "opener_open": original_open, "urlopen": original_urlopen,
         "ddg_feed": original_ddg_feed, "xml_fromstring": original_xml_fromstring,
+        "fx_read_json": original_fx_read_json, "relevance": original_relevance,
+        "publication_window": original_publication_window, "public_url": original_public_url,
+        "redirect_request": original_redirect,
     })
     aurora.search_public_web = traced_search
     aurora._search_page_excerpt = traced_page
@@ -450,6 +523,11 @@ def install_trace(trace):
     aurora.urllib.request.urlopen = instrumented_open(original_urlopen)
     aurora.DuckDuckGoLiteResults.feed = traced_ddg_feed
     aurora.ET.fromstring = traced_xml_fromstring
+    aurora.aurora_fx._read_json = traced_fx_read_json
+    aurora._search_relevance = traced_relevance
+    aurora._publication_within_window = traced_publication
+    aurora.public_http_url = traced_public_url
+    aurora.PublicRedirectHandler.redirect_request = traced_redirect
     return originals
 
 
@@ -460,6 +538,11 @@ def restore_trace(originals):
     aurora.urllib.request.urlopen = originals["urlopen"]
     aurora.DuckDuckGoLiteResults.feed = originals["ddg_feed"]
     aurora.ET.fromstring = originals["xml_fromstring"]
+    aurora.aurora_fx._read_json = originals["fx_read_json"]
+    aurora._search_relevance = originals["relevance"]
+    aurora._publication_within_window = originals["publication_window"]
+    aurora.public_http_url = originals["public_url"]
+    aurora.PublicRedirectHandler.redirect_request = originals["redirect_request"]
 
 
 def evaluate(line_number, question, cfg, timeout_seconds, history=None, context_note=""):
@@ -502,6 +585,14 @@ def evaluate(line_number, question, cfg, timeout_seconds, history=None, context_
         ))
     else:
         lines.append("- **Consulta(s) passada(s) ao caminho de busca:** nenhuma.")
+    if trace.fx_api_json:
+        lines.append("- **JSON cru da API (campos usados):**")
+        lines.extend(f"  - `{item['url']}` — `{json.dumps(item['fields'], ensure_ascii=False)}`; {item['elapsed_ms']} ms" for item in trace.fx_api_json)
+    if trace.fx_guard:
+        lines.append(f"- **Checagem numérica:** {'APROVADA' if trace.fx_guard['approved'] else 'BLOQUEADA'}.")
+        if trace.fx_quote:
+            q = trace.fx_quote
+            lines.append(f"  - Valores API ({q['pair']}): bid `{q['bid']}`, ask `{q['ask']}`, taxa `{q['rate']}`, conversão `{q['converted']}`.")
     lines.append("- **Diagnóstico HTTP por provedor:**")
     provider_requests = [item for item in trace.network_requests if item["kind"] in ("DuckDuckGo Lite", "Bing RSS", "Google Notícias")]
     if provider_requests:
@@ -568,9 +659,14 @@ def evaluate(line_number, question, cfg, timeout_seconds, history=None, context_
                 lines.append(f"  - URL `{page['url']}`; sem tentativa HTTP registrada; data: {page['date']}" + (f"; erro: `{page['error']}`" if page.get("error") else ""))
     else:
         lines.append("  - nenhuma")
+    if trace.search_calls:
+        counts = trace.filter_counts
+        lines.append("- **Contagem diagnóstica de filtros:** " + "; ".join(f"{name}: {value}" for name, value in counts.items()))
     answer = service.response_summary or " ".join(service.speaker.parts).strip()
     if service.fx_api_timings:
         lines.append("- **Latência das APIs de câmbio:** " + "; ".join(f"{name}: {seconds * 1000:.0f} ms" for name, seconds in service.fx_api_timings))
+    if trace.fx_guard and trace.fx_guard.get("checked"):
+        lines.append("- **Resposta candidata antes da proteção:** " + trace.fx_guard.get("formatted", ""))
     if timed_out["value"] and not answer:
         answer = f"tempo limite após {timeout_seconds:g}s; sem resposta final"
     lines.append("- **Resposta final:** " + (answer or "sem resposta final capturada"))
