@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from urllib.parse import urlparse, urlencode, parse_qs, urljoin
-import asyncio, base64, concurrent.futures, configparser, html, json, os, platform, queue, re, shlex, shutil, signal, subprocess, sys, threading, time, urllib.error, urllib.request, unicodedata
+from urllib.parse import urlparse
+import json, os, platform, shutil
 
 APP_DIR = Path(__file__).resolve().parent.parent
 

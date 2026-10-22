@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import asyncio, base64, concurrent.futures, configparser, html, json, os, platform, queue, re, shlex, shutil, signal, subprocess, sys, threading, time, urllib.error, urllib.request, unicodedata
+import re
 
 ENGLISH_MARKERS={'absolutely','and','answer','are','because','can','certainly','could','degrees','do','does','face','fast','four','from','good','have','has','here','hot','how','is','it','its','okay','please','should','smiling','sure','temperature','that','the','they','this','those','three','today','tomorrow','two','was','we','weather','were','what','when','where','which','who','will','with','would','yes','you','your','eyes'}
 

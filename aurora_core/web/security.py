@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from urllib.parse import urlparse, urlencode, parse_qs, urljoin
-import asyncio, base64, concurrent.futures, configparser, html, json, os, platform, queue, re, shlex, shutil, signal, subprocess, sys, threading, time, urllib.error, urllib.request, unicodedata
+from urllib.parse import urlparse, urljoin
+import urllib.error, urllib.request
 import socket, ipaddress
 
 def public_http_url(url):

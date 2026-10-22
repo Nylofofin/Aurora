@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QObject, QThread, Signal, Slot, QTimer, QPoint, QRectF, QUrl, QPropertyAnimation, QEasingCurve
+from PySide6.QtCore import QThread, Signal
 from array import array
-import asyncio, base64, concurrent.futures, configparser, html, json, os, platform, queue, re, shlex, shutil, signal, subprocess, sys, threading, time, urllib.error, urllib.request, unicodedata
+import json, queue, re, sys, threading, time
 import math
-
 from ..config import VOSK_PATH
 from ..system.files import normalize_words
 from ..system.text import strip_wake_word

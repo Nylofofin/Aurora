@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QObject, QThread, Signal, Slot, QTimer, QPoint, QRectF, QUrl, QPropertyAnimation, QEasingCurve
-from PySide6.QtGui import QColor, QDesktopServices, QSurfaceFormat
+from PySide6.QtCore import Qt, QObject, Signal, QTimer, QPoint, QRectF, QUrl, QPropertyAnimation, QEasingCurve
+from PySide6.QtGui import QColor, QSurfaceFormat
 from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import QApplication
-import asyncio, base64, concurrent.futures, configparser, html, json, os, platform, queue, re, shlex, shutil, signal, subprocess, sys, threading, time, urllib.error, urllib.request, unicodedata
-
+import sys
 from ..config import APP_DIR, settings_save
 
 class AuroraOrb(QObject):

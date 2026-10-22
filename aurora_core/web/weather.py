@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from urllib.parse import urlparse, urlencode, parse_qs, urljoin
-import asyncio, base64, concurrent.futures, configparser, html, json, os, platform, queue, re, shlex, shutil, signal, subprocess, sys, threading, time, urllib.error, urllib.request, unicodedata
-
+from urllib.parse import urlencode
+import json, re, time, urllib.error, urllib.request
 from ..config import settings_save
 
 WMO_WEATHER={0:'céu limpo',1:'predominantemente limpo',2:'parcialmente nublado',3:'nublado',45:'neblina',48:'neblina com gelo',51:'garoa fraca',53:'garoa',55:'garoa forte',61:'chuva fraca',63:'chuva',65:'chuva forte',71:'neve fraca',73:'neve',75:'neve forte',80:'pancadas fracas',81:'pancadas de chuva',82:'pancadas fortes',95:'trovoadas',96:'trovoadas com granizo',99:'trovoadas com granizo forte'}

@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QObject, QThread, Signal, Slot, QTimer, QPoint, QRectF, QUrl, QPropertyAnimation, QEasingCurve
+from PySide6.QtCore import QThread, Signal
 from pathlib import Path
-import asyncio, base64, concurrent.futures, configparser, html, json, os, platform, queue, re, shlex, shutil, signal, subprocess, sys, threading, time, urllib.error, urllib.request, unicodedata
-
+import json, os, re, threading, urllib.error, urllib.request
 from ..config import local_endpoint
 from .prompts import TOOLS, assistant_system_prompt, complete_spoken_response
 from ..memory import user_memory_update

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QObject, QThread, Signal, Slot, QTimer, QPoint, QRectF, QUrl, QPropertyAnimation, QEasingCurve
-import asyncio, base64, concurrent.futures, configparser, html, json, os, platform, queue, re, shlex, shutil, signal, subprocess, sys, threading, time, urllib.error, urllib.request, unicodedata
+from PySide6.QtCore import QThread, Signal
+import asyncio, queue, re, shutil, subprocess
 
 class Speaker(QThread):
     speaking=Signal(bool); audio_started=Signal(); drained=Signal()

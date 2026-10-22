@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import asyncio, base64, concurrent.futures, configparser, html, json, os, platform, queue, re, shlex, shutil, signal, subprocess, sys, threading, time, urllib.error, urllib.request, unicodedata
-
+import json, os, threading, unicodedata
 from .config import APP_DIR
 
 MEMORY_FILE=APP_DIR/'aurora-memory.json'

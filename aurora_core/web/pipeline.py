@@ -3,10 +3,9 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlparse, urlencode, parse_qs, urljoin
-import asyncio, base64, concurrent.futures, configparser, html, json, os, platform, queue, re, shlex, shutil, signal, subprocess, sys, threading, time, urllib.error, urllib.request, unicodedata
+import base64, concurrent.futures, html, re, threading, time, urllib.error, urllib.request, unicodedata
 import math
 import xml.etree.ElementTree as ET
-
 from ..system.files import normalize_words
 from .parsers import DuckDuckGoLiteResults, PageMetadata, PageText
 from .security import PUBLIC_OPENER, public_http_url

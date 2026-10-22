@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QObject, QThread, Signal, Slot, QTimer, QPoint, QRectF, QUrl, QPropertyAnimation, QEasingCurve
-from PySide6.QtGui import QColor, QDesktopServices, QSurfaceFormat
+from PySide6.QtCore import Qt, QObject, QThread, Signal, Slot, QTimer, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtMultimedia import QSoundEffect
 from PySide6.QtWidgets import QApplication
-from urllib.parse import urlparse, urlencode, parse_qs, urljoin
-import asyncio, base64, concurrent.futures, configparser, html, json, os, platform, queue, re, shlex, shutil, signal, subprocess, sys, threading, time, urllib.error, urllib.request, unicodedata
+from urllib.parse import urlparse
+import json, os, re, threading, time, urllib.error, urllib.request
 import aurora_fx
 import aurora_integrations
-
 from .config import APP_DIR, hardware_profile, local_endpoint, settings_load, settings_save
 from .llm.inference import Inference
 from .llm.prompts import _verified_fx_answer, assistant_system_prompt, ground_search_answer, search_answer_prompts
