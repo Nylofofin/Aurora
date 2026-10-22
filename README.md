@@ -61,7 +61,7 @@ As respostas comuns mantêm o Gemma 3 1B rápido, com mais espaço de saída qua
 
 - Ollama e o modelo Gemma precisam ser instalados/baixados uma vez. No desenvolvimento, `start-alpha.sh` usa o runtime local da pasta `work/` quando disponível e desliga recursos de nuvem.
 - A palavra de ativação roda localmente, mas a transcrição e a voz Edge TTS precisam de internet. `recognize_google` usa uma chave genérica indicada pelo projeto SpeechRecognition para uso pessoal/testes; o projeto avisa que ela pode ser revogada.
-- A busca e leitura de páginas usam conexões HTTP(S) diretas, sem proxies definidos por variáveis de ambiente, para conectar ao IP público validado e impedir que uma mudança de DNS redirecione a chamada para uma rede privada.
+- A busca e leitura de páginas usam conexões HTTP(S) diretas, sem proxies definidos por variáveis de ambiente, para conectar ao IP público validado e impedir que uma mudança de DNS redirecione a chamada para uma rede privada. Resoluções públicas verificadas ficam em cache por 10 segundos, com limite de 256 domínios.
 - O Gemma 3 1B é pré-aquecido em segundo plano usando o mesmo endpoint de chat e as mesmas opções de inferência da Aurora. No smoke test após inicialização, a primeira resposta curta começou em 0,21 s e terminou em 0,27 s; esse número depende da pergunta e não representa respostas longas. O modelo ficou em 100% GPU via Vulkan. O Gemma 4 para tarefas de agente continua mais lento neste hardware.
 - O serviço fixa `QT_QPA_PLATFORM=xcb` para renderizar a bolha pelo XWayland nesta sessão Wayland; o backend Wayland direto não oferece a opacidade e o posicionamento necessários para essa animação. Transparência e always-on-top ainda dependem de XWayland/Mutter e das regras do GNOME.
 

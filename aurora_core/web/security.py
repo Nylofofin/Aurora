@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 from urllib.parse import urlparse, urljoin
-import errno, http.client, ipaddress, queue, socket, ssl, threading, urllib.error, urllib.request
+import errno, http.client, ipaddress, queue, socket, ssl, threading, time, urllib.error, urllib.request
 
 DNS_VALIDATION_TIMEOUT=1.0
+DNS_CACHE_TTL=10.0
+_DNS_CACHE_MAX=256
+_DNS_CACHE={}
+_DNS_CACHE_LOCK=threading.Lock()
 
 def _resolve_public_host(host):
     result=queue.Queue(maxsize=1)
@@ -24,6 +28,11 @@ def _public_addresses(host):
     try:
         addr=ipaddress.ip_address(host)
     except ValueError:
+        now=time.monotonic()
+        with _DNS_CACHE_LOCK:
+            cached=_DNS_CACHE.get(host)
+            if cached and now<cached[0]: return cached[1]
+            if cached: _DNS_CACHE.pop(host,None)
         try: infos=_resolve_public_host(host)
         except socket.gaierror: infos=[]
         addresses=[]
@@ -32,7 +41,13 @@ def _public_addresses(host):
             if not addr.is_global: raise ValueError('Domínio resolve para uma rede local ou reservada.')
             addresses.append(str(addr))
         if not addresses: raise ValueError('Não foi possível resolver o domínio.')
-        return tuple(dict.fromkeys(addresses))
+        addresses=tuple(dict.fromkeys(addresses))
+        with _DNS_CACHE_LOCK:
+            for key,(expires,_) in list(_DNS_CACHE.items()):
+                if now>=expires: _DNS_CACHE.pop(key,None)
+            if len(_DNS_CACHE)>=_DNS_CACHE_MAX: _DNS_CACHE.pop(next(iter(_DNS_CACHE)))
+            _DNS_CACHE[host]=(time.monotonic()+DNS_CACHE_TTL,addresses)
+        return addresses
     if not addr.is_global: raise ValueError('Endereço local ou reservado bloqueado.')
     return (str(addr),)
 

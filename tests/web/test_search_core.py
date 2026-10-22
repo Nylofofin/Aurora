@@ -175,7 +175,9 @@ def test_public_url_dns_validation_has_a_bounded_timeout(monkeypatch):
 def test_public_http_connection_uses_the_validated_ip_even_if_dns_changes(monkeypatch):
     public = [(2, 1, 6, "", ("93.184.216.34", 0))]
     private = [(2, 1, 6, "", ("127.0.0.1", 0))]
-    monkeypatch.setattr(web_security, "_resolve_public_host", lambda _host: public)
+    lookups = []
+    monkeypatch.setattr(web_security, "_resolve_public_host", lambda host: (lookups.append(host) or public))
+    web_security.public_http_url("http://rebind.example:443/article")
     handler = web_security.PublicHTTPHandler()
     request = urllib.request.Request("http://rebind.example:443/article")
     def capture_connection(factory, req, **kwargs):
@@ -183,6 +185,7 @@ def test_public_http_connection_uses_the_validated_ip_even_if_dns_changes(monkey
     monkeypatch.setattr(handler, "do_open", capture_connection)
     connection = handler.http_open(request)
     assert connection._public_addresses == ("93.184.216.34",)
+    assert lookups == ["rebind.example"]
 
     connections = []
     class ConnectedSocket:
@@ -225,6 +228,22 @@ def test_public_url_rejects_a_domain_with_any_private_dns_answer(monkeypatch):
     monkeypatch.setattr(web_security, "_resolve_public_host", lambda _host: answers)
     with pytest.raises(ValueError, match="rede local"):
         web_security.public_http_url("https://mixed.example/page")
+
+
+def test_public_dns_cache_is_short_lived_and_bounded_by_configured_ttl(monkeypatch):
+    import time
+
+    calls = []
+    answer = [(2, 1, 6, "", ("93.184.216.34", 0))]
+    monkeypatch.setattr(web_security, "DNS_CACHE_TTL", 0.01)
+    monkeypatch.setattr(web_security, "_resolve_public_host", lambda host: (calls.append(host) or answer))
+    assert web_security._public_addresses("short-cache.example") == ("93.184.216.34",)
+    assert web_security._public_addresses("short-cache.example") == ("93.184.216.34",)
+    assert len(calls) == 1
+
+    time.sleep(0.02)
+    assert web_security._public_addresses("short-cache.example") == ("93.184.216.34",)
+    assert len(calls) == 2
 
 
 def test_question_intent_and_time_window_are_topic_independent():
