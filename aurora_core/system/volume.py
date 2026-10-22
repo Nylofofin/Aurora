@@ -2,17 +2,25 @@ from __future__ import annotations
 
 import re, shutil, subprocess
 
+def _run_wpctl(wpctl,*args):
+    try:
+        return subprocess.run([wpctl,*args],capture_output=True,text=True,timeout=3)
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess([wpctl,*args],124,stdout='',stderr='tempo esgotado')
+    except OSError as exc:
+        return subprocess.CompletedProcess([wpctl,*args],127,stdout='',stderr=str(exc))
+
 def control_volume(action,value=5):
     wpctl=shutil.which('wpctl')
     if not wpctl: return 'Não encontrei o wpctl do PipeWire para ajustar o volume.'
     action=str(action).casefold()
     if action not in ('status','mute','unmute','set','up','down'): return 'Ação de volume desconhecida.'
     if action=='status':
-        result=subprocess.run([wpctl,'get-volume','@DEFAULT_AUDIO_SINK@'],capture_output=True,text=True,timeout=3)
+        result=_run_wpctl(wpctl,'get-volume','@DEFAULT_AUDIO_SINK@')
         if result.returncode: return 'Não consegui consultar o volume: '+result.stderr.strip()
         return 'Volume do PC: '+result.stdout.strip().replace('Volume: ','')
     if action in ('mute','unmute'):
-        result=subprocess.run([wpctl,'set-mute','@DEFAULT_AUDIO_SINK@','1' if action=='mute' else '0'],capture_output=True,text=True,timeout=3)
+        result=_run_wpctl(wpctl,'set-mute','@DEFAULT_AUDIO_SINK@','1' if action=='mute' else '0')
         if result.returncode: return 'Não consegui mudar o mudo: '+result.stderr.strip()
         return 'Som do PC silenciado.' if action=='mute' else 'Som do PC reativado.'
     try: value=max(0,min(100,int(value or 0)))
@@ -20,7 +28,9 @@ def control_volume(action,value=5):
     if action=='set': level=f'{value}%'
     elif action=='up':
         try:
-            result=subprocess.run([wpctl,'get-volume','@DEFAULT_AUDIO_SINK@'],capture_output=True,text=True,timeout=3,check=True)
+            result=_run_wpctl(wpctl,'get-volume','@DEFAULT_AUDIO_SINK@')
+            if result.returncode:
+                return 'Não consegui ler o volume atual; não vou aumentá-lo: '+result.stderr.strip()
             match=re.search(r'Volume:\s*([0-9.]+)',result.stdout)
             if not match: return 'Não consegui ler o volume atual; não vou aumentá-lo sem essa confirmação.'
             current=float(match.group(1))
@@ -31,7 +41,7 @@ def control_volume(action,value=5):
         target=min(1.0,current+max(1,value)/100)
         level=f'{target:.3f}'
     elif action=='down': level=f'{max(1,value)}%-'
-    result=subprocess.run([wpctl,'set-volume','@DEFAULT_AUDIO_SINK@',level],capture_output=True,text=True,timeout=3)
+    result=_run_wpctl(wpctl,'set-volume','@DEFAULT_AUDIO_SINK@',level)
     return f'Volume ajustado para {value}%.' if action=='set' and result.returncode==0 else f'Volume aumentado para {round(target*100)}%.' if action=='up' and result.returncode==0 else f'Volume reduzido em {value}%.' if action=='down' and result.returncode==0 else 'Não consegui ajustar o volume: '+result.stderr.strip()
 
 def spoken_percentage(text):

@@ -56,6 +56,19 @@ def test_volume_up_does_not_mutate_when_current_volume_cannot_be_read(monkeypatc
     assert len(calls) == 1
 
 
+def test_volume_subprocess_timeouts_are_reported_without_escaping(monkeypatch):
+    import aurora_core.system.volume as volume
+
+    monkeypatch.setattr(volume.shutil, "which", lambda _name: "/usr/bin/wpctl")
+    monkeypatch.setattr(volume.subprocess, "run", lambda *_args, **_kwargs: (
+        (_ for _ in ()).throw(volume.subprocess.TimeoutExpired("wpctl", 3))
+    ))
+
+    assert "tempo esgotado" in volume.control_volume("status")
+    assert "não vou aumentá-lo" in volume.control_volume("up", 5)
+    assert "tempo esgotado" in volume.control_volume("set", 35)
+
+
 def test_natural_directory_resolves_standard_folder_names(monkeypatch, tmp_path):
     documents = tmp_path / "Documentos"
     documents.mkdir()
