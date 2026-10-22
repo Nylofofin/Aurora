@@ -232,8 +232,8 @@ def test_bing_news_candidates_use_common_pipeline_and_feed_date_when_page_has_no
         if query.endswith(" Brasil"):
             return []
         return [
-            ("https://publisher-a.example/tecnologia", "Tecnologia recebe novo recurso", "Atualização sobre tecnologia.", today, "Jornal A"),
-            ("https://publisher-b.example/tecnologia", "Tecnologia anuncia outra novidade", "Informações de tecnologia.", recent_yesterday, "Jornal B"),
+            ("https://publisher-a.example/tecnologia", "Tecnologia recebe novo recurso", "Atualização sobre tecnologia.", today, ""),
+            ("https://publisher-b.example/tecnologia", "Tecnologia anuncia outra novidade", "Informações de tecnologia.", recent_yesterday, ""),
         ]
     monkeypatch.setattr(search_pipeline, "search_bing_news", bing_news)
     monkeypatch.setattr(search_pipeline, "public_http_url", lambda url: url)
@@ -252,8 +252,8 @@ def test_bing_news_candidates_use_common_pipeline_and_feed_date_when_page_has_no
         "https://publisher-b.example/tecnologia",
     }
     assert news_queries == ["tecnologia", "tecnologia Brasil"]
-    assert "Feed RSS: Jornal A" in output
-    assert "Feed RSS: Jornal B" in output
+    assert "Feed RSS: publisher-a.example" in output
+    assert "Feed RSS: publisher-b.example" in output
     assert "Bing Notícias" in output
     assert "Trecho da página aberta agora" in output
 

@@ -186,7 +186,7 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
     for item in found[:8]:
         label=item['title'][:180]
         if item['published']:
-            publisher=item.get('publisher') or item['provider']
+            publisher=item.get('publisher') or item.get('host') or item['provider']
             if item.get('feed_date_accepted'): publisher='Feed RSS: '+publisher
             label+=f' [{publisher} · {item["published"]}]'
         line=label+(f' :: {item["snippet"][:350]}' if item['snippet'] else '')+f' — {item["url"]}'
