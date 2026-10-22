@@ -325,6 +325,53 @@ def _force_provider_failure(monkeypatch):
     monkeypatch.setattr(search_pipeline, "search_google_news", lambda query, window: _google_news_test_rows())
 
 
+def test_news_query_falls_back_to_ddg_and_bing_when_google_news_fails(monkeypatch):
+    from datetime import datetime, timezone
+    from email.utils import format_datetime
+
+    monkeypatch.setattr(search_pipeline, "search_google_news",
+                        lambda *_args: (_ for _ in ()).throw(TimeoutError("Google News timed out")))
+    pub_date = format_datetime(datetime.now(timezone.utc))
+    rss = """<rss><channel>
+      <item><title>Nexa network measurement update</title><description>Nexa network measurement report confirmed.</description><link>https://source-a.example/story</link><pubDate>DATE</pubDate></item>
+      <item><title>Nexa network measurement report</title><description>Independent Nexa network measurement report confirmed.</description><link>https://source-b.example/story</link><pubDate>DATE</pubDate></item>
+    </channel></rss>""".replace("DATE", pub_date).encode()
+    calls = []
+
+    class Response:
+        def __init__(self, url, body): self.url=url; self.body=body
+        def __enter__(self): return self
+        def __exit__(self, *_args): return None
+        def geturl(self): return self.url
+        def read(self, _limit): return self.body
+
+    class Opener:
+        def open(self, request, timeout):
+            calls.append(request.full_url)
+            if "duckduckgo.com" in request.full_url:
+                return Response(request.full_url, b"<html></html>")
+            return Response(request.full_url, rss)
+
+    monkeypatch.setattr(search_pipeline, "PUBLIC_OPENER", Opener())
+    monkeypatch.setattr(search_pipeline, "public_http_url", lambda url: url)
+    today = datetime.now().astimezone().strftime("%d/%m/%Y")
+    reads = []
+    def read_page(url, _query, timeout=2.5):
+        reads.append(url)
+        return ("Nexa network measurement findings confirmed by the report.", today)
+    monkeypatch.setattr(search_pipeline, "_search_page_excerpt", read_page)
+
+    output = search_pipeline._search_public_web_uncached(
+        "Nexa network measurement news today", "7d", True
+    )
+
+    assert any("duckduckgo.com/lite/" in url for url in calls)
+    assert any("bing.com/search" in url for url in calls)
+    assert len(reads) == 2
+    assert "Google Notícias: TimeoutError" not in output
+    assert "Bing RSS" in output
+
+
 def test_google_news_fallback_uses_common_page_pipeline_and_caps_reads_at_two(monkeypatch):
     _force_provider_failure(monkeypatch)
     calls = []

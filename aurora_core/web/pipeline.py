@@ -20,9 +20,12 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
     found=[]; seen=set(); failures=[]; provider_counts={}; rejected={'url':0,'atualidade':0,'relevancia':0,'duplicado':0}
     if news_only:
         freshness=freshness or '7d'
-        news=search_google_news(query,freshness)
-        found=_google_news_pipeline_items(news,query,freshness)
-        seen={urlparse(item['url'])._replace(query='',fragment='').geturl().rstrip('/').casefold() for item in found}
+        try:
+            news=search_google_news(query,freshness)
+            found=_google_news_pipeline_items(news,query,freshness)
+            seen={urlparse(item['url'])._replace(query='',fragment='').geturl().rstrip('/').casefold() for item in found}
+        except Exception as exc:
+            failures.append(f'Google Notícias: {type(exc).__name__}')
     # Use two genuinely different result interfaces. DDG's normal HTML endpoint
     # is frequently bot-challenged here, while Bing HTML often gives generic
     # navigational pages. DDG Lite and Bing RSS are lightweight alternatives.
@@ -86,7 +89,6 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
                     found.append({'provider':provider,'title':title,'snippet':snippet,'url':href,'host':host,
                         'published':published,'score':relevance})
     for attempt,(search_query,relevance_query) in enumerate(_search_query_variants(query,freshness)):
-        if news_only: break
         collect_query(search_query,relevance_query,3.5 if attempt==0 else 1.8)
         enough=(_independent_recent_source_count(found,freshness)>=2) if freshness else bool(found)
         if enough: break
