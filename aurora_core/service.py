@@ -26,6 +26,7 @@ from .voice.tts import Speaker
 from .voice.wake import LocalVoice
 from .web.freshness import _independent_recent_source_count
 from .web.intent import _result_query_relevance, contextual_followup, contextual_source_request, current_search_window, factual_web_intent, local_datetime_answer, news_search_intent, news_unconfirmed_message, requested_response_language, research_request_intent, search_failure_summary, search_intent
+from .web.news_summary import format_news_digest
 from .web.requests import FXRequest, SearchRequest, WeatherRequest
 
 APPROVAL_TIMEOUT_SECONDS=90
@@ -183,6 +184,11 @@ class AuroraService(QObject):
             if not verified_current:
                 message=news_unconfirmed_message() if news_search_intent(self.current_prompt) else 'Encontrei páginas relacionadas, mas não duas fontes independentes e recentes que confirmem o dado. Não vou responder com informação possivelmente antiga.'
                 self.quick_summary_done(message,generation); return
+        if news_search_intent(self.current_prompt):
+            # Keep headlines and attribution intact; model paraphrases have
+            # occasionally reversed or embellished a source's claim.
+            digest=format_news_digest(items,current_search_window(self.current_prompt))
+            self.quick_summary_done(digest,generation); return
         evidence=[]
         for item in items[:5]:
             parts=[f'Título: {item["title"]}']

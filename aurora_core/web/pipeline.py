@@ -5,7 +5,7 @@ from urllib.parse import urlparse, urlencode, urljoin, parse_qs
 import base64, concurrent.futures, threading, time, urllib.request
 import xml.etree.ElementTree as ET
 from ..system.files import normalize_words
-from .intent import _fresh_query_terms, _search_query_variants, _search_relevance, current_search_window, international_news_only, news_search_intent
+from .intent import _fresh_query_terms, _search_query_variants, _search_relevance, _search_term_forms, current_search_window, international_news_only, news_search_intent
 from .freshness import _has_expired_deadline, _has_stale_source_date, _has_stale_url_date, _publication_within_window, _parse_publication_date, _independent_recent_source_count
 from .providers import search_google_news, search_bing_news, _google_news_pipeline_items
 from .fetch import _search_page_excerpt
@@ -56,7 +56,9 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
         if news_only:
             # Bing News performs poorly with request phrasing and appended years;
             # query only the user's topic, then enforce relevance and dates below.
-            news_query=' '.join(sorted(_fresh_query_terms(relevance_query))) or search_query
+            topic_terms=_fresh_query_terms(relevance_query)
+            news_terms={min(_search_term_forms(term),key=len) for term in topic_terms}
+            news_query=' '.join(sorted(news_terms)) or search_query
             news_queries=[news_query]
             # The regional feed often finds a second independent publisher
             # when the topic-only feed repeats a blocked or syndicated page.
@@ -90,7 +92,10 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
                     # precise elapsed-time check below supersedes the generic
                     # calendar-day detector, which would reject yesterday's
                     # still-within-24-hours stories.
-                    stale_feed_date=(published and kind!='bing-news' and _has_stale_source_date('published '+published,freshness))
+                    # A Bing search RSS timestamp is a search-result field, not
+                    # reliable evidence of the publisher's publication date.
+                    # Only Bing News items expose a source publication date.
+                    stale_feed_date=(published and kind=='bing-news' and _has_stale_source_date('published '+published,freshness))
                     if freshness and (_has_expired_deadline(title+' '+snippet) or
                             _has_stale_source_date(title+' '+snippet,freshness) or
                             _has_stale_url_date(href,freshness) or
@@ -105,7 +110,9 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
                     seen.add(key)
                     host=(urlparse(href).hostname or '').removeprefix('www.')
                     found.append({'provider':provider,'title':title,'snippet':snippet,'url':href,'host':host,
-                        'publisher':publisher,'published':published,'feed_published':kind=='bing-news','score':relevance})
+                        'publisher':publisher,'published':published if kind=='bing-news' else '',
+                        'search_result_published':published if kind=='bing-rss' else '',
+                        'feed_published':kind=='bing-news','score':relevance})
     for attempt,(search_query,relevance_query) in enumerate(_search_query_variants(query,freshness)):
         collect_query(search_query,relevance_query,3.5 if attempt==0 else 1.8)
         # Google News RSS links may remain Google wrapper pages that our safe
@@ -140,43 +147,61 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
         reason=(' provedores indisponíveis: '+'; '.join(dict.fromkeys(failures))+'.') if failures else ''
         filtered=(' descartes por '+drops+'.') if drops else ''
         return f'Não confirmei fontes para essa pergunta. Resultados de busca ({counts}).{filtered}{reason} Não vou completar por memória.'
-    # Snippets are often truncated or misleading. Open up to two relevant pages
-    # in parallel so the model gets the page's own evidence without serial delay.
-    selected=[]; selected_sources=set()
+    # Keep a small reserve of independent candidates. Some publishers block the
+    # reader or expose no text; a failed first choice must not hide the next
+    # current source. At most two page requests run concurrently.
+    candidates=[]; selected_sources=set()
     for item in found:
-        if freshness and not _publication_within_window(item['published'],freshness): continue
+        if freshness and item['published'] and not _publication_within_window(item['published'],freshness): continue
         if freshness:
             source=(item.get('publisher') if item.get('feed_published') else item.get('host')) or item.get('url')
             source=source.casefold()
             if source in selected_sources: continue
             selected_sources.add(source)
-        selected.append(item)
-        if len(selected)>=2: break
-    if not selected:
+        candidates.append(item)
+        if len(candidates)>=(6 if freshness else 2): break
+    if not candidates:
         if freshness: return 'Não encontrei páginas com data recente verificável para confirmar esse fato. Não vou apresentar um resultado sem data como atual.'
-        selected=found[:3]
-    with concurrent.futures.ThreadPoolExecutor(max_workers=min(2,len(selected))) as pool:
-        jobs=[(item,pool.submit(_search_page_excerpt,item['url'],query)) for item in selected]
-        for item,future in jobs:
-            try: excerpt,published=future.result(timeout=3.0)
-            except Exception: excerpt,published='',''
-            if published:
-                item['published']=published
-                if item.get('feed_published'): item['page_date_verified']=True
-                if freshness and not _publication_within_window(published,freshness):
-                    item['stale_page']=True
-                    continue
-            elif item.get('feed_published'):
-                if excerpt: item['feed_date_accepted']=True
-                else: item['unverified_page_date']=True
-            if item.get('provider')=='Google Notícias' and not excerpt:
-                item['page_unavailable']=True
-            if excerpt:
-                item['snippet']=((item['snippet']+' | Trecho da página aberta agora: ') if item['snippet'] else 'Trecho da página aberta agora: ')+excerpt
-                item['page_opened']=True
-    if freshness: found=[item for item in found if item.get('page_opened') and not item.get('stale_page') and not item.get('unverified_page_date') and not item.get('page_unavailable') and (not item.get('feed_published') or item.get('page_date_verified') or item.get('feed_date_accepted'))]
+        candidates=found[:2]
+    attempted=[]
+    def read_page_batch(batch):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(2,len(batch))) as pool:
+            jobs=[(item,pool.submit(_search_page_excerpt,item['url'],query,2.5)) for item in batch]
+            for item,future in jobs:
+                try: excerpt,published=future.result(timeout=3.0)
+                except Exception: excerpt,published='',''
+                if published:
+                    item['published']=published
+                    item['page_date_verified']=True
+                    if freshness and not _publication_within_window(published,freshness):
+                        item['stale_page']=True
+                        attempted.append(item)
+                        continue
+                elif item.get('feed_published'):
+                    if excerpt: item['feed_date_accepted']=True
+                    else: item['unverified_page_date']=True
+                elif freshness:
+                    item['unverified_page_date']=True
+                if item.get('provider')=='Google Notícias' and not excerpt:
+                    item['page_unavailable']=True
+                if excerpt:
+                    item['snippet']=((item['snippet']+' | Trecho da página aberta agora: ') if item['snippet'] else 'Trecho da página aberta agora: ')+excerpt
+                    item['page_opened']=True
+                attempted.append(item)
+    def usable_pages():
+        return [item for item in attempted if item.get('page_opened') and not item.get('stale_page')
+            and not item.get('unverified_page_date') and not item.get('page_unavailable')
+            and (not item.get('feed_published') or item.get('page_date_verified') or item.get('feed_date_accepted'))]
+    next_candidate=0
+    while next_candidate<len(candidates):
+        batch=candidates[next_candidate:next_candidate+2]
+        next_candidate+=len(batch)
+        read_page_batch(batch)
+        if not freshness or _independent_recent_source_count(usable_pages(),freshness)>=2:
+            break
+    if freshness: found=usable_pages()
     if not found:
-        if any(item.get('stale_page') for item in selected):
+        if any(item.get('stale_page') for item in attempted):
             return 'As páginas abertas estavam fora da janela pedida. Não consegui confirmar esse dado como atual.'
         return 'Não consegui ler páginas com conteúdo verificável para confirmar esse dado atual; não vou completá-lo por memória.'
     if freshness:

@@ -25,7 +25,7 @@ def _is_historical_query(text):
     if re.search(r'\b(hoje|agora|neste momento|ao vivo|tempo real|today|now|right now)\b',plain): return False
     this_year=datetime.now().astimezone().year
     if any(int(value)<this_year for value in re.findall(r'\b(?:19|20)\d{2}\b',plain)): return True
-    currentish=bool(re.search(r'\b(atual|atualmente|atualizada|atualizado|latest|current|mais recente|ultima versao|versao atual|current price)\b',plain))
+    currentish=bool(re.search(r'\b(atual|atualmente|atualizada|atualizado|latest|current|mais recentes?|ultima versao|versao atual|current price)\b',plain))
     past_tense=bool(re.search(r'\b(foi|foram|era|eram|was|were|did|used to|custava|custavam|valia|valiam|historico|historical|na epoca|at the time|antes|previously)\b',plain))
     return past_tense and not currentish
 
@@ -35,7 +35,7 @@ def current_search_window(text):
     if _is_historical_query(plain): return ''
     if re.search(r'\b(hoje|agora|neste momento|neste instante|ao vivo|tempo real|ultimas 24 horas|right now|today|live)\b',plain): return '1d'
     if re.search(r'\b(ultima hora|ultimas noticias|noticias recentes|noticia recente|esta semana|nesta semana|ultimos dias|ultima semana|breaking news|news about)\b',plain): return '7d'
-    if re.search(r'\b(atual|atualmente|atualizado|atualizada|mais recente|recentemente|recente|ultimo|ultima|latest|current|newest|updated|how much|quanto custa|quanto custam|quanto sai|quanto vale|cost|price|custo|preco atual|valor atual)\b',plain): return '30d'
+    if re.search(r'\b(atual|atualmente|atualizado|atualizada|mais recentes?|recentemente|recentes?|ultimo|ultima|latest|current|newest|updated|how much|quanto custa|quanto custam|quanto sai|quanto vale|cost|price|custo|preco atual|valor atual)\b',plain): return '30d'
     return ''
 
 def news_search_intent(text):
@@ -123,11 +123,21 @@ def contextual_source_request(prompt):
 
 def _fresh_query_terms(query):
     plain=unicodedata.normalize('NFKD',str(query)).encode('ascii','ignore').decode('ascii').lower()
-    ignored={'a','as','o','os','um','uma','uns','umas','de','do','da','dos','das','em','no','na','nos','nas','com','por','para','pra','e','ou','que','qual','quais','quem','como','onde','quando','quanto','esta','sao','porque','sobre','pesquise','pesquisar','busque','buscar','procure','procurar','me','diga','mostre','informe','hoje','agora','atual','atualmente','atualizada','atualizado','recente','recentes','ultima','ultimas','ultimos','ultimo','ao','vivo','news','latest','current','breaking','today','now','recent','search','find','about','what','whats','the','for','and','with','from','is','are','was','were','be','been','being','do','does','did','have','has','had','can','could','would','should','will','who','when','where','why','how','much','many','please','tell','explain','explanation','describe','compare','comparison','difference','between','mean','means','meaning','work','works','working','function','of'}
+    ignored={'a','as','o','os','um','uma','uns','umas','de','do','da','dos','das','em','no','na','nos','nas','com','por','para','pra','e','ou','que','qual','quais','quem','como','onde','quando','quanto','esta','sao','porque','sobre','pesquise','pesquisar','busque','buscar','procure','procurar','me','diga','mostre','informe','hoje','agora','atual','atualmente','atualizada','atualizado','recente','recentes','ultima','ultimas','ultimos','ultimo','mais','ao','vivo','news','latest','current','breaking','today','now','recent','search','find','about','what','whats','the','for','and','with','from','is','are','was','were','be','been','being','do','does','did','have','has','had','can','could','would','should','will','who','when','where','why','how','much','many','please','tell','explain','explanation','describe','compare','comparison','difference','between','mean','means','meaning','work','works','working','function','of'}
     terms={word for word in re.findall(r'[a-z0-9]+',plain) if (len(word)>2 or word.isdigit()) and word not in ignored}
     format_words={'noticia','noticias','novidades','ultimas'}
     subject_terms=terms-format_words
     return subject_terms or terms
+
+def _search_term_forms(term):
+    """Return conservative Portuguese singular forms for relevance matching."""
+    term=str(term)
+    forms={term}
+    if len(term)>5 and term.endswith('res'):
+        forms.add(term[:-2])
+    if len(term)>4 and term.endswith('s'):
+        forms.add(term[:-1])
+    return forms
 
 def _search_relevance(query,title,snippet=''):
     """Reject generic engine pages that only share one incidental query word."""
@@ -140,7 +150,7 @@ def _search_relevance(query,title,snippet=''):
     # Exact requested numbers, version components, and years are hard anchors.
     numeric={term for term in wanted if term.isdigit()}
     if numeric and not numeric.issubset(found): return 0.0
-    overlap=wanted & found
+    overlap={term for term in wanted if _search_term_forms(term) & found}
     required=max(1,math.ceil(len(wanted)*0.75))
     if len(overlap)<required: return 0.0
     return len(overlap)/max(1,len(wanted))
@@ -153,10 +163,11 @@ def _search_query_variants(query,freshness=''):
         r'\b(?:por favor|poderia|gostaria de saber|quero saber|me diga|me fale|me mostra|mostra para mim|'
         r'pesquise|pesquisar|busque|buscar|procure|procurar|encontre|encontrar|'
         r'quais s(?:ã|a)o|qual e|quem e|quando foi|onde fica|o que e|o que voce sabe sobre|como funciona|'
+        r'novidades?|'
         r'tutorial|tutoriais|guias?|passo a passo|instrucoes|manuais?|como|'
         r'jogar|jogue|play|playing|instalar|install|configurar|configure|fazer|make|montar|build|usar|use|'
-        r'hoje|agora|atual|atualmente|recente|recentes|ultima|ultimas|ultimos|ultimo|'
-        r'a|as|o|os|um|uma|uns|umas|de|do|da|dos|das|em|no|na|nos|nas|com|por|para|pra|sobre|e|ou|que)\b',
+        r'hoje|agora|atual|atualmente|recente|recentes|ultima|ultimas|ultimos|ultimo|mais|'
+        r'a|as|o|os|um|uma|uns|umas|de|do|da|dos|das|em|no|na|nos|nas|com|por|para|pra|sobre|qual|quais|e|ou|que)\b',
         ' ',normalized,flags=re.I)
     cleaned=' '.join(cleaned.split()).strip(' ,.:;!?')
     variants=[(current_web_query(original,freshness),original)]

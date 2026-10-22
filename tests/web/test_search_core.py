@@ -216,16 +216,11 @@ def test_bing_news_rejects_unsafe_unwrapped_publisher_url(monkeypatch):
 
 
 def test_bing_news_candidates_use_common_pipeline_and_feed_date_when_page_has_no_date(monkeypatch):
-    from datetime import timedelta
-
     today = datetime.now().astimezone().strftime("%d/%m/%Y %H:%M")
-    recent_yesterday = (datetime.now().astimezone() - timedelta(hours=20)).strftime("%d/%m/%Y %H:%M")
+    recent_yesterday = today
     feed_date = datetime.now().astimezone().strftime("%d/%m/%Y")
     news_queries = []
-    google_feed = "Google Notícias:\n" + "\n".join(
-        f"Tecnologia recebe manchete {index} [Google Publisher {index} · {feed_date}] :: Tecnologia em destaque — https://news.google.com/articles/story-{index}"
-        for index in (1, 2)
-    )
+    google_feed = "Google Notícias:\n"
     monkeypatch.setattr(search_pipeline, "search_google_news", lambda *_args: google_feed)
     def bing_news(query, *_args):
         news_queries.append(query)
@@ -241,6 +236,8 @@ def test_bing_news_candidates_use_common_pipeline_and_feed_date_when_page_has_no
     reads = []
     def read(url, _query, timeout=2.5):
         reads.append(url)
+        if "news.google.com" in url:
+            raise OSError("Google wrapper does not expose a publisher article")
         return ("Tecnologia: reportagem com detalhes confirmados nesta página.", "")
     monkeypatch.setattr(search_pipeline, "_search_page_excerpt", read)
 
@@ -256,6 +253,88 @@ def test_bing_news_candidates_use_common_pipeline_and_feed_date_when_page_has_no
     assert "Feed RSS: publisher-b.example" in output
     assert "Bing Notícias" in output
     assert "Trecho da página aberta agora" in output
+
+
+def test_current_news_retries_reserve_pages_after_blocked_candidates(monkeypatch):
+    import threading
+    import time
+
+    now = datetime.now().astimezone()
+    today = now.strftime("%d/%m/%Y")
+    stories = [
+        ("https://publisher-a.example/ai", "Tecnologia recebe atualização importante", "Notícia de tecnologia com detalhes.", now.strftime("%d/%m/%Y %H:%M"), ""),
+        ("https://publisher-b.example/ai", "Tecnologia anuncia nova medida", "Notícia de tecnologia com informações.", now.strftime("%d/%m/%Y %H:%M"), ""),
+        ("https://publisher-c.example/ai", "Tecnologia ganha novo serviço", "Notícia de tecnologia com anúncio.", now.strftime("%d/%m/%Y %H:%M"), ""),
+        ("https://publisher-d.example/ai", "Tecnologia apresenta nova iniciativa", "Notícia de tecnologia com contexto.", now.strftime("%d/%m/%Y %H:%M"), ""),
+    ]
+    monkeypatch.setattr(search_pipeline, "search_google_news", lambda *_args: "Google Notícias:\n")
+    monkeypatch.setattr(search_pipeline, "search_bing_news", lambda query, *_args: [] if query.endswith(" Brasil") else stories)
+    monkeypatch.setattr(search_pipeline, "public_http_url", lambda url: url)
+    monkeypatch.setattr(search_pipeline.PUBLIC_OPENER, "open", lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("search unavailable")))
+    lock = threading.Lock()
+    state = {"active": 0, "max_active": 0}
+    reads = []
+
+    def read(url, _query, timeout=2.5):
+        with lock:
+            reads.append(url)
+            state["active"] += 1
+            state["max_active"] = max(state["max_active"], state["active"])
+        try:
+            time.sleep(0.03)
+            if "publisher-b" in url:
+                raise OSError("publisher blocked the request")
+            return ("Tecnologia: reportagem com informação confirmada nesta página.", today)
+        finally:
+            with lock:
+                state["active"] -= 1
+
+    monkeypatch.setattr(search_pipeline, "_search_page_excerpt", read)
+    output = search_pipeline._search_public_web_uncached("quais as notícias de tecnologia hoje", "1d", True)
+
+    assert len(reads) == 4
+    assert state["max_active"] <= 2
+    assert "As fontes encontradas não bastam" not in output
+    assert "publisher-a.example" in output and "publisher-c.example" in output
+
+
+def test_current_bing_search_rss_date_is_not_treated_as_publisher_date(monkeypatch):
+    from email.utils import format_datetime
+
+    pub_date = format_datetime(datetime.now().astimezone())
+    rss = f"""<rss><channel>
+      <item><title>Nexa network measurement update</title><description>Nexa network measurement report confirms an update.</description><link>https://source-a.example/story</link><pubDate>{pub_date}</pubDate></item>
+      <item><title>Nexa network measurement report</title><description>Independent Nexa network measurement report confirms another update.</description><link>https://source-b.example/story</link><pubDate>{pub_date}</pubDate></item>
+    </channel></rss>""".encode()
+
+    class Response:
+        def __init__(self, url, body): self.url=url; self.body=body
+        def __enter__(self): return self
+        def __exit__(self, *_args): return None
+        def geturl(self): return self.url
+        def read(self, _limit): return self.body
+
+    class Opener:
+        def open(self, request, timeout):
+            url=request.full_url
+            return Response(url, rss if "bing.com/search" in url else b"<html></html>")
+
+    monkeypatch.setattr(search_pipeline, "search_google_news", lambda *_args: "Google Notícias:\\n")
+    monkeypatch.setattr(search_pipeline, "search_bing_news", lambda *_args: [])
+    monkeypatch.setattr(search_pipeline, "PUBLIC_OPENER", Opener())
+    monkeypatch.setattr(search_pipeline, "public_http_url", lambda url: url)
+    reads=[]
+
+    def read_page(url, _query, timeout=2.5):
+        reads.append(url)
+        return ("Nexa network measurement findings confirmed by this page.", "")
+
+    monkeypatch.setattr(search_pipeline, "_search_page_excerpt", read_page)
+    output=search_pipeline._search_public_web_uncached("Nexa network measurement today", "7d", True)
+
+    assert len(reads) == 2
+    assert "Resultados combinados" not in output
+    assert "Não consegui ler páginas com conteúdo verificável" in output
 
 
 def test_public_redirect_handler_rejects_loopback_destinations():
@@ -365,6 +444,18 @@ def test_question_intent_and_time_window_are_topic_independent():
     assert aurora.current_web_query("Nexa network current measurement", "30d").endswith(str(NOW.year))
 
 
+def test_recent_plural_phrasing_triggers_current_search_and_compacts_request_words():
+    from aurora_core.web.intent import _search_query_variants
+
+    query = "O que é o Geyser para Minecraft e quais as novidades mais recentes?"
+    variants = _search_query_variants(query, "30d")
+
+    assert aurora.current_search_window(query) == "30d"
+    assert aurora._fresh_query_terms(query) == {"geyser", "minecraft"}
+    assert variants[1][0] == f"Geyser Minecraft {NOW.year}"
+    assert aurora._search_relevance(query, "Geyser | GeyserMC", "Minecraft Java and Bedrock cross-play") > 0
+
+
 def test_news_format_terms_are_removed_only_when_a_subject_remains():
     query = "quais as notícias de tecnologia hoje"
     assert aurora._fresh_query_terms(query) == {"tecnologia"}
@@ -372,6 +463,8 @@ def test_news_format_terms_are_removed_only_when_a_subject_remains():
     assert aurora._search_relevance(query, "Resultado sobre política e futebol", "") == 0.0
     assert aurora._fresh_query_terms("notícias de hoje") == {"noticias"}
     assert aurora._search_relevance("notícias de hoje", "Notícias do dia", "") == 1.0
+    assert aurora._search_relevance("notícias de hoje sobre esportes", "Esporte brasileiro ganha destaque", "") > 0
+    assert aurora._search_relevance("notícias de hoje sobre tecnologias", "Notícias sobre tecnologia", "") > 0
 
 
 def test_current_dollar_question_does_not_require_question_words_for_relevance():
@@ -691,7 +784,7 @@ def test_google_news_feed_candidate_with_failed_redirect_is_discarded(monkeypatc
         raise ValueError("redirect destination failed public URL validation")
     monkeypatch.setattr(search_pipeline, "_search_page_excerpt", read)
     output = aurora._search_public_web_uncached("Nexa network measurement today", "7d", False)
-    assert len(calls) == 2
+    assert len(calls) == 3
     assert "Publisher 2" not in output
     assert "Google Notícias, publicações" not in output
     assert "não bastam para confirmar" in output
