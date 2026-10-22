@@ -1,3 +1,9 @@
+import asyncio
+import sys
+import threading
+import types
+
+import pytest
 import aurora
 from aurora_core.service import AuroraService
 from aurora_core.voice.wake import LocalVoice
@@ -56,6 +62,41 @@ def test_speaker_interrupt_discards_queued_speech():
     speaker.interrupt()
 
     assert speaker.q.empty()
+
+
+def test_speaker_interrupt_cancels_stalled_edge_stream(monkeypatch):
+    import aurora_core.voice.tts as tts_module
+
+    started = threading.Event()
+    class Player:
+        def __init__(self): self.stdin = object(); self.returncode = None; self.killed = False
+        def kill(self): self.killed = True; self.returncode = -9
+        async def wait(self): return self.returncode
+    player = Player()
+    async def create_player(*_args, **_kwargs): return player
+    monkeypatch.setattr(tts_module.asyncio, "create_subprocess_exec", create_player)
+
+    class Communicate:
+        def __init__(self, *_args, **_kwargs): pass
+        def stream(self):
+            async def stalled_stream():
+                started.set()
+                await asyncio.Future()
+                yield {"type": "audio", "data": b"unreachable"}
+            return stalled_stream()
+    monkeypatch.setitem(sys.modules, "edge_tts", types.SimpleNamespace(Communicate=Communicate))
+
+    speaker = aurora.Speaker({})
+    async def exercise():
+        task = asyncio.create_task(speaker._stream_edge("resposta", speaker.cancel_generation))
+        assert await asyncio.to_thread(started.wait, 1)
+        speaker.interrupt()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, 1)
+
+    asyncio.run(exercise())
+    assert player.killed
+    assert speaker.stream_task is None
 
 
 def test_right_click_is_wired_to_stop_the_current_request():

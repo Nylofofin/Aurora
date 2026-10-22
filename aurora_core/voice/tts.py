@@ -5,7 +5,7 @@ import asyncio, queue, re, shutil, subprocess
 
 class Speaker(QThread):
     speaking=Signal(bool); audio_started=Signal(); drained=Signal()
-    def __init__(self,cfg): super().__init__(); self.cfg=cfg; self.q=queue.Queue(); self.running=True; self.active=False; self.playing=False; self.current_player=None; self.cancel_generation=0; self.engine=shutil.which('ffplay'); self.fallback=shutil.which('espeak-ng') or shutil.which('espeak')
+    def __init__(self,cfg): super().__init__(); self.cfg=cfg; self.q=queue.Queue(); self.running=True; self.active=False; self.playing=False; self.current_player=None; self.stream_loop=None; self.stream_task=None; self.cancel_generation=0; self.engine=shutil.which('ffplay'); self.fallback=shutil.which('espeak-ng') or shutil.which('espeak')
     def say(self,text):
         text=self.clean(text)
         if text: self.q.put(text[:1800])
@@ -22,6 +22,7 @@ class Speaker(QThread):
     async def _stream_edge(self,text,generation):
         import asyncio
         import edge_tts
+        task=asyncio.current_task(); self.stream_loop=asyncio.get_running_loop(); self.stream_task=task
         player=await asyncio.create_subprocess_exec(self.engine,'-nodisp','-autoexit','-loglevel','quiet','-f','mp3','-i','pipe:0',stdin=asyncio.subprocess.PIPE,stdout=asyncio.subprocess.DEVNULL,stderr=asyncio.subprocess.DEVNULL)
         self.current_player=player
         started=False
@@ -41,6 +42,7 @@ class Speaker(QThread):
             raise
         finally:
             if self.current_player is player: self.current_player=None
+            if self.stream_task is task: self.stream_task=None; self.stream_loop=None
     def run(self):
         while self.running:
             try: text=self.q.get(timeout=.3)
@@ -57,6 +59,8 @@ class Speaker(QThread):
                     self.playing=True; self.audio_started.emit()
                     self.current_player=subprocess.Popen([self.fallback,'-v','pt-br',text],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
                     self.current_player.wait(timeout=35)
+            except asyncio.CancelledError:
+                pass
             except Exception:
                 if self.fallback and self.running and generation==self.cancel_generation:
                     try:
@@ -79,3 +83,7 @@ class Speaker(QThread):
             try:
                 if player.returncode is None: player.kill()
             except Exception: pass
+        loop=self.stream_loop; task=self.stream_task
+        if loop and task and not task.done():
+            try: loop.call_soon_threadsafe(task.cancel)
+            except RuntimeError: pass
