@@ -93,6 +93,11 @@ def test_close_flatpak_application_uses_instance_id(monkeypatch):
            "name": "OBS Studio", "exec": "/usr/bin/flatpak run com.obsproject.Studio",
            "class": "obs"}
     calls = []
+    listings = [
+        [{"application": "com.obsproject.Studio", "instance": "12345"},
+         {"application": "org.other.App", "instance": "99999"}],
+        [],
+    ]
     monkeypatch.setattr(apps_module, "find_desktop_app", lambda _name: app)
     monkeypatch.setattr(apps_module.shutil, "which",
                         lambda name: "/usr/bin/flatpak" if name == "flatpak" else None)
@@ -100,16 +105,31 @@ def test_close_flatpak_application_uses_instance_id(monkeypatch):
     def fake_run(command, **_kwargs):
         calls.append(command)
         if command[-1] == "--json":
-            return type("Result", (), {"stdout": json.dumps([
-                {"application": "com.obsproject.Studio", "instance": "12345"},
-                {"application": "org.other.App", "instance": "99999"},
-            ])})()
+            return type("Result", (), {"stdout": json.dumps(listings.pop(0))})()
         return type("Result", (), {"stdout": ""})()
 
     monkeypatch.setattr(apps_module.subprocess, "run", fake_run)
     assert "Fechei OBS Studio pelo Flatpak" in apps_module.close_application("OBS Studio")
     assert calls == [["/usr/bin/flatpak", "ps", "--json"],
-                     ["/usr/bin/flatpak", "kill", "12345"]]
+                     ["/usr/bin/flatpak", "kill", "12345"],
+                     ["/usr/bin/flatpak", "ps", "--json"]]
+
+
+def test_flatpak_close_is_not_confirmed_while_instance_remains_active(monkeypatch):
+    app = {"file": "/var/lib/flatpak/exports/share/applications/com.obsproject.Studio.desktop"}
+    monkeypatch.setattr(apps_module.shutil, "which", lambda _name: "/usr/bin/flatpak")
+    monkeypatch.setattr(apps_module, "FLATPAK_CLOSE_CONFIRM_TIMEOUT", 0)
+
+    def fake_run(command, **_kwargs):
+        if command[-1] == "--json":
+            return type("Result", (), {"stdout": json.dumps([
+                {"application": "com.obsproject.Studio", "instance": "12345"}
+            ])})()
+        return type("Result", (), {"stdout": ""})()
+
+    monkeypatch.setattr(apps_module.subprocess, "run", fake_run)
+
+    assert apps_module._close_flatpak_app(app) is False
 
 
 def test_close_application_does_not_claim_wmctrl_failure(monkeypatch):

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-import configparser, json, os, re, shlex, shutil, signal, subprocess
+import configparser, json, os, re, shlex, shutil, signal, subprocess, time
 from .files import normalize_words
+
+FLATPAK_CLOSE_CONFIRM_TIMEOUT=2.0
 
 def _flatpak_app_id(app):
     if not app:
@@ -20,14 +22,22 @@ def _close_flatpak_app(app):
     if not app_id or not flatpak:
         return False
     try:
-        listing = subprocess.run([flatpak, 'ps', '--json'], capture_output=True,
-                                 text=True, timeout=3, check=True)
-        instances = [str(item.get('instance', '')) for item in json.loads(listing.stdout)
-                     if item.get('application') == app_id and item.get('instance')]
+        def active_instances():
+            listing = subprocess.run([flatpak, 'ps', '--json'], capture_output=True,
+                                     text=True, timeout=3, check=True)
+            return {str(item.get('instance', '')) for item in json.loads(listing.stdout)
+                    if item.get('application') == app_id and item.get('instance')}
+
+        instances=active_instances()
+        if not instances: return False
         for instance in instances:
             subprocess.run([flatpak, 'kill', instance], capture_output=True,
                            text=True, timeout=5, check=True)
-        return bool(instances)
+        deadline=time.monotonic()+FLATPAK_CLOSE_CONFIRM_TIMEOUT
+        while True:
+            if not active_instances(): return True
+            if time.monotonic()>=deadline: return False
+            time.sleep(min(0.1,max(0,deadline-time.monotonic())))
     except (OSError, subprocess.SubprocessError, ValueError, TypeError):
         return False
 
