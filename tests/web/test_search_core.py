@@ -86,6 +86,18 @@ def test_numeric_answers_must_use_numbers_literal_in_evidence():
     assert "a sequência numérica apareça literalmente" in system
 
 
+def test_numeric_guard_decimal_currency_percent_and_spelled_number_edges():
+    fallback = "Não consegui confirmar os valores numéricos com os trechos consultados. Fontes: fonte."
+    assert aurora._ground_numeric_answer("O valor é 5.40.", ["O valor é 5,40."], ["fonte"]) == "O valor é 5.40."
+    assert aurora._ground_numeric_answer("Custa R$ 5,40.", ["O valor é 5.40."], ["fonte"]) == "Custa R$ 5,40."
+    assert aurora._ground_numeric_answer("A taxa é 0.5%.", ["A taxa é 0,5%."], ["fonte"]) == "A taxa é 0.5%."
+    assert aurora._ground_numeric_answer("A taxa é 0,5%.", ["A taxa é 0,5."], ["fonte"]) == fallback
+    assert aurora._ground_numeric_answer("A taxa é 0,5.", ["A taxa é 0,5%."], ["fonte"]) == fallback
+    assert aurora._ground_numeric_answer("Custa cinquenta e dois reais.", ["O dólar está estável."], ["fonte"]) == fallback
+    assert aurora._ground_numeric_answer("Custa cinquenta e dois reais.", ["O preço é cinquenta e dois reais."], ["fonte"]) == "Custa cinquenta e dois reais."
+    assert aurora._ground_numeric_answer("É um ponto importante.", ["É uma observação relevante."], ["fonte"]) == "É um ponto importante."
+
+
 def test_subject_specific_search_adapters_are_absent():
     source = Path(aurora.__file__).read_text().lower()
     for forbidden in ("def robux_price_answer", "def currency_rate_answer", "def minecraft_java_latest_release", "_authoritative_host"):

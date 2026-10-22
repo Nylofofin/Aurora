@@ -1098,9 +1098,44 @@ def search_answer_prompts(question,query,evidence,now=None):
 
 def _ground_numeric_answer(answer,evidence,sources):
     """Replace answers containing numbers absent from the supplied evidence."""
-    number_pattern=r'(?<!\w)\d+(?:[.,/]\d+)*(?!\w)'
-    supported=set(re.findall(number_pattern,'\n'.join(map(str,evidence))))
-    unsupported={value for value in re.findall(number_pattern,str(answer)) if value not in supported}
+    number_pattern=r'(?<!\w)\d+(?:[.,/]\d+)*(?:\s*%)?(?!\w)'
+    number_words=('zero um uma dois duas tres quatro cinco seis sete oito nove dez onze doze treze catorze quatorze quinze dezesseis dezessete dezoito dezenove vinte trinta quarenta cinquenta sessenta setenta oitenta noventa cem cento duzentos duzentas trezentos trezentas quatrocentos quatrocentas quinhentos quinhentas seiscentos seiscentas setecentos setecentas oitocentos oitocentas novecentos novecentas mil milhao milhoes bilhao bilhoes meia meio')
+    atom='(?:'+'|'.join(number_words.split())+')'
+    unit=r'(?:por\s+cento|porcento|percentual|unidades?|graus?|anos?|meses?|dias?|horas?|minutos?|segundos?|metros?|quilometros?|centimetros?|gramas?|quilos?|quilogramas?|litros?)'
+    word_pattern=re.compile(r'(?<!\w)(?<!por )'+atom+r'(?:\s+(?:e|virgula|ponto)\s+'+atom+r')*(?:\s+'+unit+r')?(?!\w)')
+
+    def normalize_number(value):
+        value=''.join(value.split())
+        percent=value.endswith('%')
+        number=value[:-1] if percent else value
+        if '/' not in number:
+            separators=[char for char in '.,' if char in number]
+            if len(separators)==2:
+                decimal=number.rfind('.') if number.rfind('.')>number.rfind(',') else number.rfind(',')
+                number=re.sub(r'[.,]','',number[:decimal])+'.'+number[decimal+1:]
+            elif len(separators)==1:
+                separator=separators[0]
+                left,right=number.rsplit(separator,1)
+                if len(right)!=3 or left.startswith('0'):
+                    number=left+'.'+right
+        return number.lstrip('+')+('%' if percent else '')
+
+    def values(text):
+        raw=str(text)
+        digit_values={normalize_number(value) for value in re.findall(number_pattern,raw)}
+        normalized=unicodedata.normalize('NFKD',raw).encode('ascii','ignore').decode().lower()
+        word_values=set()
+        for match in word_pattern.finditer(normalized):
+            phrase=' '.join(match.group().split())
+            atoms=re.findall(atom,phrase)
+            # Standalone “um/uma” is usually an article, not a numeric claim.
+            if len(atoms)>1 or atoms[0] not in {'um','uma'} or re.search(unit+r'\s*$',phrase):
+                word_values.add(phrase)
+        return digit_values,word_values
+
+    supported_digits,supported_words=values('\n'.join(map(str,evidence)))
+    answer_digits,answer_words=values(answer)
+    unsupported=answer_digits-supported_digits or answer_words-supported_words
     if not unsupported: return str(answer)
     cited=', '.join(map(str,sources)) or 'as fontes consultadas'
     return f'Não consegui confirmar os valores numéricos com os trechos consultados. Fontes: {cited}.'
