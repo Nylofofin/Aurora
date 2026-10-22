@@ -82,6 +82,14 @@ def test_current_fact_requires_two_independent_dated_publishers():
     assert aurora._independent_recent_source_count(stale, "7d", NOW) == 0
 
 
+def test_publication_windows_use_elapsed_time_not_calendar_days():
+    assert aurora._publication_within_window("2026-10-21T12:01:00Z", "1d", NOW)
+    assert not aurora._publication_within_window("2026-10-21T11:59:00Z", "1d", NOW)
+    assert aurora._publication_within_window("2026-10-15T12:01:00Z", "7d", NOW)
+    assert not aurora._publication_within_window("2026-10-15T11:59:00Z", "7d", NOW)
+    assert not aurora._publication_within_window("2026-10-22T12:01:00Z", "1d", NOW)
+
+
 def test_localized_and_machine_feed_dates_are_parsed():
     for value in ("qua., 21 out. 2026 13:06:00 GMT", "Tue, 21 Oct 2026 13:06:00 GMT", "2026-10-21T13:06:00Z", "21/10/2026 13:06"):
         assert aurora._parse_publication_date(value).strftime("%d/%m/%Y") == "21/10/2026"

@@ -68,10 +68,12 @@ def _has_stale_url_date(url,window='30d',now=None):
 
 def _publication_within_window(value,window,now=None):
     try:
-        published=_parse_publication_date(value).date()
-        now=(now or datetime.now().astimezone()).date()
+        published=_parse_publication_date(value)
+        now=now or datetime.now().astimezone()
+        if now.tzinfo is None: now=now.replace(tzinfo=datetime.now().astimezone().tzinfo)
         days={'1d':1,'7d':7,'30d':30}.get(window,30)
-        return 0 <= (now-published).days <= days
+        age=now.astimezone()-published.astimezone()
+        return timedelta(0) <= age <= timedelta(days=days)
     except Exception: return False
 
 def _parse_publication_date(value):
