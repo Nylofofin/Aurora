@@ -107,6 +107,34 @@ def test_expired_approval_cannot_be_executed_by_a_late_click(monkeypatch):
     assert "Não executei" in stub.completed
 
 
+def test_screen_approval_explains_voice_cancellation(monkeypatch):
+    monkeypatch.setattr(service_module.QTimer, "singleShot", lambda *_args: None)
+
+    class Voice:
+        enabled = False
+        def enable_control_cancel(self): self.enabled = True
+
+    class Orb:
+        def isVisible(self): return True
+        def set_mode(self, _mode): pass
+
+    class ServiceStub:
+        pending = None
+        voice = Voice()
+        orb = Orb()
+        def speak_in_selected_language(self, text): self.spoken = text
+
+    stub = ServiceStub()
+    detail = {"name": "type_accessible_text", "args": {"field": "Search", "application": "Editor"},
+              "event": threading.Event()}
+
+    service_module.AuroraService.request_approval(stub, detail["name"], detail)
+
+    assert stub.voice.enabled
+    assert "Diga “cancelar”" in stub.spoken
+    assert "clique com o botão direito" in stub.spoken
+
+
 def test_expiration_callback_for_old_approval_does_not_clear_new_one():
     old = {"event": threading.Event()}
     current = {"event": threading.Event()}
