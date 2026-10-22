@@ -95,6 +95,23 @@ def test_numeric_answers_must_use_numbers_literal_in_evidence():
     assert "a sequência numérica apareça literalmente" in system
 
 
+def test_news_dates_and_headline_numbers_do_not_trigger_numeric_guard():
+    answer = "Tecnopuc Experience 2026 reúne empresas de saúde e tecnologia, segundo o Jornal do Comércio em 22/10/2026."
+    evidence = ["Título: Tecnopuc Experience 2026 reúne empresas de saúde e tecnologia | Data: 22/10/2026"]
+    assert not aurora.numeric_answer_intent("quais as notícias de tecnologia hoje")
+    assert aurora.ground_search_answer("quais as notícias de tecnologia hoje", answer, evidence, ["Jornal do Comércio"]) == answer
+    assert aurora.ground_search_answer("notícias de hoje", "Custa 52,50 reais.", evidence, ["fonte"]) == "Custa 52,50 reais."
+
+
+def test_numeric_guard_failure_message_matches_news_intent():
+    result = aurora.ground_search_answer(
+        "quantas notícias recentes sobre tecnologia?", "Foram 12 notícias.",
+        ["A fonte menciona tecnologia."], ["Jornal"],
+    )
+    assert result.startswith("Não consegui confirmar notícias recentes sobre isso.")
+    assert "valor" not in result.lower()
+
+
 def test_numeric_guard_decimal_currency_percent_and_spelled_number_edges():
     fallback = "Não consegui confirmar os valores numéricos com os trechos consultados. Fontes: fonte."
     assert aurora._ground_numeric_answer("O valor é 5.40.", ["O valor é 5,40."], ["fonte"]) == "O valor é 5.40."
