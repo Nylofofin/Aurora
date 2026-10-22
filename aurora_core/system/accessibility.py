@@ -123,10 +123,10 @@ def focus_accessible_window(application: str, window: str, allowed_apps: list[st
     try:
         response = _call_worker("focus", app, window=window)
     except Exception as exc:
-        _audit("screen_focus", "failed", {"application": app["desktop_id"], "window": window})
+        _audit("screen_focus", "failed", {"application": app["desktop_id"]})
         return f"Não consegui focar a janela de {app['label']}: {exc}"
-    _audit("screen_focus", "focused", {"application": app["desktop_id"], "window": response["window"]})
-    return f"Foquei a janela “{response['window']}” de {app['label']}."
+    _audit("screen_focus", "focused", {"application": app["desktop_id"]})
+    return f"Foquei uma janela de {app['label']}."
 
 
 def type_into_accessible_field(
@@ -143,9 +143,9 @@ def type_into_accessible_field(
     try:
         response = _call_worker("type", app, window=window, field=field, text=text)
     except Exception as exc:
-        _audit("screen_type", "failed", {"application": app["desktop_id"], "window": window,
+        _audit("screen_type", "failed", {"application": app["desktop_id"],
                                           "field": field, "characters": len(text)})
         return f"Não inseri texto em {app['label']}: {exc}"
-    _audit("screen_type", "inserted", {"application": app["desktop_id"], "window": response["window"],
+    _audit("screen_type", "inserted", {"application": app["desktop_id"],
                                          "field": response["field"], "characters": len(text)})
-    return f"Inseri {response['characters']} caracteres no campo “{response['field']}” de “{response['window']}” em {app['label']}."
+    return f"Inseri {response['characters']} caracteres no campo “{response['field']}” em {app['label']}."

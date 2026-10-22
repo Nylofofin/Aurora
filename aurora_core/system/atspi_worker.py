@@ -6,6 +6,15 @@ import re
 import sys
 import unicodedata
 
+UNIQUE_UNLABELLED_TEXT = "área de texto única (sem rótulo)"
+
+
+def role_name(node):
+    try:
+        return str(node.getRoleName()).casefold()
+    except Exception:
+        return ""
+
 
 def normalized(value):
     return " ".join(unicodedata.normalize("NFKD", str(value or "")).encode("ascii", "ignore").decode().casefold().split())
@@ -98,13 +107,18 @@ def list_controls(window):
     allowed_roles = {"entry", "text", "password text", "combo box", "push button", "toggle button", "check box", "radio button", "menu item"}
     controls = []
     editable_index = 0
-    for node in descendants(window):
+    nodes = list(descendants(window))
+    text_nodes = [node for node in nodes if role_name(node) == "text"]
+    unique_text_area = len(text_nodes) == 1 and not editable_label(text_nodes[0])
+    for node in nodes:
         try:
-            role = node.getRoleName().casefold()
+            role = role_name(node)
             if role in allowed_roles:
                 if role in {"entry", "text", "combo box"}:
                     editable_index += 1
-                    label = editable_label(node) or f"campo editável sem rótulo {editable_index} (bloqueado)"
+                    label = editable_label(node)
+                    if not label:
+                        label = UNIQUE_UNLABELLED_TEXT if role == "text" and unique_text_area else f"campo editável sem rótulo {editable_index} (bloqueado)"
                     controls.append({"role": role, "name": label})
                 elif role == "password text":
                     controls.append({"role": role, "name": "campo de senha (bloqueado)"})
@@ -128,6 +142,11 @@ def inspect(desktop, request):
 def focus(desktop, request):
     app = find_application(desktop, request.get("accessible_names", []))
     window = choose_window(windows_for(app), request.get("window", ""))
+    focus_window(window)
+    return {"ok": True, "window": safe_name(window)}
+
+
+def focus_window(window):
     focused = False
     try:
         focused = bool(window.queryComponent().grabFocus())
@@ -144,7 +163,6 @@ def focus(desktop, request):
         pass
     if not focused:
         raise RuntimeError("O aplicativo não permitiu focar essa janela pelo AT-SPI.")
-    return {"ok": True, "window": safe_name(window)}
 
 
 def type_text(desktop, request):
@@ -158,15 +176,18 @@ def type_text(desktop, request):
     window = choose_window(windows_for(app), request.get("window", ""))
     wanted = normalized(field_name)
     candidates = []
-    editable_index = 0
-    for node in descendants(window):
+    nodes = list(descendants(window))
+    text_controls = [node for node in nodes if role_name(node) == "text"]
+    unique_unlabelled_text = len(text_controls) == 1 and not editable_label(text_controls[0])
+    for node in nodes:
         try:
-            role = node.getRoleName().casefold()
+            role = role_name(node)
             if role in {"entry", "text", "combo box"}:
-                editable_index += 1
                 label = editable_label(node)
                 if label and normalized(label) == wanted:
                     candidates.append((node, label))
+                elif role == "text" and unique_unlabelled_text and wanted == normalized(UNIQUE_UNLABELLED_TEXT):
+                    candidates.append((node, UNIQUE_UNLABELLED_TEXT))
         except Exception:
             continue
     if len(candidates) != 1:
@@ -177,14 +198,12 @@ def type_text(desktop, request):
         read_only = states.contains(43)  # ATSPI_STATE_READ_ONLY
     except Exception:
         read_only = False
-    if read_only or target.getRoleName().casefold() == "password text" or re.search(
+    if read_only or role_name(target) == "password text" or re.search(
         r"\b(password|senha|passcode|pin|token|credential|credencial)\b", normalized(label)
     ):
         raise RuntimeError("Campos protegidos ou de senha nunca recebem texto da Aurora.")
     try:
-        component = target.queryComponent()
-        if not component.grabFocus():
-            raise RuntimeError("O campo não aceitou foco.")
+        focus_window(window)
         offset = int(target.queryText().get_caretOffset())
         editable = target.queryEditableText()
         if not editable.insertText(offset, text, len(text)):

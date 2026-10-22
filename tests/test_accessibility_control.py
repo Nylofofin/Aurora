@@ -53,13 +53,13 @@ def test_text_insertion_is_bounded_and_does_not_return_or_log_text(monkeypatch, 
     audit_rows = []
     monkeypatch.setattr(accessibility, "_audit", lambda action, outcome, details: audit_rows.append((action, outcome, details)))
     monkeypatch.setattr(accessibility, "_call_worker", lambda operation, app, **kwargs: (
-        calls.append((operation, kwargs)) or {"ok": True, "window": "Editor", "field": "Search", "characters": len(kwargs["text"])}
+        calls.append((operation, kwargs)) or {"ok": True, "window": "draft private text", "field": "Search", "characters": len(kwargs["text"])}
     ))
 
     result = accessibility.type_into_accessible_field(
         "Editor", "Editor", "Search", "draft private text", ["org.example.Editor"]
     )
-    assert result == "Inseri 18 caracteres no campo “Search” de “Editor” em Example Editor."
+    assert result == "Inseri 18 caracteres no campo “Search” em Example Editor."
     assert "draft private text" not in result
     assert calls[0][1]["text"] == "draft private text"
     assert "draft private text" not in repr(audit_rows)
@@ -69,6 +69,21 @@ def test_text_insertion_is_bounded_and_does_not_return_or_log_text(monkeypatch, 
     )
     assert "1000 caracteres" in too_long
     assert len(calls) == 1
+
+
+def test_window_names_are_not_returned_or_logged_by_screen_focus(monkeypatch, tmp_path):
+    monkeypatch.setattr(accessibility, "find_desktop_app", lambda _query: _desktop_app(tmp_path))
+    audit_rows = []
+    monkeypatch.setattr(accessibility, "_audit", lambda *args: audit_rows.append(args))
+    monkeypatch.setattr(accessibility, "_call_worker", lambda *_args, **_kwargs: {
+        "ok": True, "window": "private draft title",
+    })
+
+    result = accessibility.focus_accessible_window("Editor", "private draft title", ["org.example.Editor"])
+
+    assert result == "Foquei uma janela de Example Editor."
+    assert "private draft title" not in result
+    assert "private draft title" not in repr(audit_rows)
 
 
 def test_worker_rejects_credential_fields_before_insertion():
@@ -134,6 +149,65 @@ def test_accessible_listing_never_reads_editable_control_value():
             return Entry()
 
     assert worker.list_controls(Window()) == [{"role": "entry", "name": "campo editável sem rótulo 1 (bloqueado)"}]
+
+
+def test_only_unique_unlabelled_document_text_area_can_be_targeted():
+    inserted = []
+
+    class EditableText:
+        def insertText(self, offset, text, length):
+            inserted.append((offset, text, length))
+            return True
+
+    class TextArea:
+        childCount = 0
+        def getRoleName(self): return "text"
+        def getRelationSet(self): return []
+        def getState(self): return type("States", (), {"contains": lambda *_: False})()
+        def queryComponent(self): return type("Component", (), {"grabFocus": lambda *_: True})()
+        def queryText(self): return type("Text", (), {"get_caretOffset": lambda *_: 0})()
+        def queryEditableText(self): return EditableText()
+
+    class Window:
+        name = "Editor"
+        childCount = 1
+        def getRoleName(self): return "frame"
+        def getChildAtIndex(self, _index): return TextArea()
+        def queryComponent(self): return type("Component", (), {"grabFocus": lambda *_: True})()
+
+    assert worker.list_controls(Window()) == [{"role": "text", "name": worker.UNIQUE_UNLABELLED_TEXT}]
+
+    class App:
+        name = "Example Editor"
+        childCount = 1
+        def getRoleName(self): return "application"
+        def getChildAtIndex(self, _index): return Window()
+
+    class Desktop:
+        childCount = 1
+        def getChildAtIndex(self, _index): return App()
+
+    result = worker.type_text(Desktop(), {
+        "accessible_names": ["Example Editor"], "window": "Editor",
+        "field": worker.UNIQUE_UNLABELLED_TEXT, "text": "temporary smoke test",
+    })
+    assert result["ok"]
+    assert inserted == [(0, "temporary smoke test", 20)]
+
+
+def test_multiple_unlabelled_text_areas_remain_blocked():
+    class TextArea:
+        childCount = 0
+        def getRoleName(self): return "text"
+        def getRelationSet(self): return []
+
+    class Window:
+        childCount = 2
+        def getRoleName(self): return "frame"
+        def getChildAtIndex(self, index): return TextArea()
+
+    controls = worker.list_controls(Window())
+    assert all(control["name"].endswith("(bloqueado)") for control in controls)
 
 
 def test_direct_commands_keep_screen_control_arguments_explicit():
