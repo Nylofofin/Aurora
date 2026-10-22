@@ -28,6 +28,8 @@ from .web.freshness import _independent_recent_source_count
 from .web.intent import _result_query_relevance, contextual_followup, contextual_source_request, current_search_window, factual_web_intent, local_datetime_answer, news_search_intent, news_unconfirmed_message, requested_response_language, research_request_intent, search_failure_summary, search_intent
 from .web.requests import FXRequest, SearchRequest, WeatherRequest
 
+APPROVAL_TIMEOUT_SECONDS=90
+
 class AuroraService(QObject):
     def __init__(self,app):
         # Keep every slot connected to worker-thread signals on the GUI thread.
@@ -268,14 +270,29 @@ class AuroraService(QObject):
             if request_busy: self.orb.set_mode('thinking')
         if self.inf and self.inf.model!=self.cfg['model']: self.start_warmup()
     def request_approval(self,name,detail):
+        detail['expires_at']=time.monotonic()+APPROVAL_TIMEOUT_SECONDS
         self.pending=detail
+        QTimer.singleShot(APPROVAL_TIMEOUT_SECONDS*1000,
+                          lambda pending=detail:self.expire_approval(pending))
         if self.orb.isVisible(): self.orb.set_mode('approval')
         else: self.orb.reveal('approval')
         a=detail['args']; what={'open_url':f'abrir {a.get("url", "este endereço")}', 'open_application':f'abrir {a.get("command", "o aplicativo")}', 'close_application':f'fechar {a.get("application", "o aplicativo")}', 'manage_window':f'{a.get("action", "alterar")} a janela {a.get("target", "atual")}', 'take_screenshot':'capturar a tela e salvar a imagem', 'obs_record':'iniciar a gravação da tela no OBS'}
         self.speak_in_selected_language(f'Preciso da sua autorização para {what.get(name,"executar uma ação")}. Toque na bolha para autorizar. Clique com o botão direito para negar.')
+    def expire_approval(self,detail):
+        if self.pending is not detail: return
+        self.pending=None
+        self.orb.pending=False
+        detail['result']='Autorização expirou; ação cancelada.'
+        detail['event'].set()
+        self.orb.set_mode('thinking')
+        if detail.get('direct'):
+            self.complete_direct_action('A autorização expirou. Não executei a ação.')
     def resolve_approval(self,approved):
         detail=self.pending
         if not detail: return
+        if time.monotonic()>=detail.get('expires_at',float('inf')):
+            self.expire_approval(detail)
+            return
         self.pending=None; self.orb.pending=False
         try:
             if detail['name']=='web_search': detail['result']=True if approved else 'Ação negada pelo usuário.'

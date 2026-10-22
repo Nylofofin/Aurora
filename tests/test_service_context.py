@@ -1,4 +1,5 @@
 import aurora_core.service as service_module
+import threading
 
 
 def test_fast_search_answer_keeps_evidence_in_followup_context(monkeypatch):
@@ -44,3 +45,68 @@ def test_stale_fast_search_answer_does_not_consume_context(monkeypatch):
     )
 
     assert stub.active_search_context == "new request evidence"
+
+
+def test_expired_approval_cannot_be_executed_by_a_late_click(monkeypatch):
+    now = [100.0]
+    timers = []
+    executed = []
+    monkeypatch.setattr(service_module.time, "monotonic", lambda: now[0])
+
+    class FakeTimer:
+        @staticmethod
+        def singleShot(milliseconds, callback):
+            timers.append((milliseconds, callback))
+
+    class Orb:
+        pending = True
+        def isVisible(self): return False
+        def reveal(self, _mode): pass
+        def set_mode(self, _mode): pass
+
+    class ServiceStub:
+        pending = None
+        orb = Orb()
+        def speak_in_selected_language(self, _text): pass
+        def execute_action(self, *_args): executed.append(True)
+        def complete_direct_action(self, text): self.completed = text
+        def expire_approval(self, detail):
+            service_module.AuroraService.expire_approval(self, detail)
+
+    monkeypatch.setattr(service_module, "QTimer", FakeTimer)
+    detail = {"name": "obs_record", "args": {"action": "start"},
+              "event": threading.Event(), "direct": True}
+    stub = ServiceStub()
+
+    service_module.AuroraService.request_approval(stub, "obs_record", detail)
+    assert timers[0][0] == 90_000
+    assert detail["expires_at"] == 190.0
+
+    now[0] = 191.0
+    service_module.AuroraService.resolve_approval(stub, True)
+
+    assert not executed
+    assert stub.pending is None
+    assert detail["event"].is_set()
+    assert "expirou" in detail["result"]
+    assert "Não executei" in stub.completed
+
+
+def test_expiration_callback_for_old_approval_does_not_clear_new_one():
+    old = {"event": threading.Event()}
+    current = {"event": threading.Event()}
+
+    class Orb:
+        pending = True
+        def set_mode(self, _mode): pass
+
+    class ServiceStub:
+        pending = current
+        orb = Orb()
+        def complete_direct_action(self, _text): raise AssertionError("not a direct approval")
+
+    service_core = ServiceStub()
+    service_module.AuroraService.expire_approval(service_core, old)
+
+    assert service_core.pending is current
+    assert not old["event"].is_set()
