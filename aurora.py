@@ -1183,6 +1183,14 @@ def ground_search_answer(question,answer,evidence,sources):
     if news_search_intent(question): fallback='Não consegui confirmar notícias recentes sobre isso.'
     return _ground_numeric_answer(answer,evidence,sources,fallback_message=fallback)
 
+def complete_spoken_response(text):
+    """Keep only full sentences when an inference stream ends mid-sentence."""
+    text=' '.join(str(text).split())
+    if not text: return ''
+    pieces=re.split(r'(?<=[.!?])\s+',text)
+    if re.search(r'[.!?][\"”’\')\]]*$',pieces[-1]): return text
+    return ' '.join(piece for piece in pieces[:-1] if piece).strip()
+
 def _verified_fx_answer(answer,quote):
     """Apply the web numeric guard to values and timestamps returned by FX APIs."""
     evidence=[str(quote.rate),quote.quote_date.strftime('%d/%m/%Y')]
@@ -1299,10 +1307,13 @@ class Inference(QThread):
                     if self.cancelled: return
                 if self.cancelled: return
             tail=spoken.strip()
-            if tail:
+            if tail and re.search(r'[.!?][\"”’\')\]]*$',tail):
                 if likely_english(tail): tail=self.translate_to_portuguese(tail)
                 spoken_parts.append(tail); self.sentence.emit(tail)
-            self.result.emit(' '.join(spoken_parts).strip() or complete)
+            complete_response=complete_spoken_response(' '.join(spoken_parts))
+            if not complete_response:
+                complete_response=complete_spoken_response(complete) or 'Não consegui concluir a resposta.'
+            self.result.emit(complete_response)
         except urllib.error.HTTPError as e:
             self.error.emit(f'Ollama local retornou {e.code}. Confira a tag {self.model}.')
         except Exception as e:

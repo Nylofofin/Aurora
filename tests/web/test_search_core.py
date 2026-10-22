@@ -112,6 +112,13 @@ def test_numeric_guard_failure_message_matches_news_intent():
     assert "valor" not in result.lower()
 
 
+def test_incomplete_stream_tail_is_not_spoken():
+    full = "As notícias incluem duas atualizações completas. A terceira começa em 21"
+    assert aurora.complete_spoken_response(full) == "As notícias incluem duas atualizações completas."
+    assert aurora.complete_spoken_response("A notícia termina corretamente.") == "A notícia termina corretamente."
+    assert aurora.complete_spoken_response("fragmento sem pontuação") == ""
+
+
 def test_numeric_guard_decimal_currency_percent_and_spelled_number_edges():
     fallback = "Não consegui confirmar os valores numéricos com os trechos consultados. Fontes: fonte."
     assert aurora._ground_numeric_answer("O valor é 5.40.", ["O valor é 5,40."], ["fonte"]) == "O valor é 5.40."
