@@ -1392,6 +1392,11 @@ class LocalVoice(QThread):
     @staticmethod
     def strip_wake_word(text):
         return re.sub(r'^\s*(?:(?:ei|ol[áa])\s+)?aurora[\s,.:;!?-]*','',str(text),flags=re.I).strip()
+    @staticmethod
+    def is_final_wake_phrase(text,finalized):
+        """Accept only a completed Vosk result containing the wake phrase alone."""
+        if not finalized: return False
+        return bool(re.fullmatch(r'(?:ei\s+|ola\s+)?aurora',normalize_words(text)))
     def cloud_transcribe(self,sr,pcm,fallback):
         try: command=self.recognizer.recognize_google(sr.AudioData(pcm,16000,2),language='pt-BR')
         except Exception: command=fallback
@@ -1413,7 +1418,7 @@ class LocalVoice(QThread):
                 except queue.Full: pass
             with sd.RawInputStream(samplerate=16000,blocksize=3200,dtype='int16',channels=1,callback=callback):
                 self.status.emit('hidden')
-                active=False; wake_candidate=False; silence_blocks=0; started=0.0; wake_started=0.0; buffer=[]; wake_audio=[]; noise_levels=[]
+                active=False; started=0.0; buffer=[]; wake_audio=[]
                 while self.running:
                     try: block=q.get(timeout=.25)
                     except queue.Empty: continue
@@ -1421,47 +1426,13 @@ class LocalVoice(QThread):
                     if not active:
                         wake_audio.append(block)
                         if len(wake_audio)>88: wake_audio=wake_audio[-88:]
-                        level=self.pcm_level(block)
-                        if not wake_candidate and level<1200:
-                            noise_levels.append(level)
-                            if len(noise_levels)>24: noise_levels.pop(0)
                         if self.one_shot.is_set():
-                            self.one_shot.clear(); active=True; wake_candidate=False; silence_blocks=0; buffer=[]; wake_audio=[]; started=time.monotonic(); self.status.emit('listening'); rec.Reset(); wake_rec.Reset(); continue
-                        if wake_candidate and time.monotonic()-wake_started>22:
-                            wake_candidate=False; silence_blocks=0; wake_audio=[]; wake_rec.Reset(); continue
-                        if wake_candidate:
-                            sorted_noise=sorted(noise_levels)
-                            floor=sorted_noise[len(sorted_noise)//3] if sorted_noise else 0
-                            threshold=max(180.0,min(700.0,floor*2.2+100.0))
-                            silence_blocks=silence_blocks+1 if level<threshold else 0
-                            if silence_blocks>=2:
-                                # Confirm the wake only after a short quiet tail,
-                                # even when constrained Vosk returns no final text.
-                                self.wake.emit(); self.status.emit('listening')
-                                buffer=list(wake_audio[-40:]); wake_audio=[]; active=True; wake_candidate=False; silence_blocks=0; started=time.monotonic()
-                                rec.Reset(); wake_rec.Reset(); completed=[]
-                                for saved_block in buffer:
-                                    if rec.AcceptWaveform(saved_block):
-                                        segment=json.loads(rec.Result()).get('text','').strip()
-                                        if segment: completed.append(segment)
-                                fallback=' '.join(completed)
-                                if self.strip_wake_word(fallback):
-                                    self.status.emit('thinking')
-                                    command=self.cloud_transcribe(sr,b''.join(buffer),fallback)
-                                    if command:
-                                        self.transcript.emit(command); active=False; buffer=[]; rec.Reset(); wake_rec.Reset()
-                                    else:
-                                        active=True; buffer=[]; started=time.monotonic(); rec.Reset(); wake_rec.Reset(); self.status.emit('listening')
-                                continue
+                            self.one_shot.clear(); active=True; buffer=[]; wake_audio=[]; started=time.monotonic(); self.status.emit('listening'); rec.Reset(); wake_rec.Reset(); continue
                     else:
                         buffer.append(block)
                     active_rec=rec if active else wake_rec
                     finalized=active_rec.AcceptWaveform(block)
                     if not finalized:
-                        if not active and not wake_candidate:
-                            partial=json.loads(wake_rec.PartialResult()).get('partial','').strip()
-                            if re.search(r'\b(?:ei\s+|ol[áa]\s+)?aurora\b',partial,re.I):
-                                wake_candidate=True; silence_blocks=0; wake_started=time.monotonic()
                         if active and time.monotonic()-started>22:
                             active=False; buffer=[]; wake_audio=[]; rec.Reset(); wake_rec.Reset(); self.status.emit('hidden')
                         continue
@@ -1476,21 +1447,11 @@ class LocalVoice(QThread):
                         elif time.monotonic()-started>22:
                             active=False; buffer=[]; wake_audio=[]; rec.Reset(); wake_rec.Reset(); self.status.emit('hidden')
                     elif text:
-                        normalized=text.lower().strip()
-                        match=re.search(r'\b(?:ei\s+|ol[áa]\s+)?aurora\b',normalized)
-                        if match:
-                            wake_candidate=False; silence_blocks=0
+                        if self.is_final_wake_phrase(text,finalized):
                             self.wake.emit(); self.status.emit('listening')
-                            remainder=text[match.end():].strip(' ,.!?')
-                            if remainder:
-                                pcm=b''.join(wake_audio[-40:]); active=False; wake_audio=[]; self.status.emit('thinking')
-                                command=self.cloud_transcribe(sr,pcm,text)
-                                if command: self.transcript.emit(command)
-                                else:
-                                    active=True; buffer=list(wake_audio); started=time.monotonic(); rec.Reset(); wake_rec.Reset(); self.status.emit('listening')
-                            else:
-                                active=True; buffer=list(wake_audio); wake_audio=[]; started=time.monotonic(); rec.Reset(); wake_rec.Reset()
-                        wake_audio=[]
+                            active=True; buffer=list(wake_audio); wake_audio=[]; started=time.monotonic(); rec.Reset(); wake_rec.Reset()
+                        else:
+                            wake_audio=[]
         except Exception as e:
             self.unavailable.emit(str(e)); self.status.emit('error')
     def stop(self): self.running=False
