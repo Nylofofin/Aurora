@@ -26,6 +26,20 @@ def test_wake_session_is_a_single_request_gate():
     assert not voice.one_shot.is_set()
 
 
+def test_wake_detection_stays_suppressed_until_request_finishes_but_allows_click():
+    voice = LocalVoice({})
+    assert not voice.defer_wake_detection()
+
+    voice.begin_request()
+    assert voice.defer_wake_detection()
+
+    voice.request_once()
+    assert not voice.defer_wake_detection()
+
+    voice.end_request()
+    assert not voice.defer_wake_detection()
+
+
 def test_recognized_command_does_not_auto_rearm_continuous_listening():
     from pathlib import Path
 

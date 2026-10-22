@@ -15,6 +15,9 @@ class LocalVoice(QThread):
     def request_once(self): self.one_shot.set()
     def begin_request(self): self.request_active.set()
     def end_request(self): self.request_active.clear(); self.one_shot.clear()
+    def defer_wake_detection(self):
+        """Do not accept another wake phrase until the active request ends."""
+        return self.request_active.is_set() and not self.one_shot.is_set()
     @staticmethod
     def pcm_level(block):
         samples=array('h'); samples.frombytes(block)
@@ -56,6 +59,7 @@ class LocalVoice(QThread):
                     except queue.Empty: continue
                     if not self.request_active.is_set() and active:
                         active=False; buffer=[]; wake_audio=[]; rec.Reset(); wake_rec.Reset(); self.status.emit('hidden')
+                    if not active and self.defer_wake_detection(): continue
                     if self.speaking: continue
                     if not active:
                         wake_audio.append(block)
