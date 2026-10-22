@@ -1,6 +1,9 @@
-# Aurora — Alpha InDev
+# Aurora — POLARIS-EDGE
 
-**A única interface da Aurora é a bolha flutuante.** Não há janela de chat nem janela de resultados. Em espera fica escondida; ao dizer “Aurora”, aparece no canto inferior direito com uma entrada animada e o som `assets/audio/entrada.wav`. Cada ativação recebe um pedido; depois de responder, a bolha desaparece e o microfone volta a aguardar apenas a palavra “Aurora”. O contexto curto pode ajudar em um seguimento, mas não mantém a captura de voz aberta entre ativações. Clique com o botão direito na bolha para interromper imediatamente a fala e cancelar o pedido atual. Enquanto estiver visível, você pode arrastá-la para qualquer lugar. A esfera compacta mistura azul e violeta em camadas luminosas com animação contínua; o rótulo de alto contraste indica se está ouvindo, pensando, buscando ou falando. Pesquisas e clima são resumidos em voz, com distinção entre o que as fontes dizem e o que não foi confirmado.
+**Versão:** `0.1.0a1` (Alpha InDev, PEP 440) · **Build:** `AUR-20261022.01`
+**Codinome técnico:** `POLARIS-EDGE` — identidade da build local otimizada para execução no edge, com Gemma via Ollama e alvo gráfico AMD Polaris.
+
+**A única interface da Aurora é a bolha flutuante.** Não há janela de chat nem janela de resultados. Em espera fica escondida; ao dizer “Aurora”, aparece no canto inferior direito com uma entrada animada e o som `assets/audio/entrada.wav`. Cada ativação recebe um pedido; depois de responder, a bolha desaparece e o microfone volta a aguardar apenas a palavra “Aurora”. O contexto curto pode ajudar em um seguimento, mas não mantém a captura de voz aberta entre ativações. Clique com o botão direito na bolha para interromper imediatamente a fala e cancelar o pedido atual. Enquanto estiver visível, você pode arrastá-la para qualquer lugar. A esfera compacta mistura azul e violeta em camadas luminosas com animação contínua; o rótulo de alto contraste indica se está ouvindo, pensando, buscando ou falando. Inferência do Gemma, memória e roteamento de ações são locais. Transcrição de voz, síntese de voz, busca web e serviços externos descritos abaixo usam a internet quando solicitados.
 
 ## Perfil deste computador
 
@@ -8,7 +11,11 @@
 - Intel Core i5-2300, 4 núcleos, sem AVX2.
 - 12 GB de RAM.
 - AMD Radeon RX 470 (PCI da família Ellesmere), **4 GB de VRAM** confirmados em `/sys`. A verificação com `ollama ps` confirmou o Gemma 3 1B usando 100% GPU via Vulkan; Aurora reserva todo o offload compatível para esse modelo leve.
-- Modelo de conversa: `gemma3:1b-it-qat`, contexto 1024, 4 threads e respostas curtas. Ações complexas que precisam de ferramentas usam `gemma4:e2b-it-q4_K_M`; clima e busca na web usam rotas diretas sem LLM. O Gemma 1B é pré-carregado ao iniciar e permanece na GPU enquanto a Aurora está aberta.
+- Modelo de conversa: `gemma3:1b-it-qat`, contexto efetivo 4096, 4 threads e respostas curtas. Ações complexas que precisam de ferramentas usam `gemma4:e2b-it-q4_K_M`; clima e busca na web usam rotas diretas sem LLM. O Gemma 1B é pré-carregado ao iniciar e permanece na GPU enquanto a Aurora está aberta.
+
+## Estrutura interna
+
+O código está separado por responsabilidade em `aurora_core/`: `system/` contém automação local; `web/` contém parsers, validação e pipeline de busca; `llm/` contém prompts e inferência; `voice/` contém wake word e síntese; `ui/` contém a bolha; `service.py` coordena esses componentes. `aurora.py` permanece como ponto de entrada e compatibilidade para ferramentas existentes. A separação não altera contratos nem comportamento da build.
 
 ## Inicialização
 
@@ -21,6 +28,14 @@ Os parâmetros ajustáveis estão em `aurora-settings.json`, na pasta do app. En
 ### Testes da busca
 
 Rode a suíte local de parsers, intenção, atualidade, relevância, fontes independentes e cache com `./.venv/bin/python -m pytest -q tests/web`. As respostas HTML de teste ficam em `tests/web/fixtures/`; os testes não fazem requisições à internet.
+
+### Desenvolver e diagnosticar
+
+- Suíte completa: `./.venv/bin/python -m pytest -q`.
+- Compilação: `./.venv/bin/python -m compileall -q aurora.py aurora_core aurora_fx.py aurora_integrations.py scripts`.
+- Rodar na sessão gráfica: `./run.sh` (ou `./start-alpha.sh` para o runtime local de desenvolvimento).
+- Ver logs do serviço: `journalctl --user -u aurora.service -f`.
+- Ferramentas X11 opcionais: `requirements-control.txt` contém `pyautogui`; mouse/teclado sintético não é habilitado em Wayland. O controle de janelas depende de `wmctrl`/`xdotool` quando presentes.
 
 ## Voz
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import html
 import json
 import os
 import queue
@@ -11,6 +12,10 @@ import re
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
+import xml.etree.ElementTree as ET
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urljoin, urlparse
@@ -19,6 +24,9 @@ from PySide6.QtCore import QCoreApplication, QEventLoop, QObject, QTimer, Signal
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import aurora
+import aurora_core.service as aurora_service
+import aurora_core.web.pipeline as web_pipeline
+import aurora_core.web.security as web_security
 
 ROOT = Path(__file__).resolve().parents[1]
 QUESTIONS = ROOT / "tests" / "eval" / "questions.txt"
@@ -300,17 +308,17 @@ class ResponseCapture:
 
 def install_trace(trace):
     originals = {}
-    original_search = aurora.search_public_web
-    original_page = aurora._search_page_excerpt
-    original_open = aurora.PUBLIC_OPENER.open
-    original_urlopen = aurora.urllib.request.urlopen
-    original_ddg_feed = aurora.DuckDuckGoLiteResults.feed
-    original_xml_fromstring = aurora.ET.fromstring
+    original_search = web_pipeline.search_public_web
+    original_page = web_pipeline._search_page_excerpt
+    original_open = web_pipeline.PUBLIC_OPENER.open
+    original_urlopen = urllib.request.urlopen
+    original_ddg_feed = web_pipeline.DuckDuckGoLiteResults.feed
+    original_xml_fromstring = ET.fromstring
     original_fx_read_json = aurora.aurora_fx._read_json
-    original_relevance = aurora._search_relevance
-    original_publication_window = aurora._publication_within_window
-    original_public_url = aurora.public_http_url
-    original_redirect = aurora.PublicRedirectHandler.redirect_request
+    original_relevance = web_pipeline._search_relevance
+    original_publication_window = web_pipeline._publication_within_window
+    original_public_url = web_pipeline.public_http_url
+    original_redirect = web_security.PublicRedirectHandler.redirect_request
     request_context = threading.local()
 
     def traced_fx_read_json(url, *args, **kwargs):
@@ -409,7 +417,7 @@ def install_trace(trace):
                     "elapsed_ms": round((time.perf_counter() - started) * 1000),
                     "error": f"{type(exc).__name__}: {exc}",
                 })
-                if isinstance(exc, aurora.urllib.error.HTTPError):
+                if isinstance(exc, urllib.error.HTTPError):
                     try:
                         body = exc.read(1_500_000)
                         record["bytes"] = len(body)
@@ -451,16 +459,16 @@ def install_trace(trace):
                     publisher = " ".join((source.text or "").split()) if source is not None else ""
                     source_url = source.get("url", "") if source is not None else ""
                     if record["kind"] == "Google Notícias":
-                        snippet = re.sub(r"<[^>]+>", " ", aurora.html.unescape(snippet))
+                        snippet = re.sub(r"<[^>]+>", " ", html.unescape(snippet))
                         try:
-                            published_at = aurora.parsedate_to_datetime(item.findtext("pubDate")).astimezone()
+                            published_at = parsedate_to_datetime(item.findtext("pubDate")).astimezone()
                             published = published_at.strftime("%d/%m/%Y %H:%M")
                         except Exception:
                             published = ""
                         domain_hint = urlparse(source_url).hostname or ""
                     else:
                         try:
-                            published = aurora._parse_publication_date(item.findtext("pubDate")).astimezone().strftime("%d/%m/%Y")
+                            published = web_pipeline._parse_publication_date(item.findtext("pubDate")).astimezone().strftime("%d/%m/%Y")
                         except Exception:
                             published = ""
                         domain_hint = ""
@@ -522,32 +530,36 @@ def install_trace(trace):
         "publication_window": original_publication_window, "public_url": original_public_url,
         "redirect_request": original_redirect,
     })
-    aurora.search_public_web = traced_search
-    aurora._search_page_excerpt = traced_page
-    aurora.PUBLIC_OPENER.open = instrumented_open(original_open)
-    aurora.urllib.request.urlopen = instrumented_open(original_urlopen)
-    aurora.DuckDuckGoLiteResults.feed = traced_ddg_feed
-    aurora.ET.fromstring = traced_xml_fromstring
+    web_pipeline.search_public_web = traced_search
+    aurora_service.search_public_web = traced_search
+    web_pipeline._search_page_excerpt = traced_page
+    web_pipeline.PUBLIC_OPENER.open = instrumented_open(original_open)
+    urllib.request.urlopen = instrumented_open(original_urlopen)
+    web_pipeline.DuckDuckGoLiteResults.feed = traced_ddg_feed
+    ET.fromstring = traced_xml_fromstring
     aurora.aurora_fx._read_json = traced_fx_read_json
-    aurora._search_relevance = traced_relevance
-    aurora._publication_within_window = traced_publication
-    aurora.public_http_url = traced_public_url
-    aurora.PublicRedirectHandler.redirect_request = traced_redirect
+    web_pipeline._search_relevance = traced_relevance
+    web_pipeline._publication_within_window = traced_publication
+    web_pipeline.public_http_url = traced_public_url
+    web_security.public_http_url = traced_public_url
+    web_security.PublicRedirectHandler.redirect_request = traced_redirect
     return originals
 
 
 def restore_trace(originals):
-    aurora.search_public_web = originals["search_public_web"]
-    aurora._search_page_excerpt = originals["_search_page_excerpt"]
-    aurora.PUBLIC_OPENER.open = originals["opener_open"]
-    aurora.urllib.request.urlopen = originals["urlopen"]
-    aurora.DuckDuckGoLiteResults.feed = originals["ddg_feed"]
-    aurora.ET.fromstring = originals["xml_fromstring"]
+    web_pipeline.search_public_web = originals["search_public_web"]
+    aurora_service.search_public_web = originals["search_public_web"]
+    web_pipeline._search_page_excerpt = originals["_search_page_excerpt"]
+    web_pipeline.PUBLIC_OPENER.open = originals["opener_open"]
+    urllib.request.urlopen = originals["urlopen"]
+    web_pipeline.DuckDuckGoLiteResults.feed = originals["ddg_feed"]
+    ET.fromstring = originals["xml_fromstring"]
     aurora.aurora_fx._read_json = originals["fx_read_json"]
-    aurora._search_relevance = originals["relevance"]
-    aurora._publication_within_window = originals["publication_window"]
-    aurora.public_http_url = originals["public_url"]
-    aurora.PublicRedirectHandler.redirect_request = originals["redirect_request"]
+    web_pipeline._search_relevance = originals["relevance"]
+    web_pipeline._publication_within_window = originals["publication_window"]
+    web_pipeline.public_http_url = originals["public_url"]
+    web_security.public_http_url = originals["public_url"]
+    web_security.PublicRedirectHandler.redirect_request = originals["redirect_request"]
 
 
 def evaluate(line_number, question, cfg, timeout_seconds, history=None, context_note=""):

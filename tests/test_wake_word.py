@@ -1,4 +1,6 @@
 import aurora
+from aurora_core.service import AuroraService
+from aurora_core.voice.wake import LocalVoice
 
 
 def test_wake_word_requires_a_completed_exact_phrase():
@@ -27,7 +29,7 @@ def test_wake_session_is_a_single_request_gate():
 def test_recognized_command_does_not_auto_rearm_continuous_listening():
     from pathlib import Path
 
-    source = (Path(aurora.__file__).parent / "aurora.py").read_text()
+    source = (Path(__file__).resolve().parents[1] / "aurora_core" / "voice" / "wake.py").read_text()
     assert "if self.one_shot.is_set():" in source
     assert "self.one_shot.is_set() or self.request_active.is_set()" not in source
     assert "pcm=b''.join(buffer[-40:]); active=False" in source
@@ -47,6 +49,6 @@ def test_right_click_is_wired_to_stop_the_current_request():
 
     root = Path(aurora.__file__).parent
     source = (root / "orb.qml").read_text()
-    service = (root / "aurora.py").read_text()
+    service = (root / "aurora_core" / "service.py").read_text()
     assert "if (mouse.button === Qt.RightButton)" in source
     assert "self.orb.hide_requested.connect(self.stop_conversation)" in service
