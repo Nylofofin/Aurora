@@ -92,7 +92,7 @@ def test_numeric_answers_must_use_numbers_literal_in_evidence():
     assert aurora._ground_numeric_answer("O petróleo está a US$ 112.", evidence, []) == "O petróleo está a US$ 112."
     prompt, system = aurora.search_answer_prompts("Qual o valor?", "valor atual", evidence, now=NOW)
     assert "mesma sequência numérica aparecer literalmente" in prompt
-    assert "a sequência numérica apareça literalmente" in system
+    assert "Só informe um valor numérico se a mesma sequência numérica aparecer literalmente" in system
 
 
 def test_news_dates_and_headline_numbers_do_not_trigger_numeric_guard():
@@ -117,6 +117,31 @@ def test_incomplete_stream_tail_is_not_spoken():
     assert aurora.complete_spoken_response(full) == "As notícias incluem duas atualizações completas."
     assert aurora.complete_spoken_response("A notícia termina corretamente.") == "A notícia termina corretamente."
     assert aurora.complete_spoken_response("fragmento sem pontuação") == ""
+
+
+def test_news_results_must_match_subject_or_be_a_general_roundup():
+    assert aurora._news_result_relevance(
+        "quais as notícias de tecnologia hoje", "Novidades sobre tecnologia", ""
+    ) > 0
+    assert aurora._news_result_relevance(
+        "quais as notícias de tecnologia hoje", "Notícias sobre edital", "concursos"
+    ) == 0.0
+    assert aurora._news_result_relevance(
+        "notícias de hoje", "Principais notícias do mundo na manhã de hoje", ""
+    ) > 0
+    assert aurora._news_result_relevance(
+        "notícias de hoje", "Notícias sobre edital de 22 de outubro", ""
+    ) == 0.0
+    assert aurora.news_unconfirmed_message().startswith("Não consegui confirmar notícias")
+
+
+def test_news_prompt_never_turns_headline_into_price_request():
+    prompt, system = aurora.search_answer_prompts(
+        "notícias de hoje", "notícias de hoje", ["Notícias sobre edital; data 22/10/2026"]
+    )
+    assert "números e datas de manchetes são metadados" in prompt
+    assert "Não consegui confirmar o valor" not in prompt + system
+    assert "manchete isolada em resposta sobre preço" in system
 
 
 def test_numeric_guard_decimal_currency_percent_and_spelled_number_edges():
