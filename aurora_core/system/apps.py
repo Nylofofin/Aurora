@@ -77,7 +77,16 @@ def launch_application(name):
     app=find_desktop_app(query)
     gio=shutil.which('gio')
     if app and gio:
-        subprocess.Popen([gio,'launch',str(app['file'])],start_new_session=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        try:
+            result=subprocess.run([gio,'launch',str(app['file'])],capture_output=True,
+                                  text=True,timeout=4)
+        except subprocess.TimeoutExpired:
+            return f'O pedido para abrir {app["name"]} demorou; não confirmei se o aplicativo abriu.'
+        except OSError:
+            return f'Não consegui iniciar o lançador de {app["name"]}.'
+        if result.returncode:
+            detail=(result.stderr or '').strip()
+            return f'Não consegui abrir {app["name"]}.'+(f' {detail}' if detail else '')
         return f'Abri {app["name"]}.'
     if re.fullmatch(r'[\w.+-]{1,80}',query,flags=re.UNICODE):
         executable=shutil.which(query)

@@ -49,9 +49,43 @@ def test_flatpak_application_launches_through_exported_desktop_entry(monkeypatch
     calls = []
     monkeypatch.setattr(apps_module, "find_desktop_app", lambda _name: app)
     monkeypatch.setattr(apps_module.shutil, "which", lambda name: "/usr/bin/gio" if name == "gio" else None)
-    monkeypatch.setattr(apps_module.subprocess, "Popen", lambda command, **_kwargs: calls.append(command))
+    monkeypatch.setattr(apps_module.subprocess, "run", lambda command, **_kwargs: (
+        calls.append(command) or type("Result", (), {"returncode": 0, "stderr": ""})()
+    ))
     assert apps_module.launch_application("OBS Studio") == "Abri OBS Studio."
     assert calls == [["/usr/bin/gio", "launch", str(desktop_file)]]
+
+
+def test_flatpak_application_launch_failure_is_not_reported_as_success(monkeypatch, tmp_path):
+    desktop_file = tmp_path / "flatpak/exports/share/applications/com.obsproject.Studio.desktop"
+    app = {"file": desktop_file, "name": "OBS Studio", "exec": "flatpak run com.obsproject.Studio",
+           "class": "obs"}
+    monkeypatch.setattr(apps_module, "find_desktop_app", lambda _name: app)
+    monkeypatch.setattr(apps_module.shutil, "which", lambda name: "/usr/bin/gio" if name == "gio" else None)
+    monkeypatch.setattr(apps_module.subprocess, "run", lambda *_args, **_kwargs: (
+        type("Result", (), {"returncode": 1, "stderr": "Application launch failed"})()
+    ))
+
+    result = apps_module.launch_application("OBS Studio")
+
+    assert "Não consegui abrir OBS Studio" in result
+    assert "Abri OBS Studio" not in result
+
+
+def test_flatpak_application_launch_timeout_does_not_claim_success(monkeypatch, tmp_path):
+    desktop_file = tmp_path / "flatpak/exports/share/applications/com.obsproject.Studio.desktop"
+    app = {"file": desktop_file, "name": "OBS Studio", "exec": "flatpak run com.obsproject.Studio",
+           "class": "obs"}
+    monkeypatch.setattr(apps_module, "find_desktop_app", lambda _name: app)
+    monkeypatch.setattr(apps_module.shutil, "which", lambda name: "/usr/bin/gio" if name == "gio" else None)
+    monkeypatch.setattr(apps_module.subprocess, "run", lambda *_args, **_kwargs: (
+        (_ for _ in ()).throw(apps_module.subprocess.TimeoutExpired("gio launch", 4))
+    ))
+
+    result = apps_module.launch_application("OBS Studio")
+
+    assert "não confirmei se o aplicativo abriu" in result
+    assert "Abri OBS Studio" not in result
 
 
 def test_close_flatpak_application_uses_instance_id(monkeypatch):
