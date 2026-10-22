@@ -26,7 +26,8 @@ def manage_window(action,target=''):
                     if match: ids=[match.group(0)]
             for row in rows:
                 parts=row.split(maxsplit=5)
-                if len(parts)>=6 and ((query and (query in normalize_words(parts[3]) or query in normalize_words(parts[5]))) or (not query and parts[0] in ids)): ids.append(parts[0])
+                if len(parts)>=6 and query and (query in normalize_words(parts[3]) or query in normalize_words(parts[5])): ids.append(parts[0])
+            ids=list(dict.fromkeys(ids))
             if not ids: return 'Não encontrei uma janela compatível. Selecione a janela e tente “janela atual”.'
             for wid in ids:
                 if action=='maximize': args=[wmctrl,'-ir',wid,'-b','add,maximized_vert,maximized_horz']

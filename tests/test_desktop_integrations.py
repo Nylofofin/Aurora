@@ -120,6 +120,23 @@ def test_window_manager_rejects_unknown_action_before_running_tools(monkeypatch)
     assert calls == []
 
 
+def test_window_manager_applies_action_once_to_active_window(monkeypatch):
+    import aurora_core.system.windows as windows_module
+
+    calls = []
+    monkeypatch.setattr(windows_module.shutil, "which", lambda name: f"/usr/bin/{name}")
+
+    def fake_run(command, **_kwargs):
+        calls.append(command)
+        stdout = "0x0001 0 0 host editor.Editor  Editor" if command[1:] == ["-l", "-x"] else "_NET_ACTIVE_WINDOW(WINDOW): window id # 0x0001"
+        return type("Result", (), {"stdout": stdout})()
+
+    monkeypatch.setattr(windows_module.subprocess, "run", fake_run)
+    assert "concluído" in windows_module.manage_window("maximize")
+    maximize_calls = [command for command in calls if command[1:3] == ["-ir", "0x0001"]]
+    assert maximize_calls == [["/usr/bin/wmctrl", "-ir", "0x0001", "-b", "add,maximized_vert,maximized_horz"]]
+
+
 def test_local_fast_router_handles_media_capture_and_obs_requests():
     assert aurora.parse_local_command("toca a música Dreams") == (
         "spotify_play", {"query": "dreams"}
