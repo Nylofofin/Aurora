@@ -23,10 +23,10 @@ class Speaker(QThread):
         import asyncio
         import edge_tts
         task=asyncio.current_task(); self.stream_loop=asyncio.get_running_loop(); self.stream_task=task
-        player=await asyncio.create_subprocess_exec(self.engine,'-nodisp','-autoexit','-loglevel','quiet','-f','mp3','-i','pipe:0',stdin=asyncio.subprocess.PIPE,stdout=asyncio.subprocess.DEVNULL,stderr=asyncio.subprocess.DEVNULL)
-        self.current_player=player
-        started=False
+        player=None
         try:
+            player=await asyncio.create_subprocess_exec(self.engine,'-nodisp','-autoexit','-loglevel','quiet','-f','mp3','-i','pipe:0',stdin=asyncio.subprocess.PIPE,stdout=asyncio.subprocess.DEVNULL,stderr=asyncio.subprocess.DEVNULL)
+            self.current_player=player; started=False
             async for packet in edge_tts.Communicate(text,self.cfg.get('tts_voice','pt-BR-ThalitaMultilingualNeural'),rate='+8%').stream():
                 if generation!=self.cancel_generation: raise RuntimeError('speech interrupted')
                 if packet.get('type')=='audio' and packet.get('data'):
@@ -37,11 +37,11 @@ class Speaker(QThread):
             except Exception: pass
             await asyncio.wait_for(player.wait(),timeout=55)
         except BaseException:
-            if player.returncode is None:
+            if player is not None and player.returncode is None:
                 player.kill(); await player.wait()
             raise
         finally:
-            if self.current_player is player: self.current_player=None
+            if player is not None and self.current_player is player: self.current_player=None
             if self.stream_task is task: self.stream_task=None; self.stream_loop=None
     def run(self):
         while self.running:

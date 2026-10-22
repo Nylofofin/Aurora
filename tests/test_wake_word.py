@@ -99,6 +99,29 @@ def test_speaker_interrupt_cancels_stalled_edge_stream(monkeypatch):
     assert speaker.stream_task is None
 
 
+def test_speaker_clears_stream_handle_when_player_creation_is_cancelled(monkeypatch):
+    import aurora_core.voice.tts as tts_module
+
+    started = threading.Event()
+    async def stalled_player(*_args, **_kwargs):
+        started.set()
+        await asyncio.Future()
+    monkeypatch.setattr(tts_module.asyncio, "create_subprocess_exec", stalled_player)
+    monkeypatch.setitem(sys.modules, "edge_tts", types.SimpleNamespace(Communicate=object))
+    speaker = aurora.Speaker({})
+
+    async def exercise():
+        task = asyncio.create_task(speaker._stream_edge("resposta", speaker.cancel_generation))
+        assert await asyncio.to_thread(started.wait, 1)
+        speaker.interrupt()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, 1)
+
+    asyncio.run(exercise())
+    assert speaker.stream_task is None
+    assert speaker.stream_loop is None
+
+
 def test_right_click_is_wired_to_stop_the_current_request():
     from pathlib import Path
 
