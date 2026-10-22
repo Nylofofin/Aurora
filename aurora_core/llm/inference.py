@@ -59,7 +59,7 @@ class Inference(QThread):
                     'think':False,'options':{'num_ctx':agent_ctx,'num_thread':int(self.cfg['num_thread']),'num_gpu':int(self.cfg['num_gpu']),'temperature':0.25,'num_batch':128,'num_predict':budget}}
                 if self.use_tools: payload['tools']=TOOLS
                 req=urllib.request.Request(ep+'/api/chat',data=json.dumps(payload).encode(),headers={'Content-Type':'application/json'})
-                content=''; calls=[]
+                content=''; calls=[]; deferred_sentences=[]; defer_stream=False
                 with urllib.request.urlopen(req,timeout=240) as response:
                     self.active_response=response
                     try:
@@ -75,11 +75,18 @@ class Inference(QThread):
                                     for item in pieces[:-1]:
                                         item=item.strip()
                                         if item:
-                                            if (self.response_language=='Português brasileiro' and likely_english(item)) or (self.response_language=='English' and likely_portuguese(item)) or (self.response_language not in ('Português brasileiro','English') and (likely_english(item) or likely_portuguese(item))): item=self.translate_to_language(item,self.response_language)
-                                            spoken_parts.append(item); self.sentence.emit(item)
+                                            needs_translation=(self.response_language=='Português brasileiro' and likely_english(item)) or (self.response_language=='English' and likely_portuguese(item)) or (self.response_language not in ('Português brasileiro','English') and (likely_english(item) or likely_portuguese(item)))
+                                            if defer_stream or needs_translation:
+                                                # Do not start a second Ollama request while this stream is still open.
+                                                defer_stream=True; deferred_sentences.append((item,needs_translation))
+                                            else:
+                                                spoken_parts.append(item); self.sentence.emit(item)
                                     spoken=pieces[-1]
                             if m.get('tool_calls'): calls.extend(m['tool_calls'])
                     finally: self.active_response=None
+                for item,needs_translation in deferred_sentences:
+                    if needs_translation: item=self.translate_to_language(item,self.response_language)
+                    spoken_parts.append(item); self.sentence.emit(item)
                 if not calls: break
                 msgs.append({'role':'assistant','content':content,'tool_calls':calls})
                 for call in calls:
