@@ -1,0 +1,4 @@
+sounddevice>=0.5
+vosk>=0.3.45
+SpeechRecognition>=3.14
+edge-tts>=7.2

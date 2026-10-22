@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+assets/vosk-model/
+*.wav
+*.log
+*-preview.png
