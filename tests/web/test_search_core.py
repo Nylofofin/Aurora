@@ -184,6 +184,21 @@ def test_structured_fx_answer_must_say_api_values_and_accept_equivalent_decimal_
     assert aurora._verified_fx_answer(spoken, quote) == spoken
 
 
+def test_large_fx_values_use_thousands_separator_and_guard_accepts_both_forms():
+    from datetime import date
+    from decimal import Decimal
+    quote = aurora.aurora_fx.FXQuote(
+        "AwesomeAPI", "BTC", "BRL", Decimal("411528"), date(2026, 10, 22),
+        "12:30:00 UTC-3", Decimal("411528"), Decimal("411529"),
+    )
+    formatted = aurora.aurora_fx.format_quote(quote)
+    assert "411.528 de compra" in formatted
+    assert "411.529 de venda" in formatted
+    assert aurora._verified_fx_answer(formatted, quote) == formatted
+    ungrouped = "Bitcoin compra 411528 reais e venda 411529 reais."
+    assert aurora._verified_fx_answer(ungrouped, quote) == ungrouped
+
+
 def test_structured_conversion_requires_both_rate_and_converted_value():
     from datetime import date, datetime
     from decimal import Decimal

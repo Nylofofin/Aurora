@@ -304,22 +304,31 @@ def fetch_frankfurter(intent: FXIntent, timeout=API_TIMEOUT, now=None):
     return FXQuote("Frankfurter", intent.base, intent.quote, rate, quote_date, "", amount=intent.amount, converted=converted, retrieved_at=retrieved)
 
 
+def _format_pt_decimal(value):
+    text = format(Decimal(value).normalize(), "f")
+    sign = "-" if text.startswith("-") else ""
+    if sign:
+        text = text[1:]
+    integer, separator, fraction = text.partition(".")
+    grouped = f"{int(integer):,}".replace(",", ".")
+    return sign + grouped + (("," + fraction) if separator else "")
+
+
 def format_quote(quote: FXQuote):
-    rate_text = format(quote.rate.normalize(), "f").replace(".", ",")
+    rate_text = _format_pt_decimal(quote.rate)
     names = {code: localized for code, _, localized in currency_catalog() + ASSET_CATALOG}
     base_name = names.get(quote.base) or quote.base
     quote_name = names.get(quote.quote) or quote.quote
     if quote.source == "AwesomeAPI" and quote.bid is not None and quote.ask is not None:
-        bid_text, ask_text = format(quote.bid.normalize(), "f").replace(".", ","), format(quote.ask.normalize(), "f").replace(".", ",")
+        bid_text, ask_text = _format_pt_decimal(quote.bid), _format_pt_decimal(quote.ask)
         text = f"{base_name} ({quote.base}/{quote.quote}): {quote_name} {bid_text} de compra e {quote_name} {ask_text} de venda, segundo a AwesomeAPI, cotação de {quote.quote_time} em {quote.quote_date:%d/%m/%Y}."
         if quote.stale:
             text += " Essa cotação pode estar desatualizada ou o mercado pode estar fechado; não a apresento como valor de agora."
     else:
         text = f"{base_name} ({quote.base}/{quote.quote}): {rate_text} {quote_name}, taxa de referência diária da Frankfurter de {quote.quote_date:%d/%m/%Y}."
     if quote.amount is not None and quote.converted is not None:
-        amount_text = format(quote.amount.normalize(), "f")
-        converted_text = format(quote.converted, "f").replace(".", ",")
-        amount_text = amount_text.replace(".", ",")
+        amount_text = _format_pt_decimal(quote.amount)
+        converted_text = _format_pt_decimal(quote.converted)
         text += f" {amount_text} {quote.base} equivalem a {quote_name} {converted_text}, arredondado a duas casas decimais."
     if quote.retrieved_at:
         text += f" Consultado às {quote.retrieved_at:%H:%M:%S} BRT."
