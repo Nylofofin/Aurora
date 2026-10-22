@@ -1,9 +1,9 @@
 # Aurora — POLARIS-EDGE
 
-**Versão:** `0.1.0a1` (Alpha InDev, PEP 440) · **Build:** `AUR-20261022.01`
+**Versão:** `0.1.0b1` (Beta Demo, PEP 440) · **Build:** `AUR-20261022.BETA1`
 **Codinome técnico:** `POLARIS-EDGE` — identidade da build local otimizada para execução no edge, com Gemma via Ollama e alvo gráfico AMD Polaris.
 
-> **Alpha privada e incompleta.** Esta build é para uso e refinamento pessoal; ainda pode conter falhas de voz, busca, interface e integrações. Não é uma versão estável nem um pacote pronto para outras distribuições. A release do GitHub deve permanecer privada.
+> **Beta Demo privada e incompleta.** Esta build é para uso e refinamento pessoal; ainda pode conter falhas de voz, busca, interface e integrações. Não é uma versão estável nem um pacote pronto para outras distribuições. Mantenha o repositório e a release do GitHub privados.
 
 **A única interface da Aurora é a bolha flutuante.** Não há janela de chat nem janela de resultados. Em espera fica escondida; ao dizer “Aurora”, aparece no canto inferior direito com uma entrada animada e o som `assets/audio/entrada.wav`. Cada ativação recebe um pedido; depois de responder, a bolha desaparece e o microfone volta a aguardar apenas a palavra “Aurora”. O contexto curto pode ajudar em um seguimento, mas não mantém a captura de voz aberta entre ativações. Clique com o botão direito na bolha para interromper imediatamente a fala e cancelar o pedido atual. Enquanto estiver visível, você pode arrastá-la para qualquer lugar. A esfera compacta mistura azul e violeta em camadas luminosas com animação contínua; o rótulo de alto contraste indica se está ouvindo, pensando, buscando ou falando. Inferência do Gemma, memória e roteamento de ações são locais. Transcrição de voz, síntese de voz, busca web e serviços externos descritos abaixo usam a internet quando solicitados.
 
@@ -21,7 +21,7 @@ O código está separado por responsabilidade em `aurora_core/`: `system/` cont�
 
 ## Inicialização
 
-Aurora usa hoje um **instalador nativo em shell**, adequado para esta Alpha pessoal no Fedora/GNOME: integra o serviço de usuário, Ollama local e ferramentas do desktop. Não há pacote Flatpak ou RPM nesta build. Flatpak exigiria desenhar e validar permissões para microfone, portais, OBS, Spotify e abertura/controle de apps; RPM faria sentido depois que a instalação e as dependências estiverem estáveis. A instalação atual usa Python virtualenv e scripts versionados, sem instalar arquivos do app em diretórios globais.
+Aurora usa hoje um **instalador nativo em shell**, adequado para esta Beta Demo pessoal no Fedora/GNOME: integra o serviço de usuário, Ollama local e ferramentas do desktop. Não há pacote Flatpak ou RPM nesta build. Flatpak exigiria desenhar e validar permissões para microfone, portais, OBS, Spotify e abertura/controle de apps; RPM faria sentido depois que a instalação e as dependências estiverem estáveis. A instalação atual usa Python virtualenv e scripts versionados, sem instalar arquivos do app em diretórios globais.
 
 1. Instale Ollama para sua distribuição e baixe os dois modelos: `ollama pull gemma3:1b-it-qat` e `ollama pull gemma4:e2b-it-q4_K_M`.
 2. Clone o repositório privado e entre na pasta `Aurora-Assistant` (ou na pasta escolhida para o clone).
@@ -74,7 +74,7 @@ As respostas comuns mantêm o Gemma 3 1B rápido, com mais espaço de saída qua
 - Ollama e os modelos Gemma precisam ser instalados/baixados uma vez. `start-alpha.sh` aceita um runtime Ollama opcional via `AURORA_OLLAMA_RUNTIME_DIR`; sem isso, usa o Ollama instalado no sistema. A configuração local de runtime não faz parte do repositório.
 - A palavra de ativação roda localmente, mas a transcrição e a voz Edge TTS precisam de internet. `recognize_google` usa uma chave genérica indicada pelo projeto SpeechRecognition para uso pessoal/testes; o projeto avisa que ela pode ser revogada.
 - A busca e leitura de páginas usam conexões HTTP(S) diretas, sem proxies definidos por variáveis de ambiente, para conectar ao IP público validado e impedir que uma mudança de DNS redirecione a chamada para uma rede privada. Resoluções públicas verificadas ficam em cache por 10 segundos, com limite de 256 domínios.
-- Não há ainda instalador gráfico, Flatpak, RPM, atualização automática, workflow de CI ou canal de atualização. A instalação por shell foi escolhida para a Alpha privada; revise os scripts antes de executá-los em qualquer outra máquina.
+- Não há ainda instalador gráfico, Flatpak, RPM, atualização automática, workflow de CI ou canal de atualização. A instalação por shell foi escolhida para esta Beta Demo privada; revise os scripts antes de executá-los em qualquer outra máquina.
 - O Gemma 3 1B é pré-aquecido em segundo plano usando o mesmo endpoint de chat e as mesmas opções de inferência da Aurora. No smoke test após inicialização, a primeira resposta curta começou em 0,21 s e terminou em 0,27 s; esse número depende da pergunta e não representa respostas longas. O modelo ficou em 100% GPU via Vulkan. O Gemma 4 para tarefas de agente continua mais lento neste hardware.
 - O serviço fixa `QT_QPA_PLATFORM=xcb` para renderizar a bolha pelo XWayland nesta sessão Wayland; o backend Wayland direto não oferece a opacidade e o posicionamento necessários para essa animação. Transparência e always-on-top ainda dependem de XWayland/Mutter e das regras do GNOME.
 
