@@ -5,14 +5,18 @@ import re, shutil, subprocess
 def control_volume(action,value=5):
     wpctl=shutil.which('wpctl')
     if not wpctl: return 'Não encontrei o wpctl do PipeWire para ajustar o volume.'
-    action=str(action).casefold(); value=max(0,min(100,int(value or 0)))
+    action=str(action).casefold()
+    if action not in ('status','mute','unmute','set','up','down'): return 'Ação de volume desconhecida.'
     if action=='status':
         result=subprocess.run([wpctl,'get-volume','@DEFAULT_AUDIO_SINK@'],capture_output=True,text=True,timeout=3)
-        return 'Volume do PC: '+result.stdout.strip().replace('Volume: ','')+(f' {result.stderr.strip()}' if result.returncode else '')
+        if result.returncode: return 'Não consegui consultar o volume: '+result.stderr.strip()
+        return 'Volume do PC: '+result.stdout.strip().replace('Volume: ','')
     if action in ('mute','unmute'):
         result=subprocess.run([wpctl,'set-mute','@DEFAULT_AUDIO_SINK@','1' if action=='mute' else '0'],capture_output=True,text=True,timeout=3)
         if result.returncode: return 'Não consegui mudar o mudo: '+result.stderr.strip()
         return 'Som do PC silenciado.' if action=='mute' else 'Som do PC reativado.'
+    try: value=max(0,min(100,int(value or 0)))
+    except (TypeError,ValueError): return 'Diga um percentual inteiro para ajustar o volume.'
     if action=='set': level=f'{value}%'
     elif action=='up':
         try:
@@ -21,7 +25,6 @@ def control_volume(action,value=5):
         except Exception: pass
         level=f'{max(1,value)}%+'
     elif action=='down': level=f'{max(1,value)}%-'
-    else: return 'Ação de volume desconhecida.'
     result=subprocess.run([wpctl,'set-volume','@DEFAULT_AUDIO_SINK@',level],capture_output=True,text=True,timeout=3)
     return f'Volume ajustado para {value}%.' if action=='set' and result.returncode==0 else f'Volume aumentado em {value}%.' if action=='up' and result.returncode==0 else f'Volume reduzido em {value}%.' if action=='down' and result.returncode==0 else 'Não consegui ajustar o volume: '+result.stderr.strip()
 

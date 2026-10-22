@@ -10,6 +10,26 @@ def test_spoken_percentage_parses_digits_and_portuguese_words():
     assert aurora.spoken_percentage("volume para cento e dez") is None
 
 
+def test_volume_tool_handles_malformed_model_values_without_crashing(monkeypatch):
+    import aurora_core.system.volume as volume
+
+    calls = []
+    monkeypatch.setattr(volume.shutil, "which", lambda _name: "/usr/bin/wpctl")
+    monkeypatch.setattr(volume.subprocess, "run", lambda *args, **kwargs: calls.append(args))
+    assert "percentual inteiro" in volume.control_volume("set", "não é número")
+    assert calls == []
+
+
+def test_volume_status_reports_pipewire_errors_truthfully(monkeypatch):
+    import aurora_core.system.volume as volume
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(volume.shutil, "which", lambda _name: "/usr/bin/wpctl")
+    monkeypatch.setattr(volume.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(
+        returncode=1, stdout="", stderr="No default sink"))
+    assert volume.control_volume("status").endswith("No default sink")
+
+
 def test_natural_directory_resolves_standard_folder_names(monkeypatch, tmp_path):
     documents = tmp_path / "Documentos"
     documents.mkdir()
