@@ -5,6 +5,6 @@ from __future__ import annotations
 
 __version__ = "1.5.0-alpha.1"
 
-CODENAME = "PUBLIC DEMONSTRATION ALPHA"
+CODENAME = "ORCHESTRA"
 
-BUILD_ID = "AUR-LDR-1.5.0-alpha.1-PDA+20261023.01"
+BUILD_ID = "aurora-desktop-1.5.0-alpha.1-orchestra"

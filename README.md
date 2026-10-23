@@ -1,11 +1,11 @@
-# Aurora LDR — Lumen Desktop Runtime
+# Aurora Desktop
 
-**Versão:** `1.5.0-alpha.1` (PC) · `1.2.3` (Android, arquivada) · **Build:** `AUR-LDR-1.5.0-alpha.1-PDA+20261023.01`
-**Codinome desta release:** `PUBLIC DEMONSTRATION ALPHA (PDA)` — primeira abertura pública de demonstração, com o runtime ORC e endurecimento pós-1.4.0.
+**Versão:** `1.5.0-alpha.1` (PC) · `1.2.3` (Android, arquivada) · **Build:** `aurora-desktop-1.5.0-alpha.1-orchestra`
+**Release:** **Aurora Desktop 1.5.0-alpha.1 — Orchestra** — alpha pública de demonstração com coordenação ORC e endurecimento pós-1.4.0.
 
 > **Alpha pública de demonstração — não é uma versão estável.** A Aurora é um projeto experimental para Linux desktop. Busca web, voz, OBS, portais GNOME/Wayland e automação variam conforme serviços, permissões e ambiente do usuário. Não há instalador gráfico nem pacote RPM/Flatpak; esta release oferece código-fonte e scripts de instalação para avaliação técnica.
 
-As releases seguem o formato **Aurora LDR `<versão>` — `<codinome funcional>` (`<SIGLA>`)**. O codinome descreve a mudança principal daquela versão; a sigla curta facilita identificar a build em logs e documentação. A tag SemVer (`vMAJOR.MINOR.PATCH`) continua sendo a referência exata do código. Os nomes de releases anteriores permanecem como registro histórico.
+As releases seguem o formato **Aurora Desktop `<versão>` — `<codinome>`**. O codinome descreve a mudança principal daquela versão; o identificador técnico usa `aurora-desktop-<versão>-<codinome>`, sem siglas ambíguas. A tag SemVer (`vMAJOR.MINOR.PATCH`) continua sendo a referência exata do código. Nomes anteriores permanecem no changelog como registro histórico.
 
 > **Android descontinuado em 23/10/2026.** O cliente móvel não recebe mais suporte ou releases. O projeto voltou a focar no desktop Linux. Consulte o [anúncio e registro de testes](android-client/ARCHIVE.md). Os commits do período e o código legado arquivado preservam o histórico; as tags de release e os APKs Android foram removidos.
 

@@ -1,6 +1,6 @@
 # Histórico de versões
 
-## 1.5.0-alpha.1 — Public Demonstration Alpha (PDA), 2026-10-23
+## Aurora Desktop 1.5.0-alpha.1 — Orchestra, 2026-10-23
 
 Pré-release pública para demonstração e avaliação técnica. Não representa uma versão estável nem promete compatibilidade entre distribuições.
 
