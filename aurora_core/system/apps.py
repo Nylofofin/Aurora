@@ -93,9 +93,15 @@ def launch_application(name):
         # even though the Flatpak never starts. Launch the app ID directly;
         # callers that need readiness must still verify their own endpoint.
         try:
+            env = os.environ.copy()
+            # Aurora pins Qt to X11 for its own overlay. OBS's Qt platform
+            # plugin aborts during startup when that override is inherited
+            # through Flatpak; let OBS select the session's native backend.
+            if app_id == 'com.obsproject.Studio':
+                env.pop('QT_QPA_PLATFORM', None)
             subprocess.Popen([flatpak,'run',app_id],start_new_session=True,
                              stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL)
+                             stderr=subprocess.DEVNULL,env=env)
         except OSError:
             return f'Não consegui iniciar {app["name"]} pelo Flatpak.'
         return f'Solicitei a abertura de {app["name"]}; vou verificar quando o serviço estiver pronto.'

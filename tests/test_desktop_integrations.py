@@ -246,6 +246,7 @@ def test_flatpak_application_launches_by_app_id_and_returns_without_waiting(monk
     app = {"file": desktop_file, "name": "OBS Studio", "exec": "flatpak run com.obsproject.Studio",
            "class": "obs"}
     calls = []
+    monkeypatch.setenv("QT_QPA_PLATFORM", "xcb")
     monkeypatch.setattr(apps_module, "find_desktop_app", lambda _name: app)
     monkeypatch.setattr(apps_module.shutil, "which", lambda name: "/usr/bin/flatpak" if name == "flatpak" else None)
     monkeypatch.setattr(apps_module.subprocess, "Popen", lambda command, **kwargs: calls.append((command, kwargs)))
@@ -254,6 +255,7 @@ def test_flatpak_application_launches_by_app_id_and_returns_without_waiting(monk
     )
     assert calls[0][0] == ["/usr/bin/flatpak", "run", "com.obsproject.Studio"]
     assert calls[0][1]["start_new_session"] is True
+    assert "QT_QPA_PLATFORM" not in calls[0][1]["env"]
 
 
 def test_roblox_app_request_resolves_to_installed_sober_flatpak(monkeypatch, tmp_path):
