@@ -161,7 +161,7 @@ class AuroraService(QObject):
         if not self.cfg.get('companion_enabled',True): return
         try:
             address=discover_private_address()
-            self.companion_server=CompanionServer(APP_CONFIG.parent/'companion',address,self.cfg.get('companion_port',8765),self._companion_message)
+            self.companion_server=CompanionServer(APP_CONFIG.parent/'companion',address,self.cfg.get('companion_port',8765),self._companion_message,on_voice=self._companion_voice)
             self.companion_server.start()
             print(f'[companion] HTTPS ativo em https://{address}:{self.cfg.get("companion_port",8765)}; fingerprint SHA-256 {self.companion_server.fingerprint}; código em {self.companion_server.auth.code_path}',file=sys.stderr,flush=True)
         except Exception as exc:
@@ -176,6 +176,20 @@ class AuroraService(QObject):
         except FutureTimeout as exc:
             self.companion_cancel_requested.emit(future)
             raise TimeoutError('Tempo limite da solicitação Android') from exc
+
+    def _companion_voice(self,wav_data,history):
+        import io, wave
+        import speech_recognition as sr
+        with wave.open(io.BytesIO(wav_data),'rb') as wav:
+            if wav.getnchannels()!=1 or wav.getsampwidth()!=2 or wav.getframerate()!=16000 or wav.getnframes()>16_000*45:
+                raise ValueError('O áudio precisa ser PCM mono, 16 kHz e ter até 45 segundos')
+            audio=sr.AudioData(wav.readframes(wav.getnframes()),wav.getframerate(),wav.getsampwidth())
+        recognizer=sr.Recognizer(); recognizer.operation_timeout=8.0
+        transcript=recognizer.recognize_google(audio,language='pt-BR').strip()
+        if not transcript:
+            raise ValueError('Não reconheci uma frase no áudio')
+        completion=self._companion_message(transcript,history)
+        return {'transcript':transcript,**completion}
 
     @Slot(str,object,object)
     def _handle_companion_message(self,prompt,history,future):

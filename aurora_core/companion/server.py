@@ -17,6 +17,7 @@ from urllib.parse import urlsplit
 
 
 MAX_BODY = 16 * 1024
+MAX_VOICE_BODY = 2_000_000
 PAIR_WINDOW_SECONDS = 300
 MAX_PAIR_ATTEMPTS = 5
 
@@ -134,11 +135,12 @@ class PairingAuth:
 class CompanionServer:
     """Small HTTPS API; request processing stays injected into AuroraService."""
 
-    def __init__(self, directory: Path, address: str, port: int, on_message, *, api_timeout=120):
+    def __init__(self, directory: Path, address: str, port: int, on_message, *, on_voice=None, api_timeout=120):
         self.directory = directory
         self.address = address
         self.port = int(port)
         self.on_message = on_message
+        self.on_voice = on_voice
         self.api_timeout = api_timeout
         self.auth = PairingAuth(directory)
         self.cert_path, self.key_path, self.fingerprint = ensure_tls_identity(directory, address)
@@ -203,6 +205,9 @@ class CompanionServer:
 
             def do_POST(self):
                 path = urlsplit(self.path).path
+                if path == "/v1/voice":
+                    self._post_voice()
+                    return
                 try:
                     payload = self._body()
                 except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
@@ -259,6 +264,61 @@ class CompanionServer:
                         return
                     outer._append_exchange(conversation_id, message.strip(), answer.strip(), context_history)
                     self._json(200, {"conversation_id": conversation_id, "answer": answer.strip()})
+                finally:
+                    lock.release()
+
+            def _post_voice(self):
+                authorized = self._authorized()
+                if not authorized:
+                    self._json(401, {"error": "unauthorized"})
+                    return
+                if not outer.on_voice:
+                    self._json(404, {"error": "not found"})
+                    return
+                conversation_id = self.headers.get("X-Conversation-ID", "")
+                if (not conversation_id or len(conversation_id) > 64
+                        or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_" for ch in conversation_id)):
+                    self._json(400, {"error": "invalid conversation"})
+                    return
+                if not self.headers.get("Content-Type", "").lower().startswith("audio/wav"):
+                    self._json(415, {"error": "audio/wav required"})
+                    return
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                except ValueError:
+                    length = 0
+                if length < 44 or length > MAX_VOICE_BODY:
+                    self._json(413, {"error": "audio size rejected"})
+                    return
+                audio = self.rfile.read(length)
+                if len(audio) != length:
+                    self._json(400, {"error": "incomplete audio"})
+                    return
+                lock = outer._conversation_lock(conversation_id)
+                if not lock.acquire(timeout=outer.api_timeout):
+                    self._json(409, {"error": "conversation busy"})
+                    return
+                try:
+                    history = outer._get_conversation(conversation_id)
+                    messages = list(history.get("messages", [])) if history else []
+                    try:
+                        completion = outer.on_voice(audio, messages)
+                    except TimeoutError:
+                        self._json(504, {"error": "request timeout"})
+                        return
+                    except Exception:
+                        self._json(500, {"error": "voice request failed"})
+                        return
+                    if not isinstance(completion, dict):
+                        self._json(502, {"error": "invalid voice response"})
+                        return
+                    transcript = completion.get("transcript")
+                    answer = completion.get("answer")
+                    if not isinstance(transcript, str) or not transcript.strip() or not isinstance(answer, str) or not answer.strip():
+                        self._json(502, {"error": "empty voice response"})
+                        return
+                    outer._append_exchange(conversation_id, transcript.strip(), answer.strip(), completion.get("context_history"))
+                    self._json(200, {"conversation_id": conversation_id, "transcript": transcript.strip(), "answer": answer.strip()})
                 finally:
                     lock.release()
 

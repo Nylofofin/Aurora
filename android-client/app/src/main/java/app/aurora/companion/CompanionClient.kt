@@ -74,6 +74,40 @@ class CompanionClient(
         ).getString("answer")
     }
 
+    fun sendVoice(conversationId: String, wav: ByteArray): Pair<String, String> {
+        require(!token.isNullOrBlank()) { "Este celular ainda não está pareado com o PC." }
+        val result = requestAudio("/v1/voice", conversationId, wav)
+        return result.getString("transcript") to result.getString("answer")
+    }
+
+    private fun requestAudio(path: String, conversationId: String, wav: ByteArray): JSONObject {
+        val connection = (URL(baseUrl + path).openConnection() as HttpsURLConnection).apply {
+            connectTimeout = 8_000
+            readTimeout = 185_000
+            requestMethod = "POST"
+            sslSocketFactory = pinnedSslContext(expectedFingerprint).socketFactory
+            hostnameVerifier = HostnameVerifier { _, _ -> true }
+            setRequestProperty("Accept", "application/json")
+            setRequestProperty("Content-Type", "audio/wav")
+            setRequestProperty("X-Conversation-ID", conversationId)
+            setRequestProperty("Authorization", "Bearer $token")
+            doOutput = true
+        }
+        try {
+            connection.outputStream.use { it.write(wav) }
+            val code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+            if (code !in 200..299) {
+                val reason = try { JSONObject(text).optString("error") } catch (_: Exception) { "erro HTTP $code" }
+                throw IllegalStateException(reason.ifBlank { "erro HTTP $code" })
+            }
+            return JSONObject(text)
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     private fun request(method: String, path: String, body: JSONObject? = null): JSONObject {
         val url = URL(baseUrl + path)
         val connection = (url.openConnection() as HttpsURLConnection).apply {

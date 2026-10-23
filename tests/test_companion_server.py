@@ -1,9 +1,11 @@
 import http.client
+import io
 import json
 import shutil
 import ssl
 import tempfile
 import unittest
+import wave
 from pathlib import Path
 
 from aurora_core.companion.server import CompanionServer, MAX_PAIR_ATTEMPTS, PairingAuth
@@ -46,9 +48,15 @@ class CompanionHttpsTests(unittest.TestCase):
                            {"role": "assistant", "content": text + " [evidência interna]"}]
                 return {"answer": text, "context_history": context}
 
+            def voice(_audio, history):
+                text = "Resposta central para voz"
+                context = [*history, {"role": "user", "content": "Pergunta falada"},
+                           {"role": "assistant", "content": text}]
+                return {"transcript": "Pergunta falada", "answer": text, "context_history": context}
+
             server = CompanionServer(
                 Path(temporary), "127.0.0.1", 0,
-                answer,
+                answer, on_voice=voice,
             )
             server.start()
             try:
@@ -88,12 +96,27 @@ class CompanionHttpsTests(unittest.TestCase):
                 follow_up = json.loads(response.read())
                 self.assertEqual(follow_up["answer"], "Resposta central: E depois?; contexto=2")
 
+                buffer = io.BytesIO()
+                with wave.open(buffer, "wb") as wav:
+                    wav.setnchannels(1); wav.setsampwidth(2); wav.setframerate(16_000)
+                    wav.writeframes(b"\0\0" * 8_000)
+                connection.request(
+                    "POST", "/v1/voice", buffer.getvalue(),
+                    {"Authorization": f"Bearer {token}", "Content-Type": "audio/wav", "X-Conversation-ID": "alpha1"},
+                )
+                response = connection.getresponse()
+                voice_answer = json.loads(response.read())
+                self.assertEqual(response.status, 200)
+                self.assertEqual(voice_answer["transcript"], "Pergunta falada")
+                self.assertEqual(voice_answer["answer"], "Resposta central para voz")
+
                 connection.request("GET", "/v1/conversations/alpha1", headers={"Authorization": f"Bearer {token}"})
                 response = connection.getresponse()
                 history = json.loads(response.read())
                 self.assertEqual(response.status, 200)
-                self.assertEqual([entry["role"] for entry in history["messages"]], ["user", "assistant", "user", "assistant"])
-                self.assertEqual([entry["role"] for entry in history["display_messages"]], ["user", "assistant", "user", "assistant"])
+                self.assertEqual([entry["role"] for entry in history["messages"]], ["user", "assistant", "user", "assistant", "user", "assistant"])
+                self.assertEqual([entry["role"] for entry in history["display_messages"]], ["user", "assistant", "user", "assistant", "user", "assistant"])
+                self.assertEqual(history["display_messages"][-2]["content"], "Pergunta falada")
                 self.assertNotIn("evidência interna", history["display_messages"][-1]["content"])
                 connection.close()
             finally:

@@ -1,8 +1,12 @@
 package app.aurora.companion
 
+import android.Manifest
 import android.os.Bundle
+import android.speech.tts.TextToSpeech
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -42,6 +46,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -65,6 +70,7 @@ import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.Locale
 
 private val Ink = Color(0xFF090A12)
 private val Panel = Color(0xFF151725)
@@ -90,6 +96,14 @@ private fun AuroraShell() {
     val vault = remember { CredentialVault(appContext) }
     val saved = remember { vault.load() }
     val scope = rememberCoroutineScope()
+    val speech = remember {
+        lateinit var engine: TextToSpeech
+        engine = TextToSpeech(appContext) { status ->
+            if (status == TextToSpeech.SUCCESS) engine.language = Locale("pt", "BR")
+        }
+        engine
+    }
+    DisposableEffect(speech) { onDispose { speech.stop(); speech.shutdown() } }
     var showConnect by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
     var connected by remember { mutableStateOf(false) }
@@ -167,6 +181,28 @@ private fun AuroraShell() {
         }
     }
 
+    fun sendVoiceAudio(wav: ByteArray) {
+        if (!connected || busy) return
+        val selectedConversation = conversationId
+        busy = true
+        notice = "Transcrevendo no PC e consultando a Aurora…"
+        scope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    CompanionClient(endpoint, fingerprint, token).sendVoice(selectedConversation, wav)
+                }
+                lines += ChatLine(true, result.first)
+                lines += ChatLine(false, result.second)
+                speech.speak(result.second, TextToSpeech.QUEUE_FLUSH, null, "aurora-live-response")
+                notice = "Aurora respondeu por voz."
+            } catch (error: Exception) {
+                notice = "Falha na conversa por voz: ${error.message ?: "verifique a conexão"}."
+            } finally {
+                busy = false
+            }
+        }
+    }
+
     fun refreshConversations() {
         if (!connected || busy) return
         busy = true
@@ -209,7 +245,7 @@ private fun AuroraShell() {
             ) {
                 TopBar(connected, onHistory = { showHistory = true; refreshConversations() }, onConnect = { showConnect = true })
                 if (lines.isEmpty()) {
-                    Welcome(live, onLive = { live = !live }, connected = connected)
+                    Welcome(live, onLive = { }, connected = connected)
                 } else {
                     LazyColumn(
                         modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 20.dp),
@@ -220,7 +256,7 @@ private fun AuroraShell() {
                     }
                     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
                         horizontalArrangement = Arrangement.Center) {
-                        OrbButton(live, Modifier.size(54.dp)) { live = !live }
+                        OrbButton(live, Modifier.size(54.dp)) { }
                     }
                 }
                 Composer(
@@ -229,8 +265,11 @@ private fun AuroraShell() {
                     busy = busy,
                     onText = { draft = it },
                     onSend = ::sendCurrentMessage,
+                    onVoice = ::sendVoiceAudio,
+                    onRecording = { live = it },
+                    onVoiceError = { notice = it },
                     onNew = { if (!busy) { conversationId = CompanionClient.newConversationId(); lines.clear(); notice = "Nova conversa no PC." } },
-                    onLive = { live = !live }
+                    onLive = { }
                 )
                 if (notice.isNotBlank()) Text(notice, color = Muted, fontSize = 11.sp, modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp), textAlign = TextAlign.Center)
             }
@@ -311,7 +350,7 @@ private fun Welcome(live: Boolean, onLive: () -> Unit, connected: Boolean) {
     ) {
         OrbButton(live, Modifier.size(150.dp), onLive)
         Spacer(Modifier.height(27.dp))
-        Text(if (live) "Modo Live — prévia" else "Oi, sou a Aurora", color = Pearl, fontSize = 26.sp, fontWeight = FontWeight.Medium)
+        Text(if (live) "Estou ouvindo você" else "Oi, sou a Aurora", color = Pearl, fontSize = 26.sp, fontWeight = FontWeight.Medium)
         Spacer(Modifier.height(9.dp))
         Text(
             if (connected) "Fale comigo ou escreva uma mensagem."
@@ -327,7 +366,7 @@ private fun Welcome(live: Boolean, onLive: () -> Unit, connected: Boolean) {
         Suggestion("Pedir algo ao meu PC")
         if (live) {
             Spacer(Modifier.height(18.dp))
-            Text("A animação está em prévia; o microfone ainda não foi iniciado.", color = Blue, fontSize = 12.sp, textAlign = TextAlign.Center)
+            Text("Toque em Parar para enviar sua fala ao computador.", color = Blue, fontSize = 12.sp, textAlign = TextAlign.Center)
         }
     }
 }
@@ -365,7 +404,58 @@ private fun OrbButton(live: Boolean, modifier: Modifier, onClick: () -> Unit) {
 }
 
 @Composable
-private fun Composer(text: String, connected: Boolean, busy: Boolean, onText: (String) -> Unit, onSend: () -> Unit, onNew: () -> Unit, onLive: () -> Unit) {
+private fun VoiceCaptureButton(enabled: Boolean, onRecording: (Boolean) -> Unit, onCaptured: (ByteArray) -> Unit, onError: (String) -> Unit) {
+    val scope = rememberCoroutineScope()
+    var active by remember { mutableStateOf(false) }
+    var stopping by remember { mutableStateOf(false) }
+    val currentCapture = remember { arrayOfNulls<PcmVoiceCapture>(1) }
+    val startCapture: () -> Unit = {
+        val capture = PcmVoiceCapture()
+        currentCapture[0] = capture
+        active = true
+        onRecording(true)
+        scope.launch {
+            try {
+                val wav = withContext(Dispatchers.IO) { capture.captureWav() }
+                if (currentCapture[0] === capture) {
+                    currentCapture[0] = null
+                    active = false
+                    stopping = false
+                    onRecording(false)
+                    onCaptured(wav)
+                }
+            } catch (error: Exception) {
+                if (currentCapture[0] === capture) {
+                    currentCapture[0] = null
+                    active = false
+                    stopping = false
+                    onRecording(false)
+                    onError(error.message ?: "Falha ao capturar o microfone.")
+                }
+            }
+        }
+    }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) startCapture() else onError("Permita o microfone para usar a conversa por voz.")
+    }
+    DisposableEffect(Unit) { onDispose { currentCapture[0]?.stop() } }
+    Text(
+        when { active -> "Parar"; stopping -> "Enviando"; else -> "Voz" },
+        color = if (enabled || active) Blue else Muted,
+        fontSize = 11.sp,
+        modifier = Modifier.padding(horizontal = 8.dp).clickable(enabled = (enabled || active) && !stopping) {
+            if (active) {
+                stopping = true
+                active = false
+                onRecording(false)
+                currentCapture[0]?.stop()
+            } else permission.launch(Manifest.permission.RECORD_AUDIO)
+        },
+    )
+}
+
+@Composable
+private fun Composer(text: String, connected: Boolean, busy: Boolean, onText: (String) -> Unit, onSend: () -> Unit, onVoice: (ByteArray) -> Unit, onRecording: (Boolean) -> Unit, onVoiceError: (String) -> Unit, onNew: () -> Unit, onLive: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
         Row(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Panel)
@@ -386,8 +476,7 @@ private fun Composer(text: String, connected: Boolean, busy: Boolean, onText: (S
                     }
                 }
             )
-            Text("●", color = if (connected) Blue else Muted, fontSize = 11.sp,
-                modifier = Modifier.padding(horizontal = 8.dp).clickable(enabled = connected, onClick = onLive))
+            VoiceCaptureButton(enabled = connected && !busy, onRecording = onRecording, onCaptured = onVoice, onError = onVoiceError)
             Text(if (busy) "…" else "↑", color = if (connected && !busy) Ink else Muted, fontSize = 20.sp,
                 modifier = Modifier.clip(CircleShape).background(if (connected && !busy) Pearl else Color(0xFF353747), CircleShape)
                     .clickable(enabled = connected && !busy, onClick = onSend).padding(horizontal = 13.dp, vertical = 7.dp))
