@@ -11,8 +11,8 @@ android {
         applicationId = "app.aurora.companion"
         minSdk = 26
         targetSdk = 36
-        versionCode = 18
-        versionName = "0.8.3-beta"
+        versionCode = 19
+        versionName = "1.0.0"
     }
 
     // ── Signing ────────────────────────────────────────────────────────────────

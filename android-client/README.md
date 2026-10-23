@@ -1,14 +1,13 @@
-# Aurora Android Companion — Beta 0.8.0
+# Aurora Android Companion — Release 1.0.0
 
 Cliente Android nativo Companion. Modelos, busca e automação ficam no computador; o telefone é a interface, microfone e saída de áudio. No celular, conversa casual usa o modelo de conversa; pedidos que exigem fatos atuais seguem para pesquisa e pedidos explícitos de ação usam as ferramentas locais permitidas.
 
-## Estado atual
+## Novidades da Release Oficial 1.0.0
 
-- APK Beta: [release Android 0.8.0](https://github.com/ruanminezinoficial2025-ctrl/Aurora/releases/tag/android-beta-v0.8.0). É uma build assinada para testes.
-- **Bolha Flutuante (Overlay Widget)**: Ao sair do app durante o modo Live (Home ou alternador de tarefas), a Aurora torna-se uma bolha flutuante interativa sobre outros apps, podendo ser arrastada ou clicada para retornar.
-- **Escuta Contínua ("Hey Aurora")**: Serviço em primeiro plano com SpeechRecognizer local contínuo que desperta a assistente assim que a palavra de ativação é ouvida.
-- **Latência Reduzida**: Blocos PCM de detecção de wake no PC reduzidos de 1s para 200ms com retry automático.
-- **Arquitetura Reativa**: Lógica desacoplada em `AuroraViewModel` e thread-safety reforçado para reprodução de áudio.
+- **Conversa Live Contínua Hands-Free**: Ao entrar no modo Live, a Aurora escuta imediatamente o seu comando sem precisar de nenhum clique. Ao responder em voz, ela continua ouvindo os comandos subsequentes num fluxo conversacional contínuo. Basta tocar no "X" para encerrar a sessão.
+- **Bolha Flutuante com Alvo de Descarte ("X")**: Ao sair do aplicativo durante o modo Live, a Aurora se transforma numa bolha flutuante perolada sobre qualquer app. Arraste-a para a zona de descarte no centro inferior da tela para encerrar, ou toque para trazê-la para o primeiro plano.
+- **Escuta Contínua de Verdade via AudioRecord**: A escuta permanente opera via stream estável com detecção Vosk neural no PC, sem microfone abrindo e fechando e sem o Android piscar o indicador de privacidade.
+- **APK Release**: [release oficial Android 1.0.0](https://github.com/ruanminezinoficial2025-ctrl/Aurora/releases/tag/android-v1.0.0). Build oficial assinada.
 
 - Interface renovada em tons claros pastel de lavanda e azul, cartões mais leves, contraste legível, esfera Aurora animada e ícone adaptativo vetorial próprio.
 - Pareamento HTTPS com fingerprint SHA-256 digitado fora de banda, código de uso único e token cifrado no Android Keystore.

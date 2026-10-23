@@ -13,13 +13,15 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.animation.AccelerateDecelerateInterpolator
+import android.view.animation.DecelerateInterpolator
 import kotlin.math.abs
 import kotlin.math.min
 
 /**
- * View nativa ultra-estável e acelerada por hardware para a bolha flutuante da Aurora.
- * Não depende do ciclo de vida de Compose dentro do WindowManager, garantindo
- * zero crashes e fluidez a 60/120 fps.
+ * Bolha flutuante da Aurora em Canvas nativo puro.
+ * Sem botões colados na lateral: manuseio limpo e livre.
+ * Suporta toque para abrir, arrastar na tela com snap magnético para a borda,
+ * e arrastar até o "X" na parte inferior para descartar.
  */
 @SuppressLint("ViewConstructor")
 class AuroraBubbleView(
@@ -27,7 +29,9 @@ class AuroraBubbleView(
     private val windowManager: WindowManager,
     private val layoutParams: WindowManager.LayoutParams,
     private val onBubbleClick: () -> Unit,
-    private val onDismissClick: () -> Unit
+    private val onDragStart: () -> Unit,
+    private val onDragMove: (rawX: Float, rawY: Float) -> Boolean,
+    private val onDragEnd: (isDroppedOnTarget: Boolean) -> Unit
 ) : View(context) {
 
     private val orbPaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -36,19 +40,11 @@ class AuroraBubbleView(
         strokeWidth = 3f
     }
     private val highlightPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val closeBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#EAE3F5")
-    }
-    private val closeTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#29263A")
-        textSize = 34f
-        textAlign = Paint.Align.CENTER
-        isFakeBoldText = true
-    }
 
     private var pulseScale = 1.0f
     private var haloAlpha = 0.25f
-    private var animator: ValueAnimator? = null
+    private var pulseAnimator: ValueAnimator? = null
+    private var snapAnimator: ValueAnimator? = null
 
     // Variáveis de drag
     private var initialX = 0
@@ -56,14 +52,15 @@ class AuroraBubbleView(
     private var initialTouchX = 0f
     private var initialTouchY = 0f
     private var isDragging = false
+    private var isOverDismissTarget = false
 
     init {
-        startAnimation()
+        startPulseAnimation()
     }
 
-    private fun startAnimation() {
-        animator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 2000
+    private fun startPulseAnimation() {
+        pulseAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 2200
             repeatMode = ValueAnimator.REVERSE
             repeatCount = ValueAnimator.INFINITE
             interpolator = AccelerateDecelerateInterpolator()
@@ -78,8 +75,10 @@ class AuroraBubbleView(
     }
 
     override fun onDetachedFromWindow() {
-        animator?.cancel()
-        animator = null
+        pulseAnimator?.cancel()
+        snapAnimator?.cancel()
+        pulseAnimator = null
+        snapAnimator = null
         super.onDetachedFromWindow()
     }
 
@@ -92,14 +91,14 @@ class AuroraBubbleView(
 
         val centerX = w / 2f
         val centerY = h / 2f
-        val baseRadius = min(w, h) * 0.40f
+        val baseRadius = min(w, h) * 0.44f
 
         // 1. Halo externo pulsante
         haloPaint.color = Color.parseColor("#8A70C4")
         haloPaint.alpha = (haloAlpha * 255).toInt().coerceIn(0, 255)
-        canvas.drawCircle(centerX, centerY, baseRadius * 1.15f * pulseScale, haloPaint)
+        canvas.drawCircle(centerX, centerY, baseRadius * 1.12f * pulseScale, haloPaint)
 
-        // 2. Esfera principal com gradiente de luz perolada
+        // 2. Esfera principal com gradiente de luz perolada suave
         val currentRadius = baseRadius * pulseScale
         val sphereShader = LinearGradient(
             centerX - currentRadius, centerY - currentRadius,
@@ -139,43 +138,27 @@ class AuroraBubbleView(
             centerY - (currentRadius * 0.30f),
             highlightPaint
         )
-
-        // 5. Botão "×" para fechar no canto superior direito
-        val closeRadius = 24f
-        val closeX = w - closeRadius - 8f
-        val closeY = closeRadius + 8f
-        canvas.drawCircle(closeX, closeY, closeRadius, closeBgPaint)
-        canvas.drawText("×", closeX, closeY + 11f, closeTextPaint)
     }
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        val w = width.toFloat()
-        val closeRadius = 32f
-        val closeX = w - closeRadius - 4f
-        val closeY = closeRadius + 4f
-
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
-                // Checa se o toque foi no botão de fechar "×"
-                val distToClose = abs(event.x - closeX) + abs(event.y - closeY)
-                if (distToClose <= closeRadius * 1.5f) {
-                    onDismissClick()
-                    return true
-                }
-
+                snapAnimator?.cancel()
                 initialX = layoutParams.x
                 initialY = layoutParams.y
                 initialTouchX = event.rawX
                 initialTouchY = event.rawY
                 isDragging = false
+                isOverDismissTarget = false
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
                 val dx = (event.rawX - initialTouchX).toInt()
                 val dy = (event.rawY - initialTouchY).toInt()
-                if (abs(dx) > 12 || abs(dy) > 12) {
+                if (!isDragging && (abs(dx) > 14 || abs(dy) > 14)) {
                     isDragging = true
+                    onDragStart()
                 }
                 if (isDragging) {
                     layoutParams.x = initialX + dx
@@ -183,18 +166,52 @@ class AuroraBubbleView(
                     try {
                         windowManager.updateViewLayout(this, layoutParams)
                     } catch (_: Exception) {}
+
+                    isOverDismissTarget = onDragMove(event.rawX, event.rawY)
                 }
                 return true
             }
             MotionEvent.ACTION_UP -> {
                 if (!isDragging) {
-                    // Foi um clique simples na bolha -> abre a Aurora
+                    // Clique simples: traz a Aurora para a frente
                     onBubbleClick()
+                } else {
+                    onDragEnd(isOverDismissTarget)
+                    if (!isOverDismissTarget) {
+                        // Snap suave para a lateral mais próxima da tela
+                        animateSnapToEdge()
+                    }
                 }
                 isDragging = false
                 return true
             }
         }
         return super.onTouchEvent(event)
+    }
+
+    /** Anima a bolha para encostar na borda esquerda ou direita mais próxima */
+    private fun animateSnapToEdge() {
+        val displayWidth = resources.displayMetrics.widthPixels
+        val bubbleWidth = width.takeIf { it > 0 } ?: layoutParams.width
+        val currentX = layoutParams.x
+
+        val targetX = if (currentX + bubbleWidth / 2 < displayWidth / 2) {
+            12 // Borda esquerda
+        } else {
+            displayWidth - bubbleWidth - 12 // Borda direita
+        }
+
+        snapAnimator?.cancel()
+        snapAnimator = ValueAnimator.ofInt(currentX, targetX).apply {
+            duration = 240
+            interpolator = DecelerateInterpolator()
+            addUpdateListener { anim ->
+                layoutParams.x = anim.animatedValue as Int
+                try {
+                    windowManager.updateViewLayout(this@AuroraBubbleView, layoutParams)
+                } catch (_: Exception) {}
+            }
+            start()
+        }
     }
 }

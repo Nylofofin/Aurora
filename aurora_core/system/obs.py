@@ -329,7 +329,7 @@ def obs_record(action: str, password: str = "", host: str = "127.0.0.1", port: i
             return ("O WebSocket do OBS Studio Flatpak está desativado. No OBS, abra "
                     "Ferramentas → Configurações do servidor WebSocket e ative o servidor.")
         if request_attempted:
-            return ("Enviei o comando ao OBS, mas perdi a confirmação. Confira se a gravação "
+            return ("Enviei o comando ao OBS, mas perdi a confirmação e não confirmei a gravação. Confira se a gravação "
                     "começou ou parou antes de tentar de novo.")
         if isinstance(exc, (TimeoutError, socket.timeout)):
             return (f"O OBS demorou demais na etapa de {phase}. Confira se o WebSocket está "

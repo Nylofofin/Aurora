@@ -1,7 +1,7 @@
-# Aurora — POLARIS-EDGE
+# Aurora — POLARIS-CONVERGENCE
 
-**Versão:** `1.0.2` (release de manutenção da Geração 1) · **Build:** `AUR-20261022.G1.P3`
-**Geração:** `1` · **Codinome técnico:** `POLARIS-EDGE` — assistente local-first com Gemma via Ollama.
+**Versão:** `1.1.0` (release estável integrada PC e celular) · **Build:** `AUR-20261023.G2.RELEASE`
+**Geração:** `2` · **Codinome técnico:** `POLARIS-CONVERGENCE` — assistente local-first com Gemma via Ollama e integração móvel completa.
 
 > **Release pessoal para Linux desktop.** A versão 1.0.2 reúne correções de idioma e automação do OBS. A Aurora confirma que a gravação parou antes de encerrar o OBS Flatpak. O OBS é iniciado com pedido de minimização para bandeja; gravação sem janela depende da configuração do próprio OBS e do ambiente gráfico. Não inclui pacote Flatpak/RPM nem atualizador automático. O código-fonte está publicado no GitHub.
 
@@ -9,9 +9,9 @@
 
 **Experimento:** peça “diagnóstico da Aurora” para obter uma verificação local e somente leitura do Ollama/modelos, dependências de voz, modelo Vosk e sessão gráfica. O diagnóstico não testa microfone, serviços online, OBS ou Spotify e não altera configurações.
 
-## Cliente Android Companion (Beta Demo)
+## Cliente Android Companion (Release v1.0.0)
 
-O cliente Android **Beta Demo 0.7.1** conversa com o roteador central e mantém histórico no PC. Na mesma LAN, **Encontrar meu PC automaticamente** usa DNS-SD/mDNS. O pareamento exige conferir o pin SHA-256 no PC e digitar o código de uso único. Ao adquirir o controle, a captura de microfone/wake do desktop fecha; desconectar devolve a escuta local, e uma queda de rede libera o controle após 60 segundos. Os sons de entrada/saída ficam embutidos no APK; a voz Edge TTS (Thalita) é gerada no PC e enviada ao telefone. Cliques usam o feedback do Android e falhas de reprodução de voz aparecem na interface. O PC transcreve gravações pelo Google Speech. O botão **Mic** ativa wake word local Vosk no PC com blocos PCM enviados por HTTPS; o botão **PC** mostra o desktop via ScreenCast, PipeWire e GStreamer, após consentimento no computador. O wake continua experimental, exige conexão e ação para retomar se o app estiver em segundo plano; a tela é somente leitura. Comandos compatíveis de baixo risco podem ser executados no PC; ações que exigem confirmação presencial são recusadas no celular. O serviço escuta apenas no IPv4 privado, com TLS fixado e token cifrado no Android Keystore. Instale o APK na [release do cliente Android](https://github.com/ruanminezinoficial2025-ctrl/Aurora/releases/tag/android-beta-v0.8.0); instruções e limites estão em [`android-client/README.md`](android-client/README.md).
+O cliente Android **Release 1.0.0** conversa com o roteador central e mantém histórico no PC. Na mesma LAN, **Encontrar meu PC automaticamente** usa DNS-SD/mDNS. O pareamento exige conferir o pin SHA-256 no PC e digitar o código de uso único. Ao adquirir o controle, a captura de microfone/wake do desktop fecha; desconectar devolve a escuta local, e uma queda de rede libera o controle após 60 segundos. Os sons de entrada/saída ficam embutidos no APK; a voz Edge TTS (Thalita) é gerada no PC e enviada ao telefone. Cliques usam o feedback do Android e falhas de reprodução de voz aparecem na interface. O PC transcreve gravações pelo Google Speech. O modo Live conta com conversa contínua hands-free e bolha flutuante overlay com zona de descarte; a tela do PC pode ser transmitida via ScreenCast, PipeWire e GStreamer. Instale o APK na [release oficial do cliente Android v1.0.0](https://github.com/ruanminezinoficial2025-ctrl/Aurora/releases/tag/android-v1.0.0); instruções e limites estão em [`android-client/README.md`](android-client/README.md).
 
 ## Ambiente
 

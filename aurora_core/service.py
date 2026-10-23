@@ -605,7 +605,12 @@ class AuroraService(QObject):
         generation=self.activity_generation
         def finish():
             if generation==self.activity_generation and self.response_finished and not self.speaker.active and self.speaker.q.empty() and not (self.inf and self.inf.isRunning()) and not self.weather_busy():
-                self.voice.end_request(); self.orb.dismiss()
+                if getattr(self,'continuous_mode',True) and not self._mobile_audio_owned():
+                    # No modo contínuo: após responder a pergunta, continua ouvindo o próximo comando
+                    self.voice.end_request()
+                    self.listen_once()
+                else:
+                    self.voice.end_request(); self.orb.dismiss()
         QTimer.singleShot(delay,finish)
     def inference_finished(self):
         inference=self.sender()

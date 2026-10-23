@@ -368,18 +368,27 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
                     remoteState = "ready"
                     updateBubbleActivity("ready")
                     if (!success) notice = "MP3 da Thalita chegou (${bytes.size} bytes), mas o Android falhou ao reproduzir."
-                    resumeAlwaysOnWake()
-                    if (connected && !liveMode) {
-                        startWakeListener()
+                    if (liveMode) {
+                        // Modo Live contínuo: após responder o primeiro comando, CONTINUA OUVINDO!
+                        startVoiceInteraction()
+                    } else {
+                        resumeAlwaysOnWake()
+                        if (connected) {
+                            startWakeListener()
+                        }
                     }
                 }
             } catch (error: Exception) {
                 remoteState = "ready"
                 updateBubbleActivity("ready")
                 notice = "Texto recebido; voz do PC falhou: ${error.message ?: "erro de áudio"}."
-                resumeAlwaysOnWake()
-                if (connected && !liveMode) {
-                    startWakeListener()
+                if (liveMode) {
+                    startVoiceInteraction()
+                } else {
+                    resumeAlwaysOnWake()
+                    if (connected) {
+                        startWakeListener()
+                    }
                 }
             }
         }
