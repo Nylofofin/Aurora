@@ -54,32 +54,35 @@ class Speaker(QThread):
             except queue.Empty: continue
             if isinstance(item,tuple) and len(item)==2: text,queued_at=item
             else: text,queued_at=item,time.perf_counter()
-            if not self.engine and not self.fallback:
-                self.speaking.emit(False); self.drained.emit(); continue
             from .telemetry import elapsed_ms, log_voice_timing
             generation=self.cancel_generation
             log_voice_timing('tts_queue',elapsed_ms(queued_at))
             playback_started=time.perf_counter()
+            if not self.engine and not self.fallback:
+                log_voice_timing('tts_complete',elapsed_ms(playback_started),'unavailable')
+                self.speaking.emit(False); self.drained.emit(); continue
+            outcome='ok'
             self.active=True; self.speaking.emit(True)
             try:
                 if self.engine:
                     import asyncio
                     asyncio.run(self._stream_edge(text,generation))
                 elif self.fallback:
+                    outcome='fallback'
                     self.playing=True; self.audio_started.emit()
                     self.current_player=subprocess.Popen([self.fallback,'-v','pt-br',text],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
                     self.current_player.wait(timeout=35)
             except asyncio.CancelledError:
-                pass
+                outcome='interrupted'
             except Exception:
+                outcome='fallback' if self.fallback and self.running and generation==self.cancel_generation else 'error'
                 if self.fallback and self.running and generation==self.cancel_generation:
                     try:
                         self.playing=True; self.audio_started.emit(); self.current_player=subprocess.Popen([self.fallback,'-v','pt-br',text],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL); self.current_player.wait(timeout=35)
-                    except Exception: pass
+                    except Exception: outcome='error'
             finally:
                 self.current_player=None
-                log_voice_timing('tts_complete',elapsed_ms(playback_started),
-                                 'interrupted' if generation!=self.cancel_generation else 'ok')
+                log_voice_timing('tts_complete',elapsed_ms(playback_started),outcome)
             self.playing=False; self.active=False; self.speaking.emit(False)
             if self.q.empty(): self.drained.emit()
     def stop(self):
