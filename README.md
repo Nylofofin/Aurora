@@ -11,7 +11,7 @@ O servidor de rede do Companion também fica **desativado por padrão**. Configu
 
 ## Licença
 
-O código-fonte próprio da Aurora é distribuído sob **GNU GPL versão 3 apenas** (`GPL-3.0-only`); consulte [`LICENSE`](LICENSE). Dependências, modelos, serviços externos e outros materiais mantêm suas próprias licenças. A origem e os direitos de redistribuição dos arquivos de feedback `assets/audio/entrada.wav` e `assets/audio/saida.wav` ainda não foram confirmados; a licença do código não concede direitos sobre esses arquivos.
+O código-fonte próprio da Aurora é distribuído sob **GNU GPL versão 3 apenas** (`GPL-3.0-only`); consulte [`LICENSE`](LICENSE). Dependências, modelos, serviços externos e outros materiais mantêm suas próprias licenças. Os efeitos de entrada e saída em `assets/audio/` são adaptados da coleção UI SFX sob CC0 1.0; a origem, a licença e os detalhes da conversão estão documentados em [`assets/audio/SOURCES.md`](assets/audio/SOURCES.md).
 
 > **Release para Linux desktop.** A 1.4.0 adiciona coordenação ORC: até três tarefas de pesquisa web e até duas consultas locais independentes podem avançar em paralelo, sem duplicar o modelo Gemma. Não inclui pacote Flatpak/RPM nem atualizador automático; instale pelo script versionado ou pelo código-fonte no GitHub.
 

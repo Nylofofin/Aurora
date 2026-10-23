@@ -1,0 +1,10 @@
+# Feedback sounds
+
+The Aurora entry and exit cues are adapted from the `scifi` pack in [UI SFX](https://github.com/romainsimon/uisfx), revision `9950fe66f993a6660dab9c2651dcbcd899ffd83b`.
+
+- `entrada.wav`: `sounds/scifi/wake.ogg`
+- `saida.wav`: `sounds/scifi/sleep.ogg`
+- License: CC0 1.0 Universal (public domain dedication), reproduced in [LICENSE-AUDIO.txt](LICENSE-AUDIO.txt).
+- Adaptation: converted to stereo 44.1 kHz PCM WAV and normalized for consistent desktop/mobile playback.
+
+Attribution is not required by CC0, but is retained here for provenance.
