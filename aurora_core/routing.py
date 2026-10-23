@@ -29,8 +29,6 @@ def route_request(self,prompt):
     source_followup=bool(self.context_history and contextual_source_request(prompt))
     direct=None if source_followup else parse_local_command(prompt)
     if direct:
-        if getattr(self,'companion_request',None):
-            self.quick_summary_done('O controle do computador pelo celular ainda não está habilitado nesta Alpha.',self.request_generation); return
         self.run_local_action(*direct); return
     local_answer=local_datetime_answer(prompt)
     if local_answer:

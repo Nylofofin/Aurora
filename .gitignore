@@ -19,3 +19,6 @@ android-client/local.properties
 android-client/**/build/
 android-client/.idea/
 android-client/*.iml
+
+# Android binaries are published as GitHub release assets, not stored in git
+artifacts/*.apk

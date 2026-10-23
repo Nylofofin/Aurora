@@ -3,6 +3,7 @@ package app.aurora.companion
 import android.Manifest
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -68,6 +69,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
@@ -96,6 +98,7 @@ private fun AuroraShell() {
     val vault = remember { CredentialVault(appContext) }
     val saved = remember { vault.load() }
     val scope = rememberCoroutineScope()
+    val discovery = remember { LanDiscovery(appContext) }
     val speech = remember {
         lateinit var engine: TextToSpeech
         engine = TextToSpeech(appContext) { status ->
@@ -103,7 +106,16 @@ private fun AuroraShell() {
         }
         engine
     }
-    DisposableEffect(speech) { onDispose { speech.stop(); speech.shutdown() } }
+    var remoteState by remember { mutableStateOf("idle") }
+    DisposableEffect(speech) {
+        speech.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String?) { }
+            override fun onDone(utteranceId: String?) { remoteState = "ready" }
+            @Deprecated("Deprecated by Android")
+            override fun onError(utteranceId: String?) { remoteState = "ready" }
+        })
+        onDispose { speech.stop(); speech.shutdown() }
+    }
     var showConnect by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
     var connected by remember { mutableStateOf(false) }
@@ -114,6 +126,7 @@ private fun AuroraShell() {
     var draft by remember { mutableStateOf("") }
     var live by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
+    var discovering by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf("") }
     var conversationId by remember { mutableStateOf(CompanionClient.newConversationId()) }
     var conversations by remember { mutableStateOf<List<PcConversation>>(emptyList()) }
@@ -121,13 +134,42 @@ private fun AuroraShell() {
 
     LaunchedEffect(saved) {
         if (saved != null) {
+            val client = CompanionClient(saved.first, saved.second, saved.third)
+            var controlAcquired = false
             try {
-                conversations = withContext(Dispatchers.IO) { CompanionClient(saved.first, saved.second, saved.third).conversations() }
+                withContext(Dispatchers.IO) { client.acquireControl() }
+                controlAcquired = true
+                conversations = withContext(Dispatchers.IO) { client.conversations() }
                 connected = true
+                notice = "PC conectado; controle e áudio transferidos para o celular."
             } catch (_: Exception) {
+                if (controlAcquired) withContext(Dispatchers.IO) { runCatching { client.releaseControl() } }
                 // Keep the pairing credentials for temporary Wi-Fi/server outages.
                 connected = false
                 notice = "PC indisponível. Confira a mesma rede Wi-Fi e tente conectar novamente."
+            }
+        }
+    }
+
+    DisposableEffect(discovery) { onDispose { discovery.stop() } }
+    LaunchedEffect(discovering) {
+        if (discovering) {
+            delay(12_000)
+            if (discovering) {
+                discovery.stop()
+                discovering = false
+                notice = "Nenhum PC Aurora encontrado nesta rede. Confira o Wi-Fi e o serviço do PC."
+            }
+        }
+    }
+    LaunchedEffect(connected, endpoint, fingerprint, token) {
+        while (connected && token.isNotBlank()) {
+            delay(15_000)
+            try {
+                remoteState = withContext(Dispatchers.IO) { CompanionClient(endpoint, fingerprint, token).heartbeatControl() }
+            } catch (_: Exception) {
+                connected = false
+                notice = "Conexão com o PC perdida; o controle local será liberado automaticamente."
             }
         }
     }
@@ -138,16 +180,19 @@ private fun AuroraShell() {
         scope.launch {
             try {
                 val cleanFingerprint = fingerprint.filter { it.isLetterOrDigit() }.lowercase()
-                val newToken = withContext(Dispatchers.IO) {
+                val newToken = if (token.isNotBlank()) token else withContext(Dispatchers.IO) {
                     CompanionClient(endpoint, cleanFingerprint).pair(pairingCode)
                 }
-                vault.save(endpoint, cleanFingerprint, newToken)
+                token = newToken
+                fingerprint = cleanFingerprint
+                if (token.isNotBlank()) vault.save(endpoint, cleanFingerprint, newToken)
+                withContext(Dispatchers.IO) { CompanionClient(endpoint, cleanFingerprint, newToken).acquireControl() }
                 token = newToken
                 fingerprint = cleanFingerprint
                 connected = true
                 conversationId = CompanionClient.newConversationId()
                 lines.clear()
-                notice = "Aurora conectada ao computador."
+                notice = "Controle transferido para o celular. A Aurora do PC dormiu."
                 showConnect = false
             } catch (error: Exception) {
                 notice = error.message ?: "Não consegui conectar ao Aurora no PC."
@@ -155,6 +200,29 @@ private fun AuroraShell() {
                 busy = false
             }
         }
+    }
+
+    fun disconnectFromPc() {
+        if (!connected || busy) return
+        busy = true
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) { CompanionClient(endpoint, fingerprint, token).releaseControl() }
+                connected = false
+                notice = "Celular desconectado. A Aurora do PC voltou a escutar."
+            } catch (error: Exception) {
+                notice = "Não confirmei a desconexão: ${error.message ?: "verifique o PC"}."
+            } finally { busy = false }
+        }
+    }
+
+    fun findPc() {
+        discovering = true
+        notice = "Procurando Aurora PCs nesta rede…"
+        discovery.start(
+            onFound = { found -> endpoint = found; discovering = false; notice = "Aurora PC encontrado. Confira o pin do certificado e pareie." },
+            onError = { message -> discovering = false; notice = message },
+        )
     }
 
     fun sendCurrentMessage() {
@@ -193,6 +261,7 @@ private fun AuroraShell() {
                 }
                 lines += ChatLine(true, result.first)
                 lines += ChatLine(false, result.second)
+                remoteState = "speaking"
                 speech.speak(result.second, TextToSpeech.QUEUE_FLUSH, null, "aurora-live-response")
                 notice = "Aurora respondeu por voz."
             } catch (error: Exception) {
@@ -243,9 +312,10 @@ private fun AuroraShell() {
                 modifier = Modifier.fillMaxSize().padding(WindowInsets.statusBars.asPaddingValues())
                     .padding(WindowInsets.navigationBars.asPaddingValues()).imePadding()
             ) {
-                TopBar(connected, onHistory = { showHistory = true; refreshConversations() }, onConnect = { showConnect = true })
+                TopBar(connected, remoteState, onHistory = { showHistory = true; refreshConversations() }, onConnect = { showConnect = true }, onDisconnect = ::disconnectFromPc)
                 if (lines.isEmpty()) {
-                    Welcome(live, onLive = { }, connected = connected)
+                    Welcome(live || busy, onLive = { }, connected = connected,
+                        activity = if (live) "listening" else remoteState)
                 } else {
                     LazyColumn(
                         modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 20.dp),
@@ -256,7 +326,7 @@ private fun AuroraShell() {
                     }
                     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
                         horizontalArrangement = Arrangement.Center) {
-                        OrbButton(live, Modifier.size(54.dp)) { }
+                        OrbButton(live || busy, Modifier.size(54.dp), activity = if (live) "listening" else remoteState) { }
                     }
                 }
                 Composer(
@@ -284,8 +354,11 @@ private fun AuroraShell() {
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("O computador é quem executa a Aurora. Primeiro conecte os dois à mesma rede Wi-Fi.", color = Muted)
+                    Button(onClick = ::findPc, enabled = !discovering, colors = ButtonDefaults.buttonColors(containerColor = Panel)) {
+                        Text(if (discovering) "Procurando na rede…" else "Encontrar meu PC automaticamente", color = Pearl)
+                    }
                     ConnectField(endpoint, { endpoint = it }, "Endereço do servidor (ex.: https://192.168.1.10:8765)")
-                    ConnectField(pairingCode, { pairingCode = it }, "Código de pareamento")
+                    if (token.isBlank()) ConnectField(pairingCode, { pairingCode = it }, "Código de pareamento")
                     ConnectField(fingerprint, { fingerprint = it }, "Impressão digital SHA-256 do certificado (64 caracteres)")
                     Text("No PC, obtenha o código e a impressão digital em ~/.config/aurora/companion/. O pareamento usa HTTPS com certificado fixado; não exponha a porta do PC à internet.", color = Muted, fontSize = 12.sp)
                     if (notice.isNotBlank()) Text(notice, color = if (notice.startsWith("Não")) Color(0xFFFFA6AC) else Blue, fontSize = 12.sp)
@@ -320,35 +393,44 @@ private fun AuroraShell() {
 }
 
 @Composable
-private fun TopBar(connected: Boolean, onHistory: () -> Unit, onConnect: () -> Unit) {
+private fun TopBar(connected: Boolean, remoteState: String, onHistory: () -> Unit, onConnect: () -> Unit, onDisconnect: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            OrbButton(false, Modifier.size(38.dp)) { }
+            OrbButton(false, Modifier.size(38.dp), activity = if (connected) remoteState else "idle") { }
             Spacer(Modifier.width(11.dp))
             Column {
                 Text("Aurora", color = Pearl, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                Text(if (connected) "PC conectado" else "Aguardando seu PC", color = Muted, fontSize = 11.sp)
+                Text(if (connected) "${remoteStateLabel(remoteState)} · PC em pausa" else "Aguardando seu PC", color = Muted, fontSize = 11.sp)
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             SmallAction("Histórico", onHistory)
-            SmallAction(if (connected) "PC" else "Conectar", onConnect)
+            SmallAction(if (connected) "Desconectar" else "Conectar", if (connected) onDisconnect else onConnect)
         }
     }
 }
 
+private fun remoteStateLabel(state: String): String = when (state) {
+    "transcribing" -> "Entendendo sua voz"
+    "thinking" -> "Aurora pensando"
+    "searching" -> "Aurora pesquisando"
+    "speaking" -> "Aurora falando"
+    "error" -> "Atenção necessária"
+    else -> "Celular conectado"
+}
+
 @Composable
-private fun Welcome(live: Boolean, onLive: () -> Unit, connected: Boolean) {
+private fun Welcome(live: Boolean, onLive: () -> Unit, connected: Boolean, activity: String) {
     Column(
         modifier = Modifier.fillMaxSize().padding(horizontal = 26.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        OrbButton(live, Modifier.size(150.dp), onLive)
+        OrbButton(live, Modifier.size(150.dp), activity, onLive)
         Spacer(Modifier.height(27.dp))
         Text(if (live) "Estou ouvindo você" else "Oi, sou a Aurora", color = Pearl, fontSize = 26.sp, fontWeight = FontWeight.Medium)
         Spacer(Modifier.height(9.dp))
@@ -372,12 +454,25 @@ private fun Welcome(live: Boolean, onLive: () -> Unit, connected: Boolean) {
 }
 
 @Composable
-private fun OrbButton(live: Boolean, modifier: Modifier, onClick: () -> Unit) {
+private fun OrbButton(live: Boolean, modifier: Modifier, activity: String = if (live) "listening" else "idle", onClick: () -> Unit) {
     val transition = rememberInfiniteTransition(label = "aurora-orb")
+    val pulseMillis = when (activity) {
+        "transcribing", "thinking" -> 1050
+        "searching" -> 1450
+        "speaking" -> 720
+        "listening" -> 850
+        else -> 2500
+    }
+    val auraColor = when (activity) {
+        "searching" -> Blue
+        "speaking" -> Color(0xFFD9C7FF)
+        "thinking", "transcribing" -> Violet
+        else -> if (live) Blue else Violet
+    }
     val breathe by transition.animateFloat(
         initialValue = 0.96f,
-        targetValue = if (live) 1.08f else 1.025f,
-        animationSpec = infiniteRepeatable(tween(if (live) 800 else 2400, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        targetValue = if (activity == "speaking") 1.10f else if (live || activity != "idle") 1.065f else 1.025f,
+        animationSpec = infiniteRepeatable(tween(pulseMillis, easing = FastOutSlowInEasing), RepeatMode.Reverse),
         label = "orb-breathe"
     )
     val drift by transition.animateFloat(
@@ -386,7 +481,22 @@ private fun OrbButton(live: Boolean, modifier: Modifier, onClick: () -> Unit) {
         animationSpec = infiniteRepeatable(tween(4600, easing = FastOutSlowInEasing), RepeatMode.Reverse),
         label = "orb-reflection"
     )
-    Box(modifier.scale(breathe).clip(CircleShape).background(
+    val halo by transition.animateFloat(
+        initialValue = 1f,
+        targetValue = if (activity == "speaking") 1.50f else if (live || activity != "idle") 1.38f else 1.08f,
+        animationSpec = infiniteRepeatable(tween(pulseMillis, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "orb-halo-scale"
+    )
+    val haloAlpha by transition.animateFloat(
+        initialValue = if (live || activity != "idle") 0.32f else 0.10f,
+        targetValue = 0.01f,
+        animationSpec = infiniteRepeatable(tween(pulseMillis, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "orb-halo-alpha"
+    )
+    Box(modifier, contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize().scale(halo).alpha(haloAlpha)
+        .border(1.dp, auraColor, CircleShape))
+    Box(Modifier.fillMaxSize().scale(breathe).clip(CircleShape).background(
         Brush.linearGradient(
             colors = listOf(Color(0xFFF4F6FF), Color(0xFFE8E8FF), Color(0xFFBFAEFF), Color(0xFF698CFF), Color(0xFF7753E8)),
             start = androidx.compose.ui.geometry.Offset(0f, 0f),
@@ -400,6 +510,7 @@ private fun OrbButton(live: Boolean, modifier: Modifier, onClick: () -> Unit) {
         ))
         Box(Modifier.fillMaxWidth(0.62f).height(40.dp).padding(start = 20.dp, top = 13.dp)
             .clip(CircleShape).alpha(0.7f).background(Brush.horizontalGradient(listOf(Color.White.copy(0.72f), Color.White.copy(0.02f)))))
+    }
     }
 }
 

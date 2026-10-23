@@ -11,7 +11,7 @@ from ..system.text import strip_wake_word
 class LocalVoice(QThread):
     transcript=Signal(str); status=Signal(str); unavailable=Signal(str); wake=Signal(); cancel_control=Signal(); audio_level=Signal(float)
     def __init__(self,cfg):
-        super().__init__(); self.cfg=cfg; self.running=True; self.one_shot=threading.Event(); self.request_active=threading.Event(); self.interrupt_active=threading.Event(); self.cancel_control_active=threading.Event(); self.speaking=False; self.recognizer=None
+        super().__init__(); self.cfg=cfg; self.running=True; self.one_shot=threading.Event(); self.request_active=threading.Event(); self.interrupt_active=threading.Event(); self.cancel_control_active=threading.Event(); self.mobile_owned=threading.Event(); self.speaking=False; self.recognizer=None
     def request_once(self): self.one_shot.set()
     def begin_request(self): self.request_active.set(); self.interrupt_active.clear()
     def end_request(self): self.request_active.clear(); self.one_shot.clear(); self.interrupt_active.clear()
@@ -62,66 +62,77 @@ class LocalVoice(QThread):
             wake_rec=KaldiRecognizer(model,16000,'["aurora", "ei aurora", "olá aurora"]'); wake_rec.SetWords(False)
             cancel_rec=KaldiRecognizer(model,16000,'["para", "pare", "parar", "cancele", "cancela", "cancelar", "interrompa", "interrompe", "interromper", "chega", "espera", "calma", "calma para", "pera", "pera aí", "deixa", "deixa pra lá", "para agora", "para com isso", "não", "não para", "não calma para", "não espera", "corta"]'); cancel_rec.SetWords(False)
             self.recognizer=sr.Recognizer(); self.recognizer.operation_timeout=2.0
-            q=queue.Queue(maxsize=12)
-            def callback(data,frames,time_info,status):
-                try: q.put_nowait(bytes(data))
-                except queue.Full: pass
-            with sd.RawInputStream(samplerate=16000,blocksize=3200,dtype='int16',channels=1,callback=callback):
-                self.status.emit('hidden')
-                active=False; started=0.0; buffer=[]; wake_audio=[]
-                while self.running:
-                    try: block=q.get(timeout=.25)
-                    except queue.Empty: continue
-                    if not self.request_active.is_set() and active:
-                        active=False; buffer=[]; wake_audio=[]; rec.Reset(); wake_rec.Reset(); self.status.emit('hidden')
-                    if self.interrupt_active.is_set() or self.cancel_control_active.is_set():
-                        finalized_cancel=cancel_rec.AcceptWaveform(block)
-                        if finalized_cancel:
-                            cancel_text=json.loads(cancel_rec.Result()).get('text','').strip()
-                            cancel_rec.Reset()
-                            if self.is_final_cancel_phrase(cancel_text,True):
-                                self.cancel_control_active.clear(); self.interrupt_active.clear(); self.cancel_control.emit()
-                        # The active request owns the microphone while Aurora is
-                        # processing or speaking; only the short cancel grammar
-                        # is listened to until the user interrupts or it ends.
-                        if self.speaking or self.interrupt_active.is_set() or self.cancel_control_active.is_set(): continue
-                    if self.speaking: continue
-                    cancel_rec.Reset()
-                    if not active and self.defer_wake_detection(): continue
-                    if not active:
-                        wake_audio.append(block)
-                        if len(wake_audio)>88: wake_audio=wake_audio[-88:]
-                        if self.one_shot.is_set():
-                            self.one_shot.clear(); active=True; buffer=[]; wake_audio=[]; started=time.monotonic(); self.status.emit('listening'); rec.Reset(); wake_rec.Reset(); continue
-                    else:
-                        buffer.append(block)
-                        if len(buffer)>120: buffer=buffer[-120:]
-                        self.audio_level.emit(self.normalized_audio_level(block))
-                    active_rec=rec if active else wake_rec
-                    finalized=active_rec.AcceptWaveform(block)
-                    if not finalized:
-                        if active and time.monotonic()-started>22:
-                            active=False; buffer=[]; wake_audio=[]; rec.Reset(); wake_rec.Reset(); self.end_request(); self.status.emit('hidden')
-                        continue
-                    text=json.loads(active_rec.Result()).get('text','').strip()
-                    if active:
-                        if text:
-                            self.audio_level.emit(0.0)
-                            pcm=b''.join(buffer[-40:]); active=False; buffer=[]; wake_audio=[]; started=time.monotonic(); self.speaking=True; self.status.emit('thinking')
-                            command=self.cloud_transcribe(sr,pcm,text)
-                            if command and self.request_active.is_set(): self.transcript.emit(command)
-                            else:
-                                active=self.request_active.is_set(); started=time.monotonic(); rec.Reset(); wake_rec.Reset(); self.speaking=False
-                                if active: self.status.emit('listening')
-                        elif time.monotonic()-started>22:
-                            active=False; buffer=[]; wake_audio=[]; rec.Reset(); wake_rec.Reset(); self.end_request(); self.status.emit('hidden')
-                    elif text:
-                        if self.is_final_wake_phrase(text,finalized):
-                            self.begin_request()
-                            self.wake.emit(); self.status.emit('listening')
-                            active=True; buffer=list(wake_audio); wake_audio=[]; started=time.monotonic(); rec.Reset(); wake_rec.Reset()
+            while self.running:
+                while self.running and self.mobile_owned.is_set():
+                    self.status.emit('hidden')
+                    time.sleep(.1)
+                q=queue.Queue(maxsize=12)
+                def callback(data,frames,time_info,status):
+                    try: q.put_nowait(bytes(data))
+                    except queue.Full: pass
+                with sd.RawInputStream(samplerate=16000,blocksize=3200,dtype='int16',channels=1,callback=callback):
+                    self.status.emit('hidden')
+                    active=False; started=0.0; buffer=[]; wake_audio=[]
+                    while self.running and not self.mobile_owned.is_set():
+                        try: block=q.get(timeout=.25)
+                        except queue.Empty: continue
+                        if self.mobile_owned.is_set():
+                            if active:
+                                active=False; buffer=[]; wake_audio=[]; rec.Reset(); wake_rec.Reset(); self.status.emit('hidden')
+                            continue
+                        if not self.request_active.is_set() and active:
+                            active=False; buffer=[]; wake_audio=[]; rec.Reset(); wake_rec.Reset(); self.status.emit('hidden')
+                        if self.interrupt_active.is_set() or self.cancel_control_active.is_set():
+                            finalized_cancel=cancel_rec.AcceptWaveform(block)
+                            if finalized_cancel:
+                                cancel_text=json.loads(cancel_rec.Result()).get('text','').strip()
+                                cancel_rec.Reset()
+                                if self.is_final_cancel_phrase(cancel_text,True):
+                                    self.cancel_control_active.clear(); self.interrupt_active.clear(); self.cancel_control.emit()
+                            # The active request owns the microphone while Aurora is
+                            # processing or speaking; only the short cancel grammar
+                            # is listened to until the user interrupts or it ends.
+                            if self.speaking or self.interrupt_active.is_set() or self.cancel_control_active.is_set(): continue
+                        if self.speaking: continue
+                        cancel_rec.Reset()
+                        if not active and self.defer_wake_detection(): continue
+                        if not active:
+                            wake_audio.append(block)
+                            if len(wake_audio)>88: wake_audio=wake_audio[-88:]
+                            if self.one_shot.is_set():
+                                self.one_shot.clear(); active=True; buffer=[]; wake_audio=[]; started=time.monotonic(); self.status.emit('listening'); rec.Reset(); wake_rec.Reset(); continue
                         else:
-                            wake_audio=[]
+                            buffer.append(block)
+                            if len(buffer)>120: buffer=buffer[-120:]
+                            self.audio_level.emit(self.normalized_audio_level(block))
+                        active_rec=rec if active else wake_rec
+                        finalized=active_rec.AcceptWaveform(block)
+                        if not finalized:
+                            if active and time.monotonic()-started>22:
+                                active=False; buffer=[]; wake_audio=[]; rec.Reset(); wake_rec.Reset(); self.end_request(); self.status.emit('hidden')
+                            continue
+                        text=json.loads(active_rec.Result()).get('text','').strip()
+                        if active:
+                            if text:
+                                self.audio_level.emit(0.0)
+                                pcm=b''.join(buffer[-40:]); active=False; buffer=[]; wake_audio=[]; started=time.monotonic(); self.speaking=True; self.status.emit('thinking')
+                                command=self.cloud_transcribe(sr,pcm,text)
+                                if command and self.request_active.is_set(): self.transcript.emit(command)
+                                else:
+                                    active=self.request_active.is_set(); started=time.monotonic(); rec.Reset(); wake_rec.Reset(); self.speaking=False
+                                    if active: self.status.emit('listening')
+                            elif time.monotonic()-started>22:
+                                active=False; buffer=[]; wake_audio=[]; rec.Reset(); wake_rec.Reset(); self.end_request(); self.status.emit('hidden')
+                        elif text:
+                            if self.is_final_wake_phrase(text,finalized):
+                                self.begin_request()
+                                self.wake.emit(); self.status.emit('listening')
+                                active=True; buffer=list(wake_audio); wake_audio=[]; started=time.monotonic(); rec.Reset(); wake_rec.Reset()
+                            else:
+                                wake_audio=[]
+                if self.mobile_owned.is_set():
+                    self.status.emit('hidden')
+
         except Exception as e:
             self.unavailable.emit(str(e)); self.status.emit('error')
     def stop(self): self.running=False

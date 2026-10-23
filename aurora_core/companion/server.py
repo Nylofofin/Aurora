@@ -8,6 +8,7 @@ import ipaddress
 import json
 import os
 import secrets
+import shutil
 import socket
 import ssl
 import subprocess
@@ -20,6 +21,7 @@ MAX_BODY = 16 * 1024
 MAX_VOICE_BODY = 2_000_000
 PAIR_WINDOW_SECONDS = 300
 MAX_PAIR_ATTEMPTS = 5
+CONTROL_LEASE_SECONDS = 60
 
 
 def discover_private_address() -> str:
@@ -135,12 +137,13 @@ class PairingAuth:
 class CompanionServer:
     """Small HTTPS API; request processing stays injected into AuroraService."""
 
-    def __init__(self, directory: Path, address: str, port: int, on_message, *, on_voice=None, api_timeout=120):
+    def __init__(self, directory: Path, address: str, port: int, on_message, *, on_voice=None, on_control=None, api_timeout=120):
         self.directory = directory
         self.address = address
         self.port = int(port)
         self.on_message = on_message
         self.on_voice = on_voice
+        self._on_control = on_control
         self.api_timeout = api_timeout
         self.auth = PairingAuth(directory)
         self.cert_path, self.key_path, self.fingerprint = ensure_tls_identity(directory, address)
@@ -148,6 +151,12 @@ class CompanionServer:
         self.history_path = directory / "conversations.json"
         self._history_lock = threading.RLock()
         self._conversation_locks: dict[str, threading.Lock] = {}
+        self._control_lock = threading.RLock()
+        self._control_owner = None
+        self._control_expires = 0.0
+        self._remote_state = "idle"
+        self._resume_pending = False
+        self._advertiser = None
         outer = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -183,7 +192,7 @@ class CompanionServer:
             def do_GET(self):
                 path = urlsplit(self.path).path
                 if path == "/v1/status":
-                    self._json(200, {"service": "Aurora", "protocol": 1, "fingerprint": outer.fingerprint})
+                    self._json(200, {"service": "Aurora", "protocol": 1, "fingerprint": outer.fingerprint, "mobile_control": outer.control_active(), "state": outer.remote_state()})
                     return
                 if not self._authorized():
                     self._json(401, {"error": "unauthorized"})
@@ -205,6 +214,9 @@ class CompanionServer:
 
             def do_POST(self):
                 path = urlsplit(self.path).path
+                if path == "/v1/control":
+                    self._post_control()
+                    return
                 if path == "/v1/voice":
                     self._post_voice()
                     return
@@ -225,6 +237,10 @@ class CompanionServer:
                     return
                 if not self._authorized():
                     self._json(401, {"error": "unauthorized"})
+                    return
+                _, _, token = self.headers.get("Authorization", "").partition(" ")
+                if not outer.owns_control(token):
+                    self._json(409, {"error": "mobile control not acquired"})
                     return
                 if path != "/v1/chat" or not isinstance(payload, dict):
                     self._json(404, {"error": "not found"})
@@ -267,6 +283,36 @@ class CompanionServer:
                 finally:
                     lock.release()
 
+            def _post_control(self):
+                if not self._authorized():
+                    self._json(401, {"error": "unauthorized"})
+                    return
+                try:
+                    payload = self._body()
+                except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
+                    self._json(400, {"error": "invalid request"})
+                    return
+                scheme, _, token = self.headers.get("Authorization", "").partition(" ")
+                operation = payload.get("operation") if isinstance(payload, dict) else None
+                if operation == "acquire":
+                    acquired, changed = outer.acquire_control(token)
+                    if acquired and changed and not outer.notify_control(True):
+                        outer.release_control(token)
+                        outer.notify_control(False)
+                        acquired = False
+                    self._json(200 if acquired else 409, {"mobile_control": acquired})
+                elif operation == "heartbeat":
+                    active = outer.heartbeat_control(token)
+                    self._json(200 if active else 409, {"mobile_control": active, "state": outer.remote_state()})
+                elif operation == "release":
+                    released, changed = outer.release_control(token)
+                    if changed and not outer.notify_control(False):
+                        self._json(503, {"error": "desktop resume pending", "mobile_control": False})
+                        return
+                    self._json(200 if released else 409, {"mobile_control": False})
+                else:
+                    self._json(400, {"error": "invalid operation"})
+
             def _post_voice(self):
                 authorized = self._authorized()
                 if not authorized:
@@ -274,6 +320,10 @@ class CompanionServer:
                     return
                 if not outer.on_voice:
                     self._json(404, {"error": "not found"})
+                    return
+                _, _, token = self.headers.get("Authorization", "").partition(" ")
+                if not outer.owns_control(token):
+                    self._json(409, {"error": "mobile control not acquired"})
                     return
                 conversation_id = self.headers.get("X-Conversation-ID", "")
                 if (not conversation_id or len(conversation_id) > 64
@@ -334,6 +384,79 @@ class CompanionServer:
         with self._history_lock:
             return self._conversation_locks.setdefault(conversation_id, threading.Lock())
 
+    def _token_digest(self, token):
+        return hashlib.sha256(str(token).encode("utf-8")).hexdigest()
+
+    def control_active(self):
+        with self._control_lock:
+            return bool(self._control_owner and time.monotonic() < self._control_expires)
+
+    def owns_control(self, token):
+        digest = self._token_digest(token)
+        with self._control_lock:
+            return bool(self._control_owner and time.monotonic() < self._control_expires and hmac.compare_digest(self._control_owner, digest))
+
+    def set_remote_state(self, state):
+        allowed = {"idle", "ready", "transcribing", "thinking", "searching", "speaking", "error"}
+        if state not in allowed: return
+        with self._control_lock:
+            self._remote_state = state
+
+    def remote_state(self):
+        with self._control_lock:
+            return self._remote_state
+
+    def acquire_control(self, token):
+        digest = self._token_digest(token)
+        if not self.auth.authorized(token):
+            return False, False
+        with self._control_lock:
+            now = time.monotonic()
+            if self._control_owner and now >= self._control_expires:
+                self._control_owner = None
+            if self._control_owner and not hmac.compare_digest(self._control_owner, digest):
+                return False, False
+            changed = self._control_owner is None
+            self._control_owner = digest
+            self._control_expires = now + CONTROL_LEASE_SECONDS
+            return True, changed
+
+    def heartbeat_control(self, token):
+        digest = self._token_digest(token)
+        with self._control_lock:
+            now = time.monotonic()
+            if not self._control_owner or now >= self._control_expires or not hmac.compare_digest(self._control_owner, digest):
+                if self._control_owner and now >= self._control_expires:
+                    self._control_owner = None
+                return False
+            self._control_expires = now + CONTROL_LEASE_SECONDS
+            return True
+
+    def release_control(self, token):
+        digest = self._token_digest(token)
+        with self._control_lock:
+            if not self._control_owner or not hmac.compare_digest(self._control_owner, digest):
+                return False, False
+            self._control_owner = None
+            self._control_expires = 0.0
+            return True, True
+
+    def notify_control(self, active):
+        result = True
+        if self._on_control:
+            try:
+                result = bool(self._on_control(active))
+            except Exception:
+                result = False
+        with self._control_lock:
+            if active:
+                self._resume_pending = False
+            elif result:
+                self._resume_pending = False
+            else:
+                self._resume_pending = True
+        return result
+
     def _load_history(self):
         try:
             data = json.loads(self.history_path.read_text(encoding="utf-8"))
@@ -380,8 +503,47 @@ class CompanionServer:
             return
         self.thread = threading.Thread(target=self.httpd.serve_forever, name="aurora-companion-https", daemon=True)
         self.thread.start()
+        publisher = shutil.which("avahi-publish-service")
+        if publisher and self.port > 0:
+            try:
+                self._advertiser = subprocess.Popen(
+                    [publisher, "Aurora Companion", "_aurora-companion._tcp", str(self.port)],
+                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+            except OSError:
+                self._advertiser = None
+        self._control_monitor = threading.Thread(target=self._monitor_control, name="aurora-companion-control", daemon=True)
+        self._control_monitor.start()
+
+    def _monitor_control(self):
+        while self.thread and self.thread.is_alive():
+            expired = False
+            with self._control_lock:
+                if self._control_owner and time.monotonic() >= self._control_expires:
+                    self._control_owner = None
+                    self._control_expires = 0.0
+                    expired = True
+                retry_resume = self._resume_pending
+            if expired or retry_resume:
+                self.notify_control(False)
+            time.sleep(2)
 
     def close(self):
+        released = False
+        with self._control_lock:
+            released = self._control_owner is not None
+            self._control_owner = None
+            self._control_expires = 0.0
+        if released:
+            self.notify_control(False)
+        advertiser = self._advertiser
+        self._advertiser = None
+        if advertiser and advertiser.poll() is None:
+            advertiser.terminate()
+            try:
+                advertiser.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                advertiser.kill()
         self.httpd.shutdown()
         self.httpd.server_close()
         if self.thread:

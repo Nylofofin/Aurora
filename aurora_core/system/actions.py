@@ -50,7 +50,7 @@ def execute_action(self,name,args):
     if name=='take_screenshot':
         self.orb.set_mode('controlling')
         QApplication.processEvents()
-        if not self.voice.request_active.is_set(): return 'A captura foi cancelada.'
+        if not self.voice.request_active.is_set() and not getattr(self,'companion_request',None): return 'A captura foi cancelada.'
         try:
             view=getattr(self.orb,'view',None)
             parent_window=aurora_integrations.screenshot_parent_identifier(
@@ -72,7 +72,7 @@ def execute_action(self,name,args):
     if name=='obs_record':
         self.orb.set_mode('controlling')
         QApplication.processEvents()
-        if not self.voice.request_active.is_set(): return 'A gravação foi cancelada.'
+        if not self.voice.request_active.is_set() and not getattr(self,'companion_request',None): return 'A gravação foi cancelada.'
         return aurora_integrations.obs_record(args.get('action',''),os.environ.get('AURORA_OBS_PASSWORD',''),
             self.cfg.get('obs_host','127.0.0.1'),self.cfg.get('obs_port',4455))
     return 'Ação não disponível.'

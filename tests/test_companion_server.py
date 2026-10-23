@@ -40,8 +40,32 @@ class PairingAuthTests(unittest.TestCase):
 
 @unittest.skipUnless(shutil.which("openssl"), "openssl is required for the HTTPS integration test")
 class CompanionHttpsTests(unittest.TestCase):
+    def test_failed_mobile_handoff_rolls_back_and_requests_desktop_resume(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            events = []
+            outcomes = iter((False, True))
+            server = CompanionServer(
+                Path(temporary), "127.0.0.1", 0, lambda *_args: "unused",
+                on_control=lambda active: events.append(active) or next(outcomes),
+            )
+            try:
+                token = server.auth.pair("127.0.0.1", server.auth.code_path.read_text().strip())
+                acquired, changed = server.acquire_control(token)
+                self.assertTrue(acquired)
+                self.assertTrue(changed)
+                if not server.notify_control(True):
+                    server.release_control(token)
+                    server.notify_control(False)
+                self.assertEqual(events, [True, False])
+                self.assertFalse(server.control_active())
+                self.assertFalse(server._resume_pending)
+            finally:
+                server.httpd.server_close()
+
     def test_status_pair_chat_and_persisted_history(self):
         with tempfile.TemporaryDirectory() as temporary:
+            control_events = []
+
             def answer(message, history):
                 text = f"Resposta central: {message}; contexto={len(history)}"
                 context = [*history, {"role": "user", "content": message},
@@ -54,9 +78,13 @@ class CompanionHttpsTests(unittest.TestCase):
                            {"role": "assistant", "content": text}]
                 return {"transcript": "Pergunta falada", "answer": text, "context_history": context}
 
+            def on_control(active):
+                control_events.append(active)
+                return True
+
             server = CompanionServer(
                 Path(temporary), "127.0.0.1", 0,
-                answer, on_voice=voice,
+                answer, on_voice=voice, on_control=on_control,
             )
             server.start()
             try:
@@ -78,6 +106,13 @@ class CompanionHttpsTests(unittest.TestCase):
                 self.assertEqual(response.status, 200)
                 token = token_data["token"]
 
+                connection.request("POST", "/v1/control", json.dumps({"operation": "acquire"}), {"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+                response = connection.getresponse()
+                control = json.loads(response.read())
+                self.assertEqual(response.status, 200)
+                self.assertTrue(control["mobile_control"])
+                self.assertEqual(control_events, [True])
+
                 connection.request("GET", "/v1/conversations", headers={"Authorization": "Bearer invalid"})
                 response = connection.getresponse()
                 response.read()
@@ -89,6 +124,19 @@ class CompanionHttpsTests(unittest.TestCase):
                 answer = json.loads(response.read())
                 self.assertEqual(response.status, 200)
                 self.assertEqual(answer["answer"], "Resposta central: Oi Aurora; contexto=0")
+
+                connection.request("POST", "/v1/control", json.dumps({"operation": "release"}), {"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+                response = connection.getresponse()
+                self.assertEqual(response.status, 200)
+                self.assertEqual(control_events[-1], False)
+                connection.request("POST", "/v1/chat", payload, {"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+                response = connection.getresponse()
+                response.read()
+                self.assertEqual(response.status, 409)
+                connection.request("POST", "/v1/control", json.dumps({"operation": "acquire"}), {"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+                response = connection.getresponse()
+                response.read()
+                self.assertEqual(response.status, 200)
 
                 payload = json.dumps({"conversation_id": "alpha1", "message": "E depois?"})
                 connection.request("POST", "/v1/chat", payload, {"Authorization": f"Bearer {token}", "Content-Type": "application/json"})

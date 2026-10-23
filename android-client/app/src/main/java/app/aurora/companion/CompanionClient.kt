@@ -46,6 +46,17 @@ class CompanionClient(
         return result.getString("token")
     }
 
+    fun acquireControl() {
+        val active = request("POST", "/v1/control", JSONObject().put("operation", "acquire")).optBoolean("mobile_control")
+        check(active) { "O PC está ocupado ou não conseguiu transferir o controle." }
+    }
+
+    fun heartbeatControl(): String = request("POST", "/v1/control", JSONObject().put("operation", "heartbeat")).optString("state", "ready")
+
+    fun releaseControl() {
+        request("POST", "/v1/control", JSONObject().put("operation", "release"))
+    }
+
     fun conversations(): List<PcConversation> {
         val array = request("GET", "/v1/conversations").optJSONArray("conversations") ?: JSONArray()
         return (0 until array.length()).mapNotNull { index ->

@@ -10,6 +10,7 @@ class _Orb:
     def reveal(self, _mode): pass
     def set_mode(self, _mode): pass
     def dismiss(self): pass
+    def hide(self): pass
 
 
 class _Voice:
@@ -43,7 +44,7 @@ def test_companion_completion_returns_remote_context_and_restores_desktop_contex
     assert service.voice.speaking is False
 
 
-def test_companion_routes_without_local_wake_and_refuses_pc_automation(monkeypatch):
+def test_companion_routes_explicit_local_action_without_desktop_wake(monkeypatch):
     monkeypatch.setattr(routing, "local_datetime_answer", lambda _prompt: "Agora são dez horas.")
     monkeypatch.setattr(routing, "parse_local_command", lambda _prompt: ("take_screenshot", {}))
 
@@ -59,11 +60,27 @@ def test_companion_routes_without_local_wake_and_refuses_pc_automation(monkeypat
         companion_request = {"future": Future()}
 
         def quick_summary_done(self, text, generation): self.result = (text, generation)
-        def run_local_action(self, *_args): raise AssertionError("mobile request must not execute local actions")
+        def run_local_action(self, *args): self.action = args
 
     service = Service()
     routing.route_request(service, "Tire uma captura de tela")
-    assert service.result[0] == "O controle do computador pelo celular ainda não está habilitado nesta Alpha."
+    assert service.action == ("take_screenshot", {})
+
+
+def test_mobile_action_requiring_desktop_approval_is_refused_without_hanging():
+    class Service:
+        companion_request = {"future": Future()}
+        current_prompt = "Feche o navegador"
+        response_summary = ""
+        response_finished = False
+        orb = _Orb()
+        def remember_exchange(self, *_args): pass
+        def complete_direct_action(self, result): self.result = result
+        def request_approval(self, *_args): raise AssertionError("desktop approval UI must not be opened")
+
+    service = Service()
+    AuroraService.run_local_action(service, "close_application", {"application": "browser"})
+    assert "confirmação na bolha do computador" in service.result
 
 
 def test_companion_request_can_enter_shared_router_without_local_voice(monkeypatch):
@@ -86,3 +103,50 @@ def test_companion_request_can_enter_shared_router_without_local_voice(monkeypat
     service = Service()
     routing.route_request(service, "Que horas são?")
     assert service.result[0] == "Agora são dez horas."
+
+
+def test_mobile_control_suspends_pc_microphone_and_disconnect_resumes_it():
+    class Voice(_Voice):
+        def __init__(self):
+            super().__init__()
+            self.mobile_owned = threading.Event()
+        def end_request(self): pass
+
+    class Speaker:
+        interrupted = False
+        def interrupt(self): self.interrupted = True
+
+    class Service:
+        voice = Voice()
+        speaker = Speaker()
+        orb = _Orb()
+        pending = None
+        companion_request = None
+        inf = None
+        background_requests = []
+        companion_server = None
+
+    service = Service()
+    accepted = Future()
+    AuroraService._set_companion_control(service, True, accepted)
+    assert accepted.result() is True
+    assert service.voice.mobile_owned.is_set()
+    assert service.speaker.interrupted
+
+    released = Future()
+    AuroraService._set_companion_control(service, False, released)
+    assert released.result() is True
+    assert not service.voice.mobile_owned.is_set()
+
+
+def test_mobile_control_cannot_preempt_active_pc_request():
+    class Service:
+        voice = _Voice(active=True)
+        companion_request = None
+        pending = None
+        inf = None
+        background_requests = []
+
+    future = Future()
+    AuroraService._set_companion_control(Service(), True, future)
+    assert future.result() is False
