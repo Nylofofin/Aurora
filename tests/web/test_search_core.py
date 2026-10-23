@@ -807,6 +807,9 @@ def test_news_query_falls_back_to_ddg_and_bing_when_google_news_fails(monkeypatc
 
     monkeypatch.setattr(search_pipeline, "search_google_news",
                         lambda *_args: (_ for _ in ()).throw(TimeoutError("Google News timed out")))
+    # The news fallback must remain hermetic: search_bing_news uses the
+    # provider module's opener, not pipeline.PUBLIC_OPENER, so stub it too.
+    monkeypatch.setattr(search_pipeline, "search_bing_news", lambda *_args: [])
     pub_date = format_datetime(datetime.now(timezone.utc))
     rss = """<rss><channel>
       <item><title>Nexa network measurement update</title><description>Nexa network measurement report confirmed.</description><link>https://source-a.example/story</link><pubDate>DATE</pubDate></item>

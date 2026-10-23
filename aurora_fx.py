@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: GPL-3.0-only
 from __future__ import annotations
 
-import gettext
 import json
 import re
 import queue
@@ -14,8 +13,9 @@ import urllib.request
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from pathlib import Path
 from zoneinfo import ZoneInfo
+from babel.core import get_global
+from babel.numbers import get_currency_name
 from aurora_core.web.security import PUBLIC_OPENER, public_http_url
 
 
@@ -84,23 +84,18 @@ def normalize_text(value: str) -> str:
 
 
 def _system_currency_rows():
-    paths = (Path("/usr/share/iso-codes/json/iso_4217.json"), Path("/usr/share/iso-codes/iso_4217.json"))
-    data = None
-    for path in paths:
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            break
-        except (OSError, ValueError):
-            continue
-    if not data:
-        return []
-    translations = gettext.translation("iso_4217", localedir="/usr/share/locale", languages=["pt_BR", "pt"], fallback=True)
     rows = []
-    for item in data.get("4217", []):
-        code = str(item.get("alpha_3", "")).upper()
-        name = str(item.get("name", "")).strip()
-        if code and len(code) == 3 and name:
-            rows.append((code, name, translations.gettext(name)))
+    # Babel ships portable CLDR names; distro language files differ.
+    for code in sorted(get_global("all_currencies")):
+        if len(code) != 3 or not code.isalpha():
+            continue
+        try:
+            english = get_currency_name(code, locale="en_US").strip()
+            localized = get_currency_name(code, locale="pt_BR").strip()
+        except (KeyError, ValueError):
+            continue
+        if english and localized:
+            rows.append((code, english, localized))
     return rows
 
 
