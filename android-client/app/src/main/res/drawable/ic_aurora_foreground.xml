@@ -1,31 +1,66 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- A luminous blue-violet body, kept inside the adaptive icon safe zone. -->
-    <path
-        android:fillColor="#3878F7"
-        android:pathData="M54,18a36,36 0,1 0,0 72a36,36 0,1 0,0 -72z" />
+    <!-- Smaller orb, with clear breathing room inside Android's adaptive mask. -->
+    <path android:pathData="M54,25a29,29 0,1 0,0 58a29,29 0,1 0,0 -58z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="40"
+                android:centerY="35"
+                android:gradientRadius="59">
+                <item android:color="#E7FBFF" android:offset="0" />
+                <item android:color="#55C8FF" android:offset="0.48" />
+                <item android:color="#4268F5" android:offset="0.76" />
+                <item android:color="#733DE0" android:offset="1" />
+            </gradient>
+        </aapt:attr>
+    </path>
 
-    <!-- Violet aurora current flowing through the lower half of the orb. -->
-    <path
-        android:fillColor="#7655E8"
-        android:pathData="M22,57c10,-8 19,-8 29,-2c10,6 20,7 35,-1c4,-2 6,-4 9,-6c-2,20 -19,36 -41,36c-17,0 -31,-11 -36,-27z" />
+    <!-- Deep violet current gives the lower half a richer, layered gradient. -->
+    <path android:pathData="M28,58c8,-8 17,-10 26,-5c9,5 16,8 27,2c-2,16 -13,28 -27,28c-13,0 -24,-8 -28,-20c1,-2 1,-3 2,-5z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="33" android:startY="55" android:endX="76" android:endY="82">
+                <item android:color="#7166FF" android:offset="0" />
+                <item android:color="#514AE8" android:offset="0.46" />
+                <item android:color="#772FCB" android:offset="1" />
+            </gradient>
+        </aapt:attr>
+    </path>
 
-    <!-- Pearl-white upper atmosphere and its soft, uneven horizon. -->
-    <path
-        android:fillColor="#F4F7FF"
-        android:pathData="M21,53c8,-7 17,-12 27,-10c10,2 15,9 24,8c8,-1 15,-7 20,-13c-5,-12 -18,-20 -33,-20c-20,0 -36,15 -38,35z" />
+    <!-- Pearly upper atmosphere with a cool blue edge, instead of a flat white cap. -->
+    <path android:pathData="M26,53c2,-16 14,-27 29,-27c12,0 22,7 26,18c-5,6 -11,11 -18,11c-9,0 -14,-7 -23,-7c-5,0 -10,2 -14,5z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="34" android:startY="31" android:endX="76" android:endY="58">
+                <item android:color="#FFFFFFFF" android:offset="0" />
+                <item android:color="#F4FBFF" android:offset="0.45" />
+                <item android:color="#BDEEFF" android:offset="1" />
+            </gradient>
+        </aapt:attr>
+    </path>
 
-    <!-- Cool cyan reflection where the pearl meets the colored current. -->
-    <path
-        android:fillColor="#8BE8FF"
-        android:pathData="M20,57c10,-8 19,-9 30,-3c10,6 20,7 35,-1c-8,10 -19,15 -29,13c-13,-2 -21,-12 -36,-5z" />
+    <!-- Fluid cyan-to-blue horizon, the signature Aurora color transition. -->
+    <path android:pathData="M26,57c9,-8 18,-9 28,-3c9,5 17,7 28,0c-5,8 -13,13 -21,13c-13,0 -20,-11 -34,-5c-1,-2 -1,-3 -1,-5z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="27" android:startY="55" android:endX="81" android:endY="65">
+                <item android:color="#D8FFFF" android:offset="0" />
+                <item android:color="#51D4F7" android:offset="0.39" />
+                <item android:color="#4389FF" android:offset="0.72" />
+                <item android:color="#9565FF" android:offset="1" />
+            </gradient>
+        </aapt:attr>
+    </path>
 
-    <!-- Small four-point glint: the Aurora mark's recognizable accent. -->
+    <!-- Soft specular reflection adds a glassy, dimensional finish. -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M77,21c1.4,5.1 3.1,6.8 8,8c-4.9,1.3 -6.6,3 -8,8c-1.3,-5 -3,-6.7 -8,-8c5,-1.2 6.7,-2.9 8,-8z" />
+        android:fillColor="#78FFFFFF"
+        android:pathData="M34,39c4,-5 10,-8 16,-8c-7,3 -12,9 -14,16c-1,4 -3,6 -5,7c0,-5 1,-10 3,-15z" />
+
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M72,30c1.2,4.1 2.6,5.5 6.5,6.5c-3.9,1 -5.3,2.4 -6.5,6.5c-1,-4.1 -2.4,-5.5 -6.5,-6.5c4.1,-1 5.5,-2.4 6.5,-6.5z" />
 </vector>

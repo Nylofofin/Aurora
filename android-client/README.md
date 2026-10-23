@@ -1,10 +1,10 @@
-# Aurora Android Companion — Demo Experimental 0.4.2
+# Aurora Android Companion — Demo Experimental 0.4.3
 
 Cliente Android nativo Demo Experimental. Modelos, busca e automação ficam no computador; o telefone é a interface, microfone e saída de áudio.
 
 ## Estado atual
 
-- APK experimental: [release Android 0.4.2](https://github.com/ruanminezinoficial2025-ctrl/Aurora/releases/tag/android-demo-v0.4.2). É uma build de desenvolvimento assinada para debug.
+- APK experimental: [release Android 0.4.3](https://github.com/ruanminezinoficial2025-ctrl/Aurora/releases/tag/android-demo-v0.4.3). É uma build de desenvolvimento assinada para debug.
 
 - Base Android com Jetpack Compose, tema escuro, esfera Aurora animada e ícone adaptativo vetorial próprio em branco, violeta e azul.
 - Pareamento HTTPS com fingerprint SHA-256 digitado fora de banda, código de uso único e token cifrado no Android Keystore.
