@@ -2,8 +2,8 @@ from __future__ import annotations
 
 """Release identity for the Aurora local desktop build."""
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 
-CODENAME = "LUMEN-PULSE / PRISM-CARD / ORCHESTRA RUNTIME COORDINATION"
+CODENAME = "ORCHESTRA RUNTIME COORDINATION"
 
-BUILD_ID = "AUR-LDR-1.3.0-LMP-PCD-ORC+20261023.01"
+BUILD_ID = "AUR-LDR-1.4.0-ORC+20261023.02"
