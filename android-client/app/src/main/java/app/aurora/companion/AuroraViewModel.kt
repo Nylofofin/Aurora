@@ -529,10 +529,6 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
 
         val intent = Intent(appContext, FloatingBubbleService::class.java).apply {
             action = FloatingBubbleService.ACTION_SHOW
-            putExtra(FloatingBubbleService.EXTRA_ACTIVITY, if (live) "listening" else remoteState)
-            putExtra(FloatingBubbleService.EXTRA_ENDPOINT, endpoint)
-            putExtra(FloatingBubbleService.EXTRA_FINGERPRINT, fingerprint)
-            putExtra(FloatingBubbleService.EXTRA_TOKEN, token)
         }
         runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -550,13 +546,8 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
         runCatching { appContext.startService(intent) }
     }
 
-    fun updateBubbleActivity(activity: String) {
-        val intent = Intent(appContext, FloatingBubbleService::class.java).apply {
-            action = FloatingBubbleService.ACTION_UPDATE_ACTIVITY
-            putExtra(FloatingBubbleService.EXTRA_ACTIVITY, activity)
-        }
-        runCatching { appContext.startService(intent) }
-    }
+    /** A bolha agora é stateless — não precisa de update de atividade. */
+    fun updateBubbleActivity(activity: String) = Unit
 
     override fun onCleared() {
         audioPlayer.release()

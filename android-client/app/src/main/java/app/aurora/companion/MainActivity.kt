@@ -18,6 +18,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -127,10 +130,40 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: AuroraViewModel by viewModels()
 
+    // Launcher para pedir permissão de microfone no auto-start da escuta
+    private val micPermLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            viewModel.startAlwaysOnWake()
+        } else {
+            viewModel.notice = "Conceda permissão de microfone para a escuta por voz funcionar."
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             AuroraShell(viewModel = viewModel)
+        }
+
+        // ── Auto-start da escuta permanente ────────────────────────────────────
+        // Ao abrir o app, inicia o AlwaysOnWakeService automaticamente se a
+        // permissão de microfone já foi concedida. Sem precisar de nenhum clique.
+        lifecycleScope.launch {
+            delay(800) // aguarda Activity estabilizar
+            autoStartAlwaysOnWake()
+        }
+    }
+
+    /** Liga a escuta contínua se o microfone estiver liberado, sem interação do usuário. */
+    private fun autoStartAlwaysOnWake() {
+        if (viewModel.alwaysOnWakeActive) return // já está rodando
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            viewModel.startAlwaysOnWake()
+        } else {
+            // Solicita permissão; quando concedida, micPermLauncher inicia a escuta
+            micPermLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
 
