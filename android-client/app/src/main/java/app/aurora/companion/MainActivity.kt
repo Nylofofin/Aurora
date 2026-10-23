@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -150,6 +151,13 @@ private fun AuroraShell() {
     val composerFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
 
+    suspend fun fetchPcSound(name: String): ByteArray? {
+        soundCache[name]?.let { return it }
+        return runCatching {
+            withContext(Dispatchers.IO) { CompanionClient(endpoint, fingerprint, token).sound(name) }
+        }.getOrNull()?.also { soundCache[name] = it }
+    }
+
     fun warmLiveSounds(client: CompanionClient) {
         scope.launch {
             val sounds = withContext(Dispatchers.IO) {
@@ -164,14 +172,14 @@ private fun AuroraShell() {
     fun playPcSound(name: String) {
         if (!connected) return
         scope.launch {
-            val bytes = soundCache[name] ?: runCatching {
-                withContext(Dispatchers.IO) { CompanionClient(endpoint, fingerprint, token).sound(name) }
-            }.getOrNull()?.also { soundCache[name] = it }
+            val bytes = fetchPcSound(name)
             if (bytes != null) audioPlayer.play(bytes)
+            else if (connected) notice = "Não consegui receber o som $name do PC."
         }
     }
 
     fun playPcSpeech(bytes: ByteArray?) {
+        if (!connected) return
         if (bytes == null || bytes.isEmpty()) {
             remoteState = "ready"
             notice = "A resposta chegou em texto, mas o PC não conseguiu gerar o áudio Edge TTS."
@@ -195,14 +203,16 @@ private fun AuroraShell() {
         playPcSound("entrada.wav")
     }
 
-    fun leaveLiveMode() {
+    fun leaveLiveMode(playExitSound: Boolean = true) {
         if (!liveMode) return
         audioPlayer.stop()
         if (live) voiceStopRequest += 1
         liveSessionId += 1
         liveMode = false
-        playPcSound("saida.wav")
+        if (playExitSound) playPcSound("saida.wav")
     }
+
+    BackHandler(enabled = liveMode) { leaveLiveMode() }
 
     fun startVoiceInteraction() {
         if (!connected) {
@@ -255,6 +265,13 @@ private fun AuroraShell() {
             try {
                 remoteState = withContext(Dispatchers.IO) { CompanionClient(endpoint, fingerprint, token).heartbeatControl() }
             } catch (_: Exception) {
+                if (live) voiceStopRequest += 1
+                live = false
+                liveMode = false
+                liveSessionId += 1
+                audioPlayer.stop()
+                soundCache.clear()
+                remoteState = "idle"
                 connected = false
                 notice = "Conexão com o PC perdida; o controle local será liberado automaticamente."
             }
@@ -294,12 +311,19 @@ private fun AuroraShell() {
 
     fun disconnectFromPc() {
         if (!connected || busy) return
-        if (liveMode) leaveLiveMode()
+        val wasLive = liveMode
+        if (wasLive) leaveLiveMode(playExitSound = false)
+        audioPlayer.stop()
         busy = true
         scope.launch {
             try {
+                // Fetch the PC's exit cue while this phone still owns the lease.
+                val exitSound = if (wasLive) fetchPcSound("saida.wav") else null
                 withContext(Dispatchers.IO) { CompanionClient(endpoint, fingerprint, token).releaseControl() }
                 connected = false
+                remoteState = "idle"
+                soundCache.clear()
+                exitSound?.let { audioPlayer.play(it) }
                 notice = "Celular desconectado. A Aurora do PC voltou a escutar."
             } catch (error: Exception) {
                 notice = "Não confirmei a desconexão: ${error.message ?: "verifique o PC"}."

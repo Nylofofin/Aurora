@@ -472,6 +472,7 @@ def test_new_wake_defaults_response_language_to_brazilian_portuguese():
         voice = Voice()
         orb = Orb()
         feedback = Feedback()
+        def _mobile_audio_owned(self): return False
 
     stub = ServiceStub()
     service_module.AuroraService.wake(stub)

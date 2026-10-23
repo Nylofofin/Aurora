@@ -253,6 +253,10 @@ class AuroraService(QObject):
             if self.companion_server: self.companion_server.set_remote_state('idle')
         future.set_result(True)
 
+    def _mobile_audio_owned(self):
+        server=getattr(self,'companion_server',None)
+        return bool(server and server.control_active())
+
     @Slot(str,object,object)
     def _handle_companion_message(self,prompt,history,future):
         if future.done(): return
@@ -334,6 +338,7 @@ class AuroraService(QObject):
     @Slot()
     def wake(self):
         if getattr(self,'companion_request',None): return
+        if self._mobile_audio_owned(): return
         self.last_wake=time.monotonic()
         # A language requested for a playful turn must not leak into the next
         # activation or into confirmations for a later desktop action.
@@ -347,6 +352,7 @@ class AuroraService(QObject):
         if self.inf and self.inf.isRunning(): self.orb.set_mode('listening')
     @Slot()
     def play_exit_feedback(self):
+        if self._mobile_audio_owned(): return
         self.exit_feedback.play()
     def dismiss(self):
         # Soft-dismissal is used when a one-shot listening attempt expires.
@@ -407,7 +413,9 @@ class AuroraService(QObject):
         self.voice.interrupt_active.set()
         route_request(self,prompt)
     def queue_sentence(self,text,generation):
-        if generation==self.request_generation and self.voice.request_active.is_set(): self.speaker.say(text)
+        if (not getattr(self,'companion_request',None) and not self._mobile_audio_owned()
+                and generation==self.request_generation and self.voice.request_active.is_set()):
+            self.speaker.say(text)
     def run_local_action(self,name,args):
         self.orb.set_mode('thinking')
         if requires_user_approval(name,args,explicit_user_request=True):
@@ -521,7 +529,7 @@ class AuroraService(QObject):
             self.voice.speaking=False
             self._finish_companion_request(result=self.response_summary)
     def speak_in_selected_language(self,text,generation=None):
-        if getattr(self,'companion_request',None): return
+        if getattr(self,'companion_request',None) or self._mobile_audio_owned(): return
         if self.response_language=='Português brasileiro': self.speaker.say(text); return
         generation=self.request_generation if generation is None else generation
         language=self.response_language

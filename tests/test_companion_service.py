@@ -150,3 +150,40 @@ def test_mobile_control_cannot_preempt_active_pc_request():
     future = Future()
     AuroraService._set_companion_control(Service(), True, future)
     assert future.result() is False
+
+
+def test_streaming_reply_is_not_played_on_pc_while_mobile_owns_audio():
+    class Server:
+        def control_active(self): return True
+
+    class Speaker:
+        def __init__(self): self.spoken = []
+        def say(self, text): self.spoken.append(text)
+
+    class Feedback:
+        def __init__(self): self.played = 0
+        def play(self): self.played += 1
+
+    speaker = Speaker()
+    feedback = Feedback()
+    voice = _Voice(active=True)
+    class Service:
+        def __init__(self):
+            self.companion_server = Server()
+            self.companion_request = None
+            self.request_generation = 7
+            self.voice = voice
+            self.speaker = speaker
+            self.exit_feedback = feedback
+
+        _mobile_audio_owned = AuroraService._mobile_audio_owned
+
+    service = Service()
+
+    AuroraService.queue_sentence(service, "trecho parcial", 7)
+    AuroraService.speak_in_selected_language(service, "resposta completa")
+    AuroraService.play_exit_feedback(service)
+    AuroraService.wake(service)
+
+    assert speaker.spoken == []
+    assert feedback.played == 0

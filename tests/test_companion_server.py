@@ -1,6 +1,7 @@
 import http.client
 import io
 import json
+import base64
 import shutil
 import ssl
 import tempfile
@@ -65,6 +66,9 @@ class CompanionHttpsTests(unittest.TestCase):
     def test_status_pair_chat_and_persisted_history(self):
         with tempfile.TemporaryDirectory() as temporary:
             control_events = []
+            sound_directory = Path(temporary) / "audio"
+            sound_directory.mkdir()
+            (sound_directory / "entrada.wav").write_bytes(b"PC entrance sound")
 
             def answer(message, history):
                 text = f"Resposta central: {message}; contexto={len(history)}"
@@ -85,6 +89,8 @@ class CompanionHttpsTests(unittest.TestCase):
             server = CompanionServer(
                 Path(temporary), "127.0.0.1", 0,
                 answer, on_voice=voice, on_control=on_control,
+                on_speech=lambda text: b"edge-audio:" + text.encode("utf-8"),
+                sound_directory=sound_directory,
             )
             server.start()
             try:
@@ -124,6 +130,15 @@ class CompanionHttpsTests(unittest.TestCase):
                 answer = json.loads(response.read())
                 self.assertEqual(response.status, 200)
                 self.assertEqual(answer["answer"], "Resposta central: Oi Aurora; contexto=0")
+                self.assertEqual(
+                    base64.b64decode(answer["speech_audio_base64"]),
+                    b"edge-audio:Resposta central: Oi Aurora; contexto=0",
+                )
+
+                connection.request("GET", "/v1/sounds/entrada.wav", headers={"Authorization": f"Bearer {token}"})
+                sound = connection.getresponse()
+                self.assertEqual(sound.status, 200)
+                self.assertEqual(sound.read(), b"PC entrance sound")
 
                 connection.request("POST", "/v1/control", json.dumps({"operation": "release"}), {"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
                 response = connection.getresponse()
