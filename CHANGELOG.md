@@ -1,5 +1,12 @@
 # Histórico de versões
 
+## 1.0.1 — Polaris-Edge, Patch 1 (2026-10-22)
+
+- Passa a janela X11 da bolha ao portal de screenshot e unifica pedidos diretos e pedidos do Gemma no mesmo worker assíncrono.
+- Registra em qual etapa o portal de captura ou o início do OBS falhou, sem gravar conteúdo capturado, caminhos fornecidos ou senhas.
+- Classifica resultados de automação como concluídos, aceitos pelo sistema ou falhos, sem persistir o texto retornado.
+- 217 testes automatizados passaram. Não foi possível validar captura real nem gravação real nesta sessão; o OBS não estava ativo.
+
 ## 1.0.0 — Polaris-Edge, Geração 1 (2026-10-22)
 
 Primeira release oficial da Aurora para uso pessoal e privado.
