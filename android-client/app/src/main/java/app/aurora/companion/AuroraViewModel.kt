@@ -90,6 +90,7 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
                 notice = "PC conectado; controle e áudio transferidos para o celular."
                 warmLiveSounds()
                 startHeartbeatLoop()
+                startWakeListener()
             } catch (_: Exception) {
                 if (controlAcquired) withContext(Dispatchers.IO) { runCatching { client.releaseControl() } }
                 connected = false
@@ -119,6 +120,7 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
                 lines.clear()
                 notice = "Controle transferido para o celular. A Aurora do PC dormiu."
                 startHeartbeatLoop()
+                startWakeListener()
             } catch (error: Exception) {
                 notice = error.message ?: "Não consegui conectar ao Aurora no PC."
             } finally {
@@ -367,12 +369,18 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
                     updateBubbleActivity("ready")
                     if (!success) notice = "MP3 da Thalita chegou (${bytes.size} bytes), mas o Android falhou ao reproduzir."
                     resumeAlwaysOnWake()
+                    if (connected && !liveMode) {
+                        startWakeListener()
+                    }
                 }
             } catch (error: Exception) {
                 remoteState = "ready"
                 updateBubbleActivity("ready")
                 notice = "Texto recebido; voz do PC falhou: ${error.message ?: "erro de áudio"}."
                 resumeAlwaysOnWake()
+                if (connected && !liveMode) {
+                    startWakeListener()
+                }
             }
         }
     }
@@ -380,6 +388,8 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
     fun enterLiveMode() {
         if (!connected) return
         if (liveMode) return
+        stopWakeListener()
+        pauseAlwaysOnWake()
         audioPlayer.stop()
         liveSessionId += 1
         liveMode = true
@@ -395,6 +405,9 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
         hideFloatingBubble()
         if (playExitSound) playPcSound("saida.wav")
         resumeAlwaysOnWake()
+        if (connected) {
+            startWakeListener()
+        }
     }
 
     fun startVoiceInteraction() {

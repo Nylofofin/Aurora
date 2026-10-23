@@ -131,14 +131,16 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: AuroraViewModel by viewModels()
 
-    // Launcher para pedir permissão de microfone no auto-start da escuta
+    // Launcher para pedir permissão de microfone no auto-start da escuta contínua
     private val micPermLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
-            viewModel.startAlwaysOnWake()
+            if (viewModel.connected) {
+                viewModel.startWakeListener()
+            }
         } else {
-            viewModel.notice = "Conceda permissão de microfone para a escuta por voz funcionar."
+            viewModel.notice = "Conceda permissão de microfone para a escuta contínua funcionar."
         }
     }
 
@@ -148,22 +150,22 @@ class MainActivity : ComponentActivity() {
             AuroraShell(viewModel = viewModel)
         }
 
-        // ── Auto-start da escuta permanente ────────────────────────────────────
-        // Ao abrir o app, inicia o AlwaysOnWakeService automaticamente se a
-        // permissão de microfone já foi concedida. Sem precisar de nenhum clique.
+        // ── Auto-start da escuta contínua ────────────────────────────────────
+        // Ao abrir o app, se a permissão já foi concedida e o PC estiver conectado,
+        // inicia o WakeCaptureService (AudioRecord contínuo sem abrir/fechar).
         lifecycleScope.launch {
             delay(800) // aguarda Activity estabilizar
-            autoStartAlwaysOnWake()
+            autoStartContinuousWake()
         }
     }
 
-    /** Liga a escuta contínua se o microfone estiver liberado, sem interação do usuário. */
-    private fun autoStartAlwaysOnWake() {
-        if (viewModel.alwaysOnWakeActive) return // já está rodando
+    /** Inicia escuta contínua sem looping e sem piscar microfone */
+    private fun autoStartContinuousWake() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-            viewModel.startAlwaysOnWake()
+            if (viewModel.connected) {
+                viewModel.startWakeListener()
+            }
         } else {
-            // Solicita permissão; quando concedida, micPermLauncher inicia a escuta
             micPermLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
@@ -232,9 +234,9 @@ private fun AuroraShell(viewModel: AuroraViewModel) {
                             playPhoneClick(rootView)
                             viewModel.enterLiveMode()
                             viewModel.startVoiceInteraction()
-                            viewModel.notice = "Ouvi Aurora. Pode falar; a detecção aconteceu localmente no PC."
+                            viewModel.notice = "Ouvi Aurora! Estou ouvindo seu comando..."
                         } else {
-                            viewModel.notice = "Ouvi Aurora. Abra o app e toque em Falar para continuar."
+                            viewModel.notice = "Ouvi Aurora. Conecte-se ao PC na mesma rede Wi-Fi."
                         }
                     }
                     WakeCaptureService.ACTION_ERROR -> {
@@ -369,7 +371,7 @@ private fun AuroraShell(viewModel: AuroraViewModel) {
                         TopBar(
                             connected = viewModel.connected,
                             remoteState = viewModel.remoteState,
-                            alwaysOnActive = viewModel.alwaysOnWakeActive,
+                            alwaysOnActive = viewModel.wakeListening || viewModel.alwaysOnWakeActive,
                             onHistory = {
                                 if (viewModel.connected) {
                                     viewModel.refreshConversations()
@@ -380,16 +382,14 @@ private fun AuroraShell(viewModel: AuroraViewModel) {
                             onDisconnect = viewModel::disconnectFromPc,
                             onOrbClick = { if (viewModel.connected) handleEnterLiveMode() else showConnect = true },
                             onToggleAlwaysOn = {
-                                if (viewModel.alwaysOnWakeActive) {
-                                    viewModel.stopAlwaysOnWake()
-                                } else if (appContext.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                                    viewModel.startAlwaysOnWake()
+                                if (viewModel.wakeListening) {
+                                    viewModel.stopWakeListener()
+                                    viewModel.notice = "Escuta contínua desativada."
+                                } else if (viewModel.connected) {
+                                    viewModel.startWakeListener()
                                 } else {
-                                    val req = buildList {
-                                        add(Manifest.permission.RECORD_AUDIO)
-                                        if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
-                                    }
-                                    alwaysOnWakePermissionLauncher.launch(req.toTypedArray())
+                                    showConnect = true
+                                    viewModel.notice = "Conecte-se ao PC na mesma rede Wi-Fi para ativar a escuta contínua."
                                 }
                             }
                         )
@@ -838,9 +838,18 @@ private fun VoiceCaptureButton(
         }
     }
 
-    var handledStartRequest by remember { mutableStateOf(startRequest) }
+    var handledStartRequest by remember { mutableStateOf(0) }
+
+    // Ao entrar na tela do Live, inicia a escuta do comando do usuário IMEDIATAMENTE,
+    // sem precisar clicar no botão "Falar"
+    LaunchedEffect(Unit) {
+        if (enabled && !active && !stopping) {
+            checkAndStartCapture()
+        }
+    }
+
     LaunchedEffect(startRequest) {
-        if (startRequest != handledStartRequest) {
+        if (startRequest > handledStartRequest) {
             handledStartRequest = startRequest
             if (enabled && !active && !stopping) {
                 checkAndStartCapture()
