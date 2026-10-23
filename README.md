@@ -1,8 +1,9 @@
 # Aurora — NOVA-TOUCH-R1
 
-**Versão:** `1.2.1` (PC) · `1.2.3` (Android) · **Build:** `AUR-20261023.G3.PATCH1`
-**Geração:** `3` · **Codinome técnico PC:** `NOVA-TOUCH-R1` — assistente local-first com Gemma via Ollama e Companion móvel.
-**Codinome técnico Android:** `NOVA-COMPANION-MATERIAL-R1` — cliente Material 3, Live com foreground mic e Desktop Remoto experimental.
+**Versão:** `1.2.1` (PC) · `1.2.3` (Android, arquivada) · **Build:** `AUR-20261023.G3.PATCH1`
+**Geração:** `3` · **Codinome técnico PC:** `NOVA-TOUCH-R1` — assistente local-first com Gemma via Ollama.
+
+> **Android descontinuado em 23/10/2026.** O cliente móvel não recebe mais suporte ou releases. O projeto voltou a focar no desktop Linux. Consulte o [anúncio e registro de testes](android-client/ARCHIVE.md). O código-fonte e os tags Android permanecem como histórico; as páginas de release e APKs Android foram retirados.
 
 > **Release pessoal para Linux desktop.** A versão 1.0.2 reúne correções de idioma e automação do OBS. A Aurora confirma que a gravação parou antes de encerrar o OBS Flatpak. O OBS é iniciado com pedido de minimização para bandeja; gravação sem janela depende da configuração do próprio OBS e do ambiente gráfico. Não inclui pacote Flatpak/RPM nem atualizador automático. O código-fonte está publicado no GitHub.
 
@@ -10,9 +11,9 @@
 
 **Experimento:** peça “diagnóstico da Aurora” para obter uma verificação local e somente leitura do Ollama/modelos, dependências de voz, modelo Vosk e sessão gráfica. O diagnóstico não testa microfone, serviços online, OBS ou Spotify e não altera configurações.
 
-## Cliente Android Companion (Release v1.2.3)
+## Histórico Android
 
-O cliente Android **1.2.3 · NOVA-COMPANION-MATERIAL-R1** conversa com o roteador central e mantém histórico no PC. Na mesma LAN, **Encontrar meu PC automaticamente** usa DNS-SD/mDNS. O pareamento exige conferir o pin SHA-256 no PC e digitar o código de uso único. Ao adquirir o controle, a captura de microfone/wake do desktop fecha; desconectar devolve a escuta local, e uma queda de rede libera o controle após 60 segundos. Perfil e tema ficam no armazenamento privado do celular, com sincronização local opcional ao PC. Não há login de nuvem. A interface foi reconstruída em Material 3, com navegação responsiva de Conversa, PC e Ajustes; o Live abre pelo waveform no composer e mantém o uso do microfone visível por uma notificação. O Desktop Remoto continua experimental e pede consentimento do GNOME. Instale pela [release Android 1.2.3](https://github.com/ruanminezinoficial2025-ctrl/Aurora/releases/tag/android-v1.2.3); instruções e limites estão em [`android-client/README.md`](android-client/README.md).
+O Companion Android chegou à versão `1.2.3` como experimento. Não é mais uma plataforma mantida nem há APK disponível para download. O registro documenta o que foi compilado, os testes feitos e os limites encontrados; consulte [`android-client/ARCHIVE.md`](android-client/ARCHIVE.md).
 
 ## Ambiente
 
