@@ -12,7 +12,7 @@ from .fetch import _search_page_excerpt
 from .parsers import DuckDuckGoLiteResults
 from .security import PUBLIC_OPENER, public_http_url
 from .http_body import decode_http_body
-from .orchestra import resource_worker_limit
+from .orchestra import plan_research_subagents, resource_worker_limit
 
 def _candidate_rank(item, freshness, news_only=False, today=None, window_days=None, query=''):
     today=today or datetime.now().astimezone().date()
@@ -97,26 +97,31 @@ def _search_public_web_uncached(query,freshness=None,news_only=None,progress=Non
                 except Exception: pass
                 rows.append((href,title,snippet,published))
         return rows
-    def collect_query(search_query,relevance_query,timeout):
-        providers=(
-            ('DuckDuckGo Lite','https://lite.duckduckgo.com/lite/?'+urlencode({'q':search_query,'kl':'br-pt'}),'ddg'),
-            ('Bing RSS','https://www.bing.com/search?'+urlencode({'q':search_query,'format':'rss','setlang':'pt-br'}),'bing-rss'),
-        )
-        news_queries=[]
-        if news_only or latest_version:
-            # Bing News performs poorly with request phrasing and appended years;
-            # query only the user's topic, then enforce relevance and dates below.
-            topic_terms=_fresh_query_terms(relevance_query)
-            news_terms={min(_search_term_forms(term),key=len) for term in topic_terms}
-            news_query=' '.join(sorted(news_terms)) or search_query
-            if latest_version:
-                news_query=f'{news_query} latest release'
-            news_queries=[news_query]
-            # The regional feed often finds a second independent publisher
-            # when the topic-only feed repeats a blocked or syndicated page.
-            if news_only and 'brasil' not in news_query.split() and not international_news_only(relevance_query):
-                news_queries.append(f'{news_query} Brasil')
-        tasks=len(providers)+len(news_queries)
+    def collect_query(search_query,relevance_query,timeout,subagents=None):
+        providers=(('DuckDuckGo Lite','ddg'),('Bing RSS','bing-rss'))
+        units=[]
+        if subagents and len(subagents)>1:
+            for agent in subagents:
+                agent_search=_search_query_variants(agent.query,search_window)[0][0]
+                units.append((agent.name,agent_search,agent.query))
+        else:
+            units=[('Pesquisa principal',search_query,relevance_query)]
+        jobs_to_submit=[]
+        for agent_name,agent_search,agent_relevance in units:
+            jobs_to_submit.extend((agent_name,provider,kind,agent_search,agent_relevance)
+                                  for provider,kind in providers)
+            if news_only or latest_version:
+                # Each explicit subtask searches the same topic in its own
+                # right; only current news adds the regional companion query.
+                topic_terms=_fresh_query_terms(agent_relevance)
+                news_terms={min(_search_term_forms(term),key=len) for term in topic_terms}
+                news_query=' '.join(sorted(news_terms)) or agent_search
+                if latest_version:
+                    news_query=f'{news_query} latest release'
+                jobs_to_submit.append((agent_name,'Bing Notícias','bing-news',news_query,agent_relevance))
+                if news_only and 'brasil' not in news_query.split() and not international_news_only(agent_relevance):
+                    jobs_to_submit.append((agent_name+' · Brasil','Bing Notícias','bing-news',f'{news_query} Brasil',agent_relevance))
+        tasks=len(jobs_to_submit)
         cpu_count=os.cpu_count() or 1
         try: load=os.getloadavg()[0]/cpu_count
         except (AttributeError,OSError): load=0
@@ -125,23 +130,31 @@ def _search_public_web_uncached(query,freshness=None,news_only=None,progress=Non
                 available_ram=next(int(line.split()[1])*1024 for line in meminfo if line.startswith('MemAvailable:'))
         except (OSError,StopIteration,ValueError): available_ram=0
         workers=resource_worker_limit(tasks,load_per_cpu=load,available_ram=available_ram,cpu_count=cpu_count)
-        task_names=[provider for provider,_,_ in providers]+[
-            'Bing Notícias · Brasil' if news_query_variant.endswith(' Brasil') else 'Bing Notícias'
-            for news_query_variant in news_queries]
-        report(stage='searching',tasks=task_names,workers=workers,completed=0,total=tasks)
+        multi_agent=bool(subagents and len(subagents)>1)
+        agent_names=[agent.name for agent in subagents] if multi_agent else []
+        task_names=agent_names or [provider if kind!='bing-news' else ('Bing Notícias · Brasil' if search_query_variant.endswith(' Brasil') else 'Bing Notícias')
+                                   for _,provider,kind,search_query_variant,_ in jobs_to_submit]
+        progress_total=len(agent_names) if multi_agent else tasks
+        report(stage='searching',tasks=task_names,workers=workers,completed=0,total=progress_total)
+        pending_by_agent={name:sum(1 for job in jobs_to_submit if job[0]==name or job[0].startswith(name+' ·')) for name in agent_names}
+        finished_agents=set()
+        started_at={name:time.monotonic() for name in agent_names}
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-            jobs=[(provider,kind,provider,pool.submit(fetch_provider,url,kind,timeout)) for provider,url,kind in providers]
-            jobs.extend(('Bing Notícias','bing-news',task_name,pool.submit(search_bing_news,news_query_variant,timeout))
-                        for news_query_variant,task_name in zip(news_queries,task_names[len(providers):]) )
-            futures={future:(provider,kind,task_name) for provider,kind,task_name,future in jobs}
+            futures={}
+            for agent_name,provider,kind,query_for_provider,agent_relevance in jobs_to_submit:
+                if kind=='ddg': url='https://lite.duckduckgo.com/lite/?'+urlencode({'q':query_for_provider,'kl':'br-pt'})
+                elif kind=='bing-rss': url='https://www.bing.com/search?'+urlencode({'q':query_for_provider,'format':'rss','setlang':'pt-br'})
+                if kind=='bing-news': future=pool.submit(search_bing_news,query_for_provider,timeout)
+                else: future=pool.submit(fetch_provider,url,kind,timeout)
+                futures[future]=(agent_name,provider,kind,agent_relevance)
             for completed,future in enumerate(concurrent.futures.as_completed(futures),1):
-                provider,kind,task_name=futures[future]
+                agent_name,provider,kind,agent_relevance=futures[future]
+                task_name=agent_name if multi_agent else (provider if kind!='bing-news' else ('Bing Notícias · Brasil' if agent_name.endswith(' · Brasil') else provider))
                 stats=provider_counts.setdefault(provider,{'extraidos':0,'relevantes':0})
                 try: rows=future.result()
                 except Exception as exc:
                     failures.append(f'{provider}: {type(exc).__name__}')
-                    report(stage='searching',tasks=task_names,workers=workers,completed=completed,total=tasks,finished_task=task_name,error=type(exc).__name__)
-                    continue
+                    rows=[]
                 stats['extraidos']+=len(rows)
                 provider_found=[]
                 for row in rows:
@@ -172,7 +185,7 @@ def _search_public_web_uncached(query,freshness=None,news_only=None,progress=Non
                             stale_feed_date):
                         rejected['atualidade']+=1; continue
                     # The alternate query removes request phrasing, not subject terms.
-                    relevance=_search_relevance(relevance_query,title,snippet)
+                    relevance=_search_relevance(agent_relevance,title,snippet)
                     if relevance<=0: rejected['relevancia']+=1; continue
                     stats['relevantes']+=1
                     key=urlparse(href)._replace(query='',fragment='').geturl().rstrip('/').casefold()
@@ -184,10 +197,31 @@ def _search_public_web_uncached(query,freshness=None,news_only=None,progress=Non
                         'search_result_published':published if kind=='bing-rss' else '',
                         'feed_published':kind=='bing-news','score':relevance}
                     found.append(accepted); provider_found.append(accepted)
-                report(stage='searching',tasks=task_names,workers=workers,completed=completed,total=tasks,finished_task=task_name,
-                       sources=[{key:item.get(key,'') for key in ('provider','title','snippet','url','host','publisher','published')} for item in provider_found[:4]])
+                update={'stage':'searching','tasks':task_names,'workers':workers,
+                        'completed':completed,'total':progress_total,
+                        'sources':[{key:item.get(key,'') for key in ('provider','title','snippet','url','host','publisher','published')} for item in provider_found[:4]]}
+                if multi_agent:
+                    if agent_name in pending_by_agent:
+                        pending_by_agent[agent_name]-=1
+                        if pending_by_agent[agent_name]<=0:
+                            finished_agents.add(agent_name)
+                            update.update(completed=len(finished_agents),total=len(agent_names),finished_task=agent_name,
+                                          duration_ms=int((time.monotonic()-started_at[agent_name])*1000))
+                    else:
+                        parent=agent_name.removesuffix(' · Brasil')
+                        if parent in pending_by_agent:
+                            pending_by_agent[parent]-=1
+                            if pending_by_agent[parent]<=0:
+                                finished_agents.add(parent)
+                                update.update(completed=len(finished_agents),total=len(agent_names),finished_task=parent,
+                                              duration_ms=int((time.monotonic()-started_at[parent])*1000))
+                else:
+                    update.update(completed=completed,total=tasks,finished_task=task_name)
+                report(**update)
+    subagents=plan_research_subagents(query)
     for attempt,(search_query,relevance_query) in enumerate(query_variants):
-        collect_query(search_query,relevance_query,3.5 if attempt==0 else 1.8)
+        collect_query(search_query,relevance_query,3.5 if attempt==0 else 1.8,
+                      subagents if attempt==0 and len(subagents)>1 else None)
         # Google News RSS links may remain Google wrapper pages that our safe
         # HTTP reader cannot extract. They must not suppress the compact-query
         # fallback before we have any directly readable publisher candidates.

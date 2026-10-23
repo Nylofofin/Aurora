@@ -31,6 +31,7 @@ from .ui.research_card import ResearchCard
 from .voice.tts import Speaker
 from .voice.wake import LocalVoice
 from .web.freshness import _independent_recent_source_count
+from .web.orchestra import plan_research_subagents
 from .web.intent import _result_query_relevance, asks_latest_version, contextual_followup, contextual_source_request, current_search_window, factual_web_intent, local_datetime_answer, news_search_intent, news_unconfirmed_message, requested_response_language, research_request_intent, search_failure_summary, search_intent
 from .web.news_summary import format_news_digest
 from .web.requests import FXRequest, SearchRequest, WeatherRequest
@@ -477,7 +478,7 @@ class AuroraService(QObject):
                 publisher,published=match.groups(); label=label[:match.start()].strip()
             host=(urlparse(url).hostname or '').removeprefix('www.')
             items.append({'title':label.strip(),'snippet':Speaker.clean(snippet),'publisher':publisher,'published':published,'host':host,'url':url})
-        relevance_queries=[self.current_prompt or query]
+        relevance_queries=[agent.query for agent in plan_research_subagents(self.current_prompt or query)]
         if self.current_prompt or query:
             items=[item for item in items if any(
                 _result_query_relevance(relevance_query,item['title'],item['snippet'])>0

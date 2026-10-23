@@ -163,7 +163,9 @@ class ResearchCard(QWidget):
         elif stage == "searching":
             completed = int(event.get("completed", len(self._finished)))
             total = max(1, int(event.get("total", len(self._tasks))))
-            self.stage_label.setText(f"Pesquisando em paralelo · {completed}/{total} etapas")
+            duration = event.get("duration_ms")
+            timing = f" · {duration / 1000:.1f} s" if duration is not None and event.get("finished_task") else ""
+            self.stage_label.setText(f"Pesquisando em paralelo · {completed}/{total} etapas{timing}")
             self.progress.setValue(10 + int(55 * completed / total))
             self._paint_workers()
         elif stage == "validating":

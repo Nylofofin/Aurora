@@ -467,6 +467,7 @@ def test_current_fact_uses_bing_news_feed_when_general_search_has_no_verified_so
     monkeypatch.setattr(search_pipeline,"search_bing_news",lambda *_args:stories)
     monkeypatch.setattr(search_pipeline,"PUBLIC_OPENER",Opener())
     monkeypatch.setattr(search_pipeline,"public_http_url",lambda url:url)
+    monkeypatch.setattr(search_pipeline,"public_http_url",lambda url:url)
     page_reads=[]
 
     def read_page(url,_query,timeout=2.5):
@@ -1035,6 +1036,39 @@ def test_search_pipeline_reports_real_provider_and_validation_progress(monkeypat
     assert any(event.get("finished_task") == "DuckDuckGo Lite" for event in searching)
     assert any(event.get("finished_task") == "Bing RSS" for event in searching)
     assert any(event.get("stage") == "validating" for event in events)
+
+
+def test_composite_query_runs_distinct_subagents_in_bounded_provider_pool(monkeypatch):
+    from email.message import Message
+    from urllib.parse import parse_qs, urlparse
+
+    calls=[]
+    class Response:
+        headers=Message()
+        def __init__(self,url): self.url=url
+        def __enter__(self): return self
+        def __exit__(self,*_args): return None
+        def geturl(self): return self.url
+        def read(self,_limit):
+            if "bing.com" in self.url: return b"<rss><channel></channel></rss>"
+            return b"<html><body>No results</body></html>"
+    class Opener:
+        def open(self,request,timeout):
+            calls.append(request.full_url)
+            return Response(request.full_url)
+    monkeypatch.setattr(search_pipeline,"PUBLIC_OPENER",Opener())
+    monkeypatch.setattr(search_pipeline,"resource_worker_limit",lambda count,**_kwargs:2)
+    monkeypatch.setattr(search_pipeline,"search_google_news",lambda *_args:"")
+    events=[]
+
+    search_pipeline._search_public_web_uncached("Compare Gemma 3 e Gemma 4",False,False,events.append)
+
+    searched={parse_qs(urlparse(url).query).get("q",[""])[0] for url in calls}
+    assert any("Gemma 3" in term for term in searched)
+    assert any("Gemma 4" in term for term in searched)
+    first=next(event for event in events if event.get("stage")=="searching")
+    assert first["tasks"]==["Subagente 1 · Gemma 3","Subagente 2 · Gemma 4"]
+    assert first["workers"]==2
 
 
 def test_short_cache_avoids_duplicate_search(monkeypatch):
