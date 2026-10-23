@@ -1,5 +1,9 @@
 # Histórico de versões
 
+## Em desenvolvimento
+
+- A verificação do OBS agora aguarda a propagação assíncrona do estado de gravação, evitando falso “não confirmei” após o OBS aceitar `StartRecord`. Testes cobrem estado atrasado e estado que nunca muda.
+
 ## 1.0.2 — Polaris-Edge, Patch 2 (pré-release, 2026-10-22)
 
 - Separa OBS, captura pelo portal, Spotify e registro de ações em módulos dedicados sob `aurora_core/system/`, mantendo a fachada de compatibilidade.

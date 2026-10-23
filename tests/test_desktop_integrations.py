@@ -718,9 +718,14 @@ def test_obs_flatpak_settings_with_non_object_json_are_ignored(monkeypatch, tmp_
     assert obs._flatpak_obs_settings() == {}
 
 
-@pytest.mark.parametrize("active_after_start", [True, False])
-def test_obs_websocket_authenticates_and_verifies_record_state(monkeypatch, active_after_start):
+@pytest.mark.parametrize(("active_states", "should_confirm"), [
+    ([True], True), ([False], False), ([False, True], True),
+])
+def test_obs_websocket_authenticates_and_verifies_record_state(
+        monkeypatch, active_states, should_confirm):
     monkeypatch.setattr(obs, "_append_action_log", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(obs, "OBS_VERIFY_TIMEOUT", 0.35)
+    monkeypatch.setattr(obs, "OBS_VERIFY_INTERVAL", 0.01)
     monkeypatch.setattr(obs, "_flatpak_obs_settings", lambda: {
         "server_enabled": True, "auth_required": True,
         "server_port": 4455, "server_password": "secret",
@@ -770,12 +775,21 @@ def test_obs_websocket_authenticates_and_verifies_record_state(monkeypatch, acti
                 send_frame(connection, {"op": 7, "d": {"requestType": "StartRecord",
                     "requestId": request["d"]["requestId"],
                     "requestStatus": {"result": True, "code": 100}}})
-                status = obs._ws_receive(connection)
-                requests.append(status)
-                send_frame(connection, {"op": 7, "d": {"requestType": "GetRecordStatus",
-                    "requestId": status["d"]["requestId"],
-                    "requestStatus": {"result": True, "code": 100},
-                    "responseData": {"outputActive": active_after_start}}})
+                state_index = 0
+                while True:
+                    try:
+                        status = obs._ws_receive(connection)
+                    except ConnectionError:
+                        break
+                    requests.append(status)
+                    active = active_states[min(state_index, len(active_states) - 1)]
+                    state_index += 1
+                    send_frame(connection, {"op": 7, "d": {"requestType": "GetRecordStatus",
+                        "requestId": status["d"]["requestId"],
+                        "requestStatus": {"result": True, "code": 100},
+                        "responseData": {"outputActive": active}}})
+                    if active:
+                        break
         except Exception as exc:
             errors.append((stage[0], repr(exc)))
         finally:
@@ -786,7 +800,7 @@ def test_obs_websocket_authenticates_and_verifies_record_state(monkeypatch, acti
     outcome = obs.obs_record("start", port=port)
     thread.join(timeout=3)
     assert not thread.is_alive()
-    if active_after_start:
+    if should_confirm:
         assert "iniciada" in outcome, (outcome, errors)
         assert "em segundo plano" in outcome
         assert "pare a gravação" in outcome
@@ -794,5 +808,8 @@ def test_obs_websocket_authenticates_and_verifies_record_state(monkeypatch, acti
         assert "não confirmei" in outcome.casefold()
     assert not errors
     assert requests[0]["d"]["requestType"] == "StartRecord"
-    assert requests[1]["d"]["requestType"] == "GetRecordStatus"
+    assert all(request["d"]["requestType"] == "GetRecordStatus"
+               for request in requests[1:])
+    if active_states == [False, True]:
+        assert len(requests) == 3  # StartRecord, stale status, then active status.
 

@@ -14,6 +14,8 @@ from pathlib import Path
 from .action_log import _append_action_log
 
 OBS_REQUEST_TIMEOUT = 3.0
+OBS_VERIFY_TIMEOUT = 1.5
+OBS_VERIFY_INTERVAL = 0.12
 
 
 OBS_STARTUP_TIMEOUT = 15.0
@@ -256,19 +258,28 @@ def obs_record(action: str, password: str = "", host: str = "127.0.0.1", port: i
                 # A successful StartRecord/StopRecord RPC is not enough to
                 # tell the user the output changed; verify OBS's resulting
                 # state before speaking a success confirmation.
-                status_id = secrets.token_hex(8)
-                _ws_send(stream, {"op": 6, "d": {"requestType": "GetRecordStatus",
-                          "requestId": status_id, "requestData": {}}}, deadline)
-                while True:
-                    status_reply = _ws_receive(stream, deadline)
-                    if status_reply.get("op") != 7:
-                        continue
-                    status_data = status_reply.get("d", {})
-                    if status_data.get("requestId") != status_id:
-                        continue
-                    break
                 expected_active = action == "start"
-                actual_active = status_data.get("responseData", {}).get("outputActive")
+                verify_deadline = time.monotonic() + OBS_VERIFY_TIMEOUT
+                status_data = {}
+                actual_active = None
+                while time.monotonic() < verify_deadline:
+                    status_id = secrets.token_hex(8)
+                    _ws_send(stream, {"op": 6, "d": {"requestType": "GetRecordStatus",
+                              "requestId": status_id, "requestData": {}}}, verify_deadline)
+                    while True:
+                        status_reply = _ws_receive(stream, verify_deadline)
+                        if status_reply.get("op") != 7:
+                            continue
+                        status_data = status_reply.get("d", {})
+                        if status_data.get("requestId") == status_id:
+                            break
+                    if not status_data.get("requestStatus", {}).get("result"):
+                        break
+                    actual_active = status_data.get("responseData", {}).get("outputActive")
+                    if actual_active is expected_active:
+                        break
+                    time.sleep(min(OBS_VERIFY_INTERVAL,
+                                   max(0.0, verify_deadline - time.monotonic())))
                 if (not status_data.get("requestStatus", {}).get("result")
                         or actual_active is not expected_active):
                     _append_action_log("obs_record", "unavailable", {"action": action,
