@@ -525,7 +525,7 @@ class AuroraService(QObject):
         except Exception:
             if name in audited: audit_action(name,'failed')
             raise
-        if name in audited: audit_action(name)
+        if name in audited: audit_action(name,"returned",result)
         return result
     def unload_model(self,model=None):
         model=model or self.cfg['model']

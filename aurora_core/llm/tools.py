@@ -78,5 +78,5 @@ def execute_local_tool(name,args,cfg=None):
     except Exception:
         if name in audited: audit_action(name,'failed')
         raise
-    if result is not None and name in audited: audit_action(name)
+    if result is not None and name in audited: audit_action(name,"returned",result)
     return result
