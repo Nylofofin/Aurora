@@ -82,7 +82,7 @@ def find_desktop_app(query):
         if score: ranked.append((score,app))
     return max(ranked,key=lambda x:x[0])[1] if ranked else None
 
-def launch_application(name):
+def launch_application(name, *, background=False):
     query=' '.join(str(name or '').split()).strip()
     if not query: return 'Diga qual aplicativo deseja abrir.'
     app=find_desktop_app(query)
@@ -99,7 +99,8 @@ def launch_application(name):
             # through Flatpak; let OBS select the session's native backend.
             if app_id == 'com.obsproject.Studio':
                 env.pop('QT_QPA_PLATFORM', None)
-            subprocess.Popen([flatpak,'run',app_id],start_new_session=True,
+            arguments = ['--minimize-to-tray'] if background and app_id == 'com.obsproject.Studio' else []
+            subprocess.Popen([flatpak,'run',app_id,*arguments],start_new_session=True,
                              stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL,env=env)
         except OSError:

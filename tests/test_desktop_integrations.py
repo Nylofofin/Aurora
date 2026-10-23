@@ -258,6 +258,23 @@ def test_flatpak_application_launches_by_app_id_and_returns_without_waiting(monk
     assert "QT_QPA_PLATFORM" not in calls[0][1]["env"]
 
 
+def test_obs_background_launch_starts_minimized_to_tray(monkeypatch, tmp_path):
+    desktop_file = tmp_path / "flatpak/exports/share/applications/com.obsproject.Studio.desktop"
+    app = {"file": desktop_file, "name": "OBS Studio", "exec": "flatpak run com.obsproject.Studio",
+           "class": "obs"}
+    calls = []
+    monkeypatch.setenv("QT_QPA_PLATFORM", "xcb")
+    monkeypatch.setattr(apps_module, "find_desktop_app", lambda _name: app)
+    monkeypatch.setattr(apps_module.shutil, "which", lambda name: "/usr/bin/flatpak" if name == "flatpak" else None)
+    monkeypatch.setattr(apps_module.subprocess, "Popen", lambda command, **kwargs: calls.append((command, kwargs)))
+
+    result = apps_module.launch_application("OBS Studio", background=True)
+
+    assert result.startswith("Solicitei a abertura")
+    assert calls[0][0] == ["/usr/bin/flatpak", "run", "com.obsproject.Studio", "--minimize-to-tray"]
+    assert "QT_QPA_PLATFORM" not in calls[0][1]["env"]
+
+
 def test_roblox_app_request_resolves_to_installed_sober_flatpak(monkeypatch, tmp_path):
     desktop_file = tmp_path / "flatpak/exports/share/applications/org.vinegarhq.Sober.desktop"
     app = {"file": desktop_file, "name": "Sober", "exec": "flatpak run org.vinegarhq.Sober",
@@ -542,14 +559,14 @@ def test_obs_start_launches_flatpak_after_approved_websocket_connection_fails(mo
     launches = []
     monkeypatch.setattr(
         "aurora_core.system.apps.launch_application",
-        lambda name: launches.append(name) or "Solicitei a abertura de OBS Studio; o sistema aceitou o pedido.",
+        lambda name, **kwargs: launches.append((name, kwargs)) or "Solicitei a abertura de OBS Studio; o sistema aceitou o pedido.",
     )
     monkeypatch.setattr(integrations.socket, "create_connection",
                         lambda *_args, **_kwargs: (_ for _ in ()).throw(ConnectionRefusedError()))
 
     result = integrations.obs_record("start")
 
-    assert launches == ["OBS Studio"]
+    assert launches == [("OBS Studio", {"background": True})]
     assert "não iniciei a gravação" in result.casefold()
     assert log[-1][0][:2] == ("obs_record", "unavailable")
     assert log[-1][0][2]["phase"] == "startup"
@@ -745,6 +762,8 @@ def test_obs_websocket_authenticates_and_verifies_record_state(monkeypatch, acti
     assert not thread.is_alive()
     if active_after_start:
         assert "iniciada" in outcome, (outcome, errors)
+        assert "em segundo plano" in outcome
+        assert "pare a gravação" in outcome
     else:
         assert "não confirmei" in outcome.casefold()
     assert not errors

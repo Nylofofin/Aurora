@@ -657,7 +657,7 @@ def obs_record(action: str, password: str = "", host: str = "127.0.0.1", port: i
                     and configured_port == int(port)):
                 raise
             from aurora_core.system.apps import launch_application
-            launch_result = launch_application("OBS Studio")
+            launch_result = launch_application("OBS Studio", background=True)
             if not launch_result.startswith("Solicitei a abertura"):
                 _append_action_log("obs_record", "unavailable", {"action": action,
                                     "phase": "launch", "error_type": "LaunchRejected"})
@@ -767,7 +767,10 @@ def obs_record(action: str, password: str = "", host: str = "127.0.0.1", port: i
                     return ("O OBS aceitou o comando, mas não confirmei que a gravação "+
                             ("está ativa." if expected_active else "foi parada."))
                 _append_action_log("obs_record", "started" if action == "start" else "stopped")
-                return "Gravação iniciada no OBS." if action == "start" else "Gravação parada no OBS."
+                if action == "start":
+                    return ("Gravação iniciada em segundo plano. Se quiser parar, é só dizer: "
+                            "“Aurora, pare a gravação”.")
+                return "Gravação parada no OBS."
     except RuntimeError as exc:
         _append_action_log("obs_record", "unavailable", {"action": action, "phase": phase,
                             "error_type": type(exc).__name__})
