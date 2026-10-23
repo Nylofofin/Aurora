@@ -1,7 +1,9 @@
-# Aurora — NOVA-TOUCH-R1
+# Aurora LDR — Lumen Desktop Runtime
 
-**Versão:** `1.2.1` (PC) · `1.2.3` (Android, arquivada) · **Build:** `AUR-20261023.G3.PATCH1`
-**Geração:** `3` · **Codinome técnico PC:** `NOVA-TOUCH-R1` — assistente local-first com Gemma via Ollama.
+**Versão:** `1.3.0` (PC) · `1.2.3` (Android, arquivada) · **Build:** `AUR-LDR-20261023.1`
+**Codinome desta release:** `LUMEN-PULSE (LMP) / PRISM-CARD (PCD)` — animação reativa da bolha e cartões de informação experimentais.
+
+As releases seguem o formato **Aurora LDR `<versão>` — `<codinome funcional>` (`<SIGLA>`)**. O codinome descreve a mudança principal daquela versão; a sigla curta facilita identificar a build em logs e documentação. A tag SemVer (`vMAJOR.MINOR.PATCH`) continua sendo a referência exata do código. Os nomes de releases anteriores permanecem como registro histórico.
 
 > **Android descontinuado em 23/10/2026.** O cliente móvel não recebe mais suporte ou releases. O projeto voltou a focar no desktop Linux. Consulte o [anúncio e registro de testes](android-client/ARCHIVE.md). O código-fonte e os tags Android permanecem como histórico; as páginas de release e APKs Android foram retirados.
 
