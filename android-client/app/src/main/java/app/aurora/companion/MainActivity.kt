@@ -213,7 +213,7 @@ private fun AuroraShell(viewModel: AuroraViewModel) {
                         playPhoneClick(rootView)
                         viewModel.enterLiveMode()
                         viewModel.startVoiceInteraction()
-                        viewModel.notice = "Ouvi Aurora via escuta constante. Pode falar."
+                        viewModel.notice = "Ouvi você! Pode falar seu comando diretamente."
                     }
                     AlwaysOnWakeService.ACTION_ERROR -> {
                         val msg = intent.getStringExtra(AlwaysOnWakeService.EXTRA_MESSAGE).orEmpty()
@@ -1034,29 +1034,29 @@ private fun LiveOverlay(
                 Spacer(Modifier.height(30.dp))
                 Text(
                     when {
-                        recording -> "Estou ouvindo você"
-                        working -> "A Aurora está pensando"
-                        activity == "preparing" -> "Preparando minha voz"
-                        activity == "speaking" -> "A Thalita está falando"
+                        recording -> "Ouvindo seu comando… Fale agora."
+                        working -> "Processando seu pedido…"
+                        activity == "preparing" -> "Preparando resposta…"
+                        activity == "speaking" -> "Aurora falando"
                         else -> "Sua conversa, ao vivo"
                     },
                     color = Pearl,
-                    fontSize = 23.sp,
+                    fontSize = 22.sp,
                     fontWeight = FontWeight.Medium,
                     textAlign = TextAlign.Center,
                 )
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(8.dp))
                 Text(
                     when {
-                        recording -> "Fale com naturalidade. Toque em Parar e enviar quando terminar."
-                        working -> "Sua fala está sendo processada no computador."
-                        activity == "preparing" -> "A resposta chegou; estou preparando o áudio do PC."
-                        activity == "speaking" -> "Resposta gerada no PC com Edge TTS · Thalita"
-                        else -> "Toque na bolha ou em Falar para iniciar seu próximo turno."
+                        recording -> "Basta falar. A Aurora enviará assim que você terminar."
+                        working -> "Consultando e pensando no computador…"
+                        activity == "preparing" -> "Sintetizando a voz da resposta…"
+                        activity == "speaking" -> "Edge TTS · Thalita em execução"
+                        else -> "Diga \"Aurora\" ou toque na bolha para falar."
                     },
                     color = Muted,
                     fontSize = 14.sp,
-                    lineHeight = 21.sp,
+                    lineHeight = 20.sp,
                     textAlign = TextAlign.Center,
                 )
                 Spacer(Modifier.height(22.dp))

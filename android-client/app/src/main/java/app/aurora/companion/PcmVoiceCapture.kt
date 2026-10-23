@@ -5,8 +5,12 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.sqrt
 
-/** Explicit foreground-only, mono PCM capture for one spoken turn. */
+/**
+ * Captura inteligente de voz em PCM mono (16 kHz, 16 bits).
+ * Inclui detecção de fala e auto-finalização por silêncio após o início da fala (VAD simples).
+ */
 class PcmVoiceCapture {
     private val stopped = AtomicBoolean(false)
     @Volatile private var recorder: AudioRecord? = null
@@ -28,13 +32,41 @@ class PcmVoiceCapture {
         require(audio.state == AudioRecord.STATE_INITIALIZED) { "Não consegui iniciar o microfone." }
         recorder = audio
         val pcm = ByteArrayOutputStream()
-        val buffer = ByteArray(3_200)
+        val buffer = ShortArray(1_600) // 100ms chunks a 16kHz
+        val byteBuffer = ByteArray(3_200)
         val startedAt = System.nanoTime()
+
+        var hasSpoken = false
+        var consecutiveSilenceChunks = 0
+        val silenceThresholdRms = 450.0 // Nível de corte para silêncio ambiente
+        val requiredSilenceChunksForStop = 15 // 1.5s de silêncio contínuo após falar = fim do comando
+
         try {
             audio.startRecording()
             while (!stopped.get() && (System.nanoTime() - startedAt) < 45_000_000_000L) {
-                val count = audio.read(buffer, 0, buffer.size, AudioRecord.READ_BLOCKING)
-                if (count > 0) pcm.write(buffer, 0, count)
+                val readShorts = audio.read(buffer, 0, buffer.size)
+                if (readShorts > 0) {
+                    var sumSquares = 0.0
+                    for (i in 0 until readShorts) {
+                        val s = buffer[i]
+                        sumSquares += (s * s).toDouble()
+                        byteBuffer[i * 2] = (s.toInt() and 0xff).toByte()
+                        byteBuffer[i * 2 + 1] = ((s.toInt() shr 8) and 0xff).toByte()
+                    }
+                    pcm.write(byteBuffer, 0, readShorts * 2)
+
+                    val rms = sqrt(sumSquares / readShorts)
+                    if (rms > silenceThresholdRms) {
+                        hasSpoken = true
+                        consecutiveSilenceChunks = 0
+                    } else if (hasSpoken) {
+                        consecutiveSilenceChunks++
+                        if (consecutiveSilenceChunks >= requiredSilenceChunksForStop) {
+                            // Usuário terminou de falar a frase/comando
+                            break
+                        }
+                    }
+                }
             }
         } finally {
             try { if (audio.recordingState == AudioRecord.RECORDSTATE_RECORDING) audio.stop() } catch (_: Exception) { }

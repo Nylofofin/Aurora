@@ -1,10 +1,12 @@
 package app.aurora.companion
 
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.Build
@@ -27,6 +29,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,6 +45,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -56,12 +60,7 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import kotlin.math.abs
 
 /**
- * Overlay flutuante da Aurora: exibe uma bolha animada acima de todos os apps.
- * Ativado quando o usuário sai do app durante o modo Live.
- *
- * Requer permissão SYSTEM_ALERT_WINDOW (Settings > Exibir sobre outros apps).
- * O usuário é direcionado para conceder a permissão antes de entrar no modo Live
- * pela primeira vez.
+ * Overlay flutuante da Aurora: renderiza a bolha animada sobre outros apps.
  */
 class FloatingBubbleService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
 
@@ -76,9 +75,8 @@ class FloatingBubbleService : Service(), LifecycleOwner, ViewModelStoreOwner, Sa
     override val savedStateRegistry: SavedStateRegistry get() = savedStateRegistryController.savedStateRegistry
 
     private var windowManager: WindowManager? = null
-    private var bubbleView: View? = null
+    private var containerView: FrameLayout? = null
 
-    // Estado compartilhado (atualizado via Intent)
     var bubbleActivity by mutableStateOf("idle")
         private set
 
@@ -87,20 +85,16 @@ class FloatingBubbleService : Service(), LifecycleOwner, ViewModelStoreOwner, Sa
         savedStateRegistryController.performAttach()
         savedStateRegistryController.performRestore(null)
         lifecycleRegistry.currentState = Lifecycle.State.CREATED
-        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_SHOW -> {
-                val activity = intent.getStringExtra(EXTRA_ACTIVITY) ?: "idle"
-                val endpoint = intent.getStringExtra(EXTRA_ENDPOINT).orEmpty()
-                val fingerprint = intent.getStringExtra(EXTRA_FINGERPRINT).orEmpty()
-                val token = intent.getStringExtra(EXTRA_TOKEN).orEmpty()
-                bubbleActivity = activity
-                showBubble(endpoint, fingerprint, token)
+                bubbleActivity = intent.getStringExtra(EXTRA_ACTIVITY) ?: "idle"
                 ensureChannel()
                 startForeground(NOTIFICATION_ID, buildNotification())
+                showBubble()
                 lifecycleRegistry.currentState = Lifecycle.State.STARTED
                 lifecycleRegistry.currentState = Lifecycle.State.RESUMED
             }
@@ -116,27 +110,34 @@ class FloatingBubbleService : Service(), LifecycleOwner, ViewModelStoreOwner, Sa
         return START_NOT_STICKY
     }
 
-    private fun showBubble(endpoint: String, fingerprint: String, token: String) {
-        if (bubbleView != null) return  // já exibida
+    @SuppressLint("ClickableViewAccessibility")
+    private fun showBubble() {
+        if (containerView != null) return
+
+        val density = resources.displayMetrics.density
+        val sizePx = (80 * density).toInt()
+
+        val layoutType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
 
         val params = WindowManager.LayoutParams(
-            BUBBLE_SIZE_PX, BUBBLE_SIZE_PX,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            else
-                @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE,
+            sizePx, sizePx,
+            layoutType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.BOTTOM or Gravity.END
-            x = INITIAL_X_PX
-            y = INITIAL_Y_PX
+            gravity = Gravity.TOP or Gravity.START
+            x = (resources.displayMetrics.widthPixels - sizePx - (20 * density).toInt())
+            y = (resources.displayMetrics.heightPixels / 3)
         }
 
         val container = FrameLayout(this)
-
-        // Configurar o ComposeView para a bolha
         val composeView = ComposeView(this).apply {
             setViewTreeLifecycleOwner(this@FloatingBubbleService)
             setViewTreeViewModelStoreOwner(this@FloatingBubbleService)
@@ -145,74 +146,71 @@ class FloatingBubbleService : Service(), LifecycleOwner, ViewModelStoreOwner, Sa
                 BubbleContent(
                     activity = bubbleActivity,
                     onTap = {
-                        // Retornar ao app
-                        val launch = packageManager.getLaunchIntentForPackage(packageName)
-                            ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                        val launch = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                        }
                         launch?.let { startActivity(it) }
                     },
                     onDismiss = {
-                        // Encerrar o overlay
                         sendBroadcast(Intent(ACTION_BUBBLE_DISMISSED).setPackage(packageName))
                         hideBubble()
                         stopForeground(STOP_FOREGROUND_REMOVE)
                         stopSelf()
-                    },
+                    }
                 )
             }
         }
         container.addView(composeView)
 
-        // Tornar a bolha draggable
-        var lastX = 0f
-        var lastY = 0f
-        var dragging = false
-        var startRawX = 0f
-        var startRawY = 0f
+        var initialX = 0
+        var initialY = 0
+        var initialTouchX = 0f
+        var initialTouchY = 0f
+        var isDragging = false
 
         container.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    lastX = event.rawX
-                    lastY = event.rawY
-                    startRawX = event.rawX
-                    startRawY = event.rawY
-                    dragging = false
+                    initialX = params.x
+                    initialY = params.y
+                    initialTouchX = event.rawX
+                    initialTouchY = event.rawY
+                    isDragging = false
                     false
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    val dx = event.rawX - lastX
-                    val dy = event.rawY - lastY
-                    if (!dragging && (abs(dx) > DRAG_THRESHOLD || abs(dy) > DRAG_THRESHOLD)) {
-                        dragging = true
+                    val dx = (event.rawX - initialTouchX).toInt()
+                    val dy = (event.rawY - initialTouchY).toInt()
+                    if (abs(dx) > 10 || abs(dy) > 10) {
+                        isDragging = true
                     }
-                    if (dragging) {
-                        params.x -= dx.toInt()
-                        params.y -= dy.toInt()
-                        lastX = event.rawX
-                        lastY = event.rawY
+                    if (isDragging) {
+                        params.x = initialX + dx
+                        params.y = initialY + dy
                         windowManager?.updateViewLayout(container, params)
                     }
-                    dragging
+                    isDragging
                 }
                 MotionEvent.ACTION_UP -> {
-                    val totalMove = abs(event.rawX - startRawX) + abs(event.rawY - startRawY)
-                    dragging = false
-                    totalMove > DRAG_THRESHOLD  // consume se foi drag, passa para click se foi tap
+                    isDragging
                 }
                 else -> false
             }
         }
 
-        bubbleView = container
-        windowManager?.addView(container, params)
+        containerView = container
+        try {
+            windowManager?.addView(container, params)
+        } catch (e: Exception) {
+            containerView = null
+        }
     }
 
     private fun hideBubble() {
-        bubbleView?.let { view ->
-            lifecycleRegistry.currentState = Lifecycle.State.CREATED
+        containerView?.let { view ->
             runCatching { windowManager?.removeView(view) }
         }
-        bubbleView = null
+        containerView = null
     }
 
     override fun onDestroy() {
@@ -228,8 +226,8 @@ class FloatingBubbleService : Service(), LifecycleOwner, ViewModelStoreOwner, Sa
         val manager = getSystemService(NotificationManager::class.java)
         if (manager.getNotificationChannel(CHANNEL_ID) != null) return
         manager.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "Aurora flutuante", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "Aurora ativa sobre outros apps. Toque na bolha para voltar."
+            NotificationChannel(CHANNEL_ID, "Aurora Flutuante", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "Bolha da Aurora ativa sobre outros apps."
             }
         )
     }
@@ -248,12 +246,12 @@ class FloatingBubbleService : Service(), LifecycleOwner, ViewModelStoreOwner, Sa
 
         return builder
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("Aurora está ouvindo")
-            .setContentText("Toque para abrir ou encerrar a sessão.")
+            .setContentTitle("Aurora está ativa")
+            .setContentText("Toque na bolha para abrir.")
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(pending)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Encerrar", stopPending)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Fechar", stopPending)
             .build()
     }
 
@@ -270,14 +268,8 @@ class FloatingBubbleService : Service(), LifecycleOwner, ViewModelStoreOwner, Sa
 
         private const val CHANNEL_ID = "aurora-floating-bubble"
         private const val NOTIFICATION_ID = 0xA073
-        private val BUBBLE_SIZE_PX = 220  // px — tamanho lógico, ajuste via density
-        private val INITIAL_X_PX = 48
-        private val INITIAL_Y_PX = 160
-        private val DRAG_THRESHOLD = 8f  // px de movimento para considerar drag
     }
 }
-
-// ─── UI da bolha ───────────────────────────────────────────────────────────────
 
 @Composable
 private fun BubbleContent(
@@ -329,12 +321,10 @@ private fun BubbleContent(
     )
 
     Box(Modifier.size(80.dp), contentAlignment = Alignment.Center) {
-        // Halo externo animado
         Box(
             Modifier.size(80.dp).scale(halo).alpha(haloAlpha)
                 .border(1.dp, auraColor, CircleShape)
         )
-        // Corpo da bolha
         Box(
             Modifier.size(72.dp).scale(breathe).clip(CircleShape)
                 .background(
@@ -351,7 +341,6 @@ private fun BubbleContent(
                 .clickable(onClick = onTap),
             contentAlignment = Alignment.Center,
         ) {
-            // Reflexo interno
             Box(
                 Modifier.size(72.dp).background(
                     Brush.radialGradient(
@@ -361,7 +350,6 @@ private fun BubbleContent(
                     CircleShape,
                 )
             )
-            // Indicador de estado (ícone de waveform quando ativo)
             if (activity == "listening" || activity == "speaking") {
                 Canvas(Modifier.size(20.dp)) {
                     val heights = if (activity == "speaking")
@@ -384,7 +372,6 @@ private fun BubbleContent(
                 }
             }
         }
-        // Botão X pequeno no canto superior direito
         Box(
             Modifier.size(22.dp).align(Alignment.TopEnd)
                 .clip(CircleShape)
@@ -392,11 +379,7 @@ private fun BubbleContent(
                 .clickable(onClick = onDismiss),
             contentAlignment = Alignment.Center,
         ) {
-            androidx.compose.material3.Text(
-                "×",
-                color = pearl,
-                fontSize = androidx.compose.ui.unit.TextUnit(12f, androidx.compose.ui.unit.TextUnitType.Sp),
-            )
+            Text("×", color = pearl, fontSize = 12.sp)
         }
     }
 }

@@ -8,7 +8,10 @@ import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.os.Bundle
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -16,30 +19,25 @@ import android.util.Log
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Escuta constante — equivalente ao "Hey Google" para a Aurora.
+ * Escuta contínua ultra-estável — "Hey Aurora".
  *
- * Estratégia: usa o SpeechRecognizer nativo do Android (Google) em modo de loop
- * contínuo. Quando detecta a palavra "aurora" nos resultados parciais ou finais,
- * emite ACTION_DETECTED e para a escuta até ser reiniciado.
- *
- * Não requer modelo local extra — usa o mesmo reconhecedor que já estava disponível
- * no dispositivo. Limitação: precisa de internet (mesma limitação do recognize_google
- * no PC). Para uso totalmente offline, substituir por Vosk Android SDK no futuro.
- *
- * Permissões necessárias: RECORD_AUDIO, FOREGROUND_SERVICE, FOREGROUND_SERVICE_MICROPHONE
+ * Fica permanentemente ouvindo o ambiente sem interrupções.
+ * Ao identificar "aurora", dispara a notificação e acorda a Aurora imediatamente,
+ * mantendo o ciclo vivo para a próxima ativação.
  */
 class AlwaysOnWakeService : Service() {
 
     private val running = AtomicBoolean(false)
     private var recognizer: SpeechRecognizer? = null
-    private var restartScheduled = false
-    private var consecutiveErrors = 0
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var isListening = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
+                running.set(false)
                 stopListening()
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf(startId)
@@ -47,10 +45,10 @@ class AlwaysOnWakeService : Service() {
             }
         }
 
-        if (running.get()) return START_NOT_STICKY  // já estava rodando
+        if (running.get()) return START_STICKY
 
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            broadcastError("O reconhecimento de voz não está disponível neste dispositivo.")
+            broadcastError("Reconhecimento de fala indisponível neste aparelho.")
             stopSelf(startId)
             return START_NOT_STICKY
         }
@@ -64,149 +62,131 @@ class AlwaysOnWakeService : Service() {
         }
 
         running.set(true)
-        consecutiveErrors = 0
-        startListeningCycle()
+        mainHandler.post { startRecognizer() }
 
-        return START_NOT_STICKY
+        return START_STICKY
     }
 
-    private fun startListeningCycle() {
+    private fun startRecognizer() {
         if (!running.get()) return
 
-        recognizer?.destroy()
-        recognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
-            setRecognitionListener(object : RecognitionListener {
-                override fun onReadyForSpeech(params: android.os.Bundle?) {
-                    consecutiveErrors = 0  // serviço respondendo normalmente
-                }
-
-                override fun onPartialResults(partialResults: android.os.Bundle?) {
-                    // Detectar "aurora" nos resultados parciais para resposta imediata
-                    val partials = partialResults
-                        ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                        ?: return
-                    if (partials.any { containsWakeWord(it) }) {
-                        onWakeDetected()
+        try {
+            recognizer?.destroy()
+            recognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
+                setRecognitionListener(object : RecognitionListener {
+                    override fun onReadyForSpeech(params: Bundle?) {
+                        isListening = true
                     }
-                }
 
-                override fun onResults(results: android.os.Bundle?) {
-                    val matches = results
-                        ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                        ?: return
-                    if (matches.any { containsWakeWord(it) }) {
-                        onWakeDetected()
-                    } else {
-                        // Não era a wake word — reiniciar o ciclo de escuta
-                        scheduleRestart(delayMs = 300)
+                    override fun onBeginningOfSpeech() = Unit
+                    override fun onRmsChanged(rmsdB: Float) = Unit
+                    override fun onBufferReceived(buffer: ByteArray?) = Unit
+                    override fun onEndOfSpeech() {
+                        isListening = false
                     }
-                }
 
-                override fun onError(error: Int) {
-                    if (!running.get()) return
-                    val isTransient = error == SpeechRecognizer.ERROR_NO_MATCH ||
-                            error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT ||
-                            error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY
-
-                    if (isTransient) {
-                        consecutiveErrors++
-                        val delay = if (consecutiveErrors > 5) 2000L else 600L
-                        scheduleRestart(delay)
-                    } else {
-                        consecutiveErrors++
-                        Log.w(TAG, "AlwaysOnWake erro $error (consecutivos: $consecutiveErrors)")
-                        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-                            running.set(false)
-                            broadcastError("A escuta contínua falhou após várias tentativas (código $error). Toque em Mic para reativar.")
-                            stopForeground(STOP_FOREGROUND_REMOVE)
-                            stopSelf()
-                        } else {
-                            scheduleRestart(delayMs = 3000)
+                    override fun onPartialResults(partialResults: Bundle?) {
+                        val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION) ?: return
+                        for (text in matches) {
+                            if (containsWakeWord(text)) {
+                                onWakeDetected()
+                                return
+                            }
                         }
                     }
-                }
 
-                override fun onBeginningOfSpeech() = Unit
-                override fun onRmsChanged(rmsdB: Float) = Unit
-                override fun onBufferReceived(buffer: ByteArray?) = Unit
-                override fun onEndOfSpeech() = Unit
-                override fun onEvent(eventType: Int, params: android.os.Bundle?) = Unit
-            })
-        }
+                    override fun onResults(results: Bundle?) {
+                        isListening = false
+                        val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION) ?: return
+                        var found = false
+                        for (text in matches) {
+                            if (containsWakeWord(text)) {
+                                onWakeDetected()
+                                found = true
+                                break
+                            }
+                        }
+                        if (!found && running.get()) {
+                            restartRecognizer(150)
+                        }
+                    }
 
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "pt-BR")
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1000L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 200L)
-            // Não passar EXTRA_CALLING_PACKAGE para não exibir UI
-        }
-        try {
+                    override fun onError(error: Int) {
+                        isListening = false
+                        if (!running.get()) return
+                        // Códigos transitivos normais em escuta contínua (timeout de silêncio, sem áudio etc)
+                        val delay = when (error) {
+                            SpeechRecognizer.ERROR_NO_MATCH,
+                            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> 150L
+                            SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> 400L
+                            else -> 1000L
+                        }
+                        restartRecognizer(delay)
+                    }
+
+                    override fun onEvent(eventType: Int, params: Bundle?) = Unit
+                })
+            }
+
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "pt-BR")
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+            }
             recognizer?.startListening(intent)
         } catch (e: Exception) {
-            Log.w(TAG, "Falha ao iniciar listening: ${e.message}")
-            scheduleRestart(delayMs = 1000)
+            Log.e(TAG, "Erro ao iniciar SpeechRecognizer", e)
+            restartRecognizer(1500)
         }
     }
 
     private fun onWakeDetected() {
-        if (!running.get()) return
-        running.set(false)
-        Log.i(TAG, "Wake word 'Aurora' detectada pelo SpeechRecognizer local")
-        stopListening()
+        Log.i(TAG, "Wake word 'Aurora' detectada!")
+        // Envia broadcast para a MainActivity / ViewModel
         sendBroadcast(Intent(ACTION_DETECTED).setPackage(packageName))
-        // Notificar visualmente
-        val launch = packageManager.getLaunchIntentForPackage(packageName)?.apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+
+        // Dispara intent para trazer Activity para a frente
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         }
-        val pending = launch?.let {
-            PendingIntent.getActivity(this, 2, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val nm = getSystemService(NotificationManager::class.java)
-            val builder = Notification.Builder(this, CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-                .setContentTitle("Aurora ouviu você")
-                .setContentText("Toque para abrir e continuar a conversa.")
-                .setAutoCancel(true)
-                .setContentIntent(pending)
-            nm.notify(WAKE_NOTIFICATION_ID, builder.build())
-        }
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        launchIntent?.let { startActivity(it) }
+
+        // Reinicia ciclo após 3 segundos para permitir que o usuário fale o comando atual sem colisão
+        restartRecognizer(3500)
     }
 
-    private fun scheduleRestart(delayMs: Long) {
-        if (restartScheduled || !running.get()) return
-        restartScheduled = true
-        android.os.Handler(mainLooper).postDelayed({
-            restartScheduled = false
-            if (running.get()) startListeningCycle()
+    private fun restartRecognizer(delayMs: Long) {
+        if (!running.get()) return
+        mainHandler.removeCallbacksAndMessages(null)
+        mainHandler.postDelayed({
+            if (running.get()) {
+                startRecognizer()
+            }
         }, delayMs)
     }
 
     private fun stopListening() {
-        running.set(false)
+        mainHandler.removeCallbacksAndMessages(null)
         runCatching { recognizer?.stopListening() }
         runCatching { recognizer?.destroy() }
         recognizer = null
+        isListening = false
     }
 
     override fun onDestroy() {
+        running.set(false)
         stopListening()
         super.onDestroy()
     }
 
     private fun containsWakeWord(text: String): Boolean {
-        val normalized = text.lowercase().trim()
-        // Aceita "aurora", "aurora," e variações comuns de reconhecimento
-        return normalized == WAKE_WORD ||
-                normalized.startsWith("$WAKE_WORD ") ||
-                normalized.startsWith("$WAKE_WORD,") ||
-                normalized.endsWith(" $WAKE_WORD") ||
-                normalized.contains(" $WAKE_WORD ")
+        val clean = text.lowercase().trim()
+        return clean == WAKE_WORD ||
+                clean.startsWith("$WAKE_WORD ") ||
+                clean.startsWith("$WAKE_WORD,") ||
+                clean.endsWith(" $WAKE_WORD") ||
+                clean.contains(" $WAKE_WORD ")
     }
 
     private fun broadcastError(message: String) {
@@ -219,7 +199,7 @@ class AlwaysOnWakeService : Service() {
         if (manager.getNotificationChannel(CHANNEL_ID) != null) return
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL_ID, "Escuta Aurora sempre ativa", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "Aurora está aguardando você dizer 'Aurora'. O microfone é processado localmente."
+                description = "Aurora aguardando a palavra de ativação."
             }
         )
     }
@@ -240,8 +220,8 @@ class AlwaysOnWakeService : Service() {
 
         return builder
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentTitle("Aurora está aguardando você")
-            .setContentText("Diga \"Aurora\" para começar. Toque para abrir o app.")
+            .setContentTitle("Aurora está ouvindo")
+            .setContentText("Diga \"Aurora\" para ativar.")
             .setCategory(Notification.CATEGORY_SERVICE)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -261,7 +241,5 @@ class AlwaysOnWakeService : Service() {
         private const val TAG = "AlwaysOnWakeService"
         private const val CHANNEL_ID = "aurora-always-on-wake"
         private const val NOTIFICATION_ID = 0xA074
-        private const val WAKE_NOTIFICATION_ID = 0xA075
-        private const val MAX_CONSECUTIVE_ERRORS = 8
     }
 }
