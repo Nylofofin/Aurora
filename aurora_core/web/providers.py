@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .security import PUBLIC_OPENER, public_http_url
+from .http_body import decode_http_body
 from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
 from urllib.parse import parse_qs, urlencode, urlparse
@@ -16,9 +17,11 @@ def search_google_news(query,window,timeout=3.5):
     international=international_news_only(query)
     locale={'hl':'pt-BR','gl':'US','ceid':'US:pt-419'} if international else {'hl':'pt-BR','gl':'BR','ceid':'BR:pt-419'}
     url='https://news.google.com/rss/search?'+urlencode({'q':f'{query} when:{window}',**locale})
-    req=urllib.request.Request(url,headers={'User-Agent':'Aurora-Local/0.4','Accept':'application/rss+xml,application/xml,text/xml','Cache-Control':'no-cache, no-store, max-age=0','Pragma':'no-cache'})
+    req=urllib.request.Request(url,headers={'User-Agent':'Aurora-Local/0.4','Accept':'application/rss+xml,application/xml,text/xml','Accept-Encoding':'gzip, deflate','Cache-Control':'no-cache, no-store, max-age=0','Pragma':'no-cache'})
     with PUBLIC_OPENER.open(req,timeout=timeout) as response:
-        public_http_url(response.geturl()); raw=response.read(1_500_000)
+        public_http_url(response.geturl()); raw=response.read(1_500_001)
+        if len(raw)>1_500_000: raise ValueError('Resposta Google Notícias excedeu o limite de tamanho.')
+        raw=decode_http_body(raw,response.headers.get('Content-Encoding'),2_000_000)
     root=ET.fromstring(raw); rows=[]; seen=set(); query_terms=_fresh_query_terms(query)
     for item in root.findall('./channel/item'):
         title=' '.join((item.findtext('title') or '').split())
@@ -47,7 +50,7 @@ def search_google_news(query,window,timeout=3.5):
 def search_bing_news(query,timeout=3.5):
     """Read Bing's public News RSS and return publisher URLs as dated leads."""
     url='https://www.bing.com/news/search?'+urlencode({'q':query,'format':'rss','setlang':'pt-br','cc':'BR'})
-    req=urllib.request.Request(url,headers={'User-Agent':'Aurora-Local/0.4','Accept':'application/rss+xml,application/xml,text/xml','Cache-Control':'no-cache, no-store, max-age=0','Pragma':'no-cache'})
+    req=urllib.request.Request(url,headers={'User-Agent':'Aurora-Local/0.4','Accept':'application/rss+xml,application/xml,text/xml','Accept-Encoding':'gzip, deflate','Cache-Control':'no-cache, no-store, max-age=0','Pragma':'no-cache'})
     with PUBLIC_OPENER.open(req,timeout=timeout) as response:
         if response.getcode()!=200: raise urllib.error.HTTPError(url,response.getcode(),'Unexpected status',response.headers,None)
         public_http_url(response.geturl())
@@ -55,6 +58,7 @@ def search_bing_news(query,timeout=3.5):
             raise ValueError('Bing Notícias não retornou RSS/XML.')
         raw=response.read(1_500_001)
     if len(raw)>1_500_000: raise ValueError('Resposta Bing Notícias excedeu o limite de tamanho.')
+    raw=decode_http_body(raw,response.headers.get('Content-Encoding'),2_000_000)
     root=ET.fromstring(raw); rows=[]; seen=set()
     for item in root.findall('./channel/item'):
         title=' '.join((item.findtext('title') or '').split())

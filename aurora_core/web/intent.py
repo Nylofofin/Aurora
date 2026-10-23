@@ -41,6 +41,11 @@ def current_search_window(text):
     if re.search(r'\b(atual|atualmente|atualizado|atualizada|mais recentes?|recentemente|recentes?|ultimo|ultima|latest|current|newest|updated|how much|quanto custa|quanto custam|quanto sai|quanto vale|cost|price|custo|preco atual|valor atual)\b',plain): return '30d'
     return ''
 
+def asks_latest_version(text):
+    """Recognize a generic request for the newest software/product version."""
+    plain=normalize_words(text)
+    return bool(re.search(r'\b(?:ultima|ultimas|ultimo|ultimos|mais recente|mais novos?|latest|newest|current)\b.{0,32}\b(?:versao|version|release|lancamento|build)\b|\b(?:versao|version|release|lancamento|build)\b.{0,32}\b(?:atual|atualmente|ultima|ultimo|mais recente|latest|newest|current)\b',plain))
+
 def news_search_intent(text):
     plain=normalize_words(text)
     return bool(re.search(r'\b(noticia|noticias|news|manchetes|o que aconteceu|ultimos acontecimentos|breaking news)\b',plain))

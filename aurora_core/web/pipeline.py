@@ -2,20 +2,61 @@ from __future__ import annotations
 
 from datetime import datetime
 from urllib.parse import urlparse, urlencode, urljoin, parse_qs
-import base64, concurrent.futures, threading, time, urllib.request
+import base64, concurrent.futures, re, threading, time, urllib.request
 import xml.etree.ElementTree as ET
 from ..system.files import normalize_words
-from .intent import _fresh_query_terms, _search_query_variants, _search_relevance, _search_term_forms, current_search_window, international_news_only, news_search_intent
+from .intent import _fresh_query_terms, _search_query_variants, _search_relevance, _search_term_forms, asks_latest_version, current_search_window, international_news_only, news_search_intent
 from .freshness import _has_expired_deadline, _has_stale_source_date, _has_stale_url_date, _publication_within_window, _parse_publication_date, _independent_recent_source_count
 from .providers import search_google_news, search_bing_news, _google_news_pipeline_items
 from .fetch import _search_page_excerpt
 from .parsers import DuckDuckGoLiteResults
 from .security import PUBLIC_OPENER, public_http_url
+from .http_body import decode_http_body
+
+def _candidate_rank(item, freshness, news_only=False, today=None, window_days=None, query=''):
+    today=today or datetime.now().astimezone().date()
+    if window_days is None: window_days={'1d':1,'7d':7,'30d':30}.get(freshness,30)
+    try: age=max(0,(today-datetime.strptime(item.get('published','').split()[0],'%d/%m/%Y').date()).days)
+    except Exception: age=window_days
+    direct_publisher=0.5 if item.get('host')!='news.google.com' else 0
+    # A news-feed date is useful for a news roundup. For arbitrary current
+    # facts it must not outrank a publisher's own result just because it came
+    # from the news feed; that had made tutorials crowd out release pages.
+    news_feed_priority=1.5 if freshness and news_only and item.get('provider')=='Bing Notícias' else 0
+    release_priority=0
+    if asks_latest_version(query):
+        path=urlparse(item.get('url','')).path.rstrip('/').casefold()
+        title=str(item.get('title','')).casefold()
+        if any(part in path.split('/') for part in ('release','releases','download','downloads','version','versions','tags')):
+            release_priority+=1.2
+        if any(word in title for word in ('release','releases','download','downloads','version','versions')):
+            release_priority+=0.5
+        if re.search(r'\b\d+\.\d+(?:\.\d+){0,2}\b',title):
+            release_priority+=0.3
+    return news_feed_priority+direct_publisher+release_priority+item.get('score',0)+0.2*max(0,1-age/window_days)
+
+
+def _version_source_consensus(items):
+    """Return a version shared by page text from at least two distinct hosts."""
+    versions={}
+    for item in items:
+        text=str(item.get('page_excerpt',''))
+        matches=set(re.findall(r'(?<![\w.])v?(\d+\.\d+(?:\.\d+){0,2})(?!\w|\.\d)',text,flags=re.I))
+        for version in matches:
+            versions.setdefault(version,set()).add(item.get('host',''))
+    corroborated={version:hosts for version,hosts in versions.items() if len(hosts)>=2 and '' not in hosts}
+    return max(corroborated.items(),key=lambda pair:(len(pair[1]),tuple(map(int,pair[0].split('.'))))) if corroborated else None
 
 def _search_public_web_uncached(query,freshness=None,news_only=None):
     query=' '.join(query.split())
     if not query or len(query)>180: raise ValueError('Consulta vazia ou longa demais.')
-    freshness='' if freshness is False else (freshness or current_search_window(query))
+    search_window='' if freshness is False else (freshness or current_search_window(query))
+    latest_version=asks_latest_version(query)
+    # A release listing remains the current state even when its last release
+    # was over 30 days ago. We verify it by reading two distinct live pages
+    # which state the same version, rather than imposing an article-age window.
+    freshness='' if latest_version else search_window
+    query_variants=_search_query_variants(query,search_window)
     if news_only is None: news_only=news_search_intent(query)
     found=[]; seen=set(); failures=[]; provider_counts={}; rejected={'url':0,'atualidade':0,'relevancia':0,'duplicado':0}
     if news_only:
@@ -30,10 +71,12 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
     # is frequently bot-challenged here, while Bing HTML often gives generic
     # navigational pages. DDG Lite and Bing RSS are lightweight alternatives.
     def fetch_provider(url,kind,timeout):
-        headers={'User-Agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131 Safari/537.36','Accept':'text/html,application/rss+xml,application/xml','Cache-Control':'no-cache, no-store, max-age=0','Pragma':'no-cache'}
+        headers={'User-Agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131 Safari/537.36','Accept':'text/html,application/rss+xml,application/xml','Accept-Encoding':'gzip, deflate','Cache-Control':'no-cache, no-store, max-age=0','Pragma':'no-cache'}
         req=urllib.request.Request(url,headers=headers)
         with PUBLIC_OPENER.open(req,timeout=timeout) as response:
-            public_http_url(response.geturl()); raw=response.read(1_500_000)
+            public_http_url(response.geturl()); raw=response.read(1_500_001)
+            if len(raw)>1_500_000: raise ValueError('Resposta do provedor excedeu o limite de tamanho.')
+            raw=decode_http_body(raw,getattr(response,'headers',{}).get('Content-Encoding'),2_000_000)
         if kind=='ddg':
             parser=DuckDuckGoLiteResults(); parser.feed(raw.decode('utf-8',errors='replace')); rows=parser.results
         else:
@@ -53,16 +96,18 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
             ('Bing RSS','https://www.bing.com/search?'+urlencode({'q':search_query,'format':'rss','setlang':'pt-br'}),'bing-rss'),
         )
         news_queries=[]
-        if news_only:
+        if news_only or latest_version:
             # Bing News performs poorly with request phrasing and appended years;
             # query only the user's topic, then enforce relevance and dates below.
             topic_terms=_fresh_query_terms(relevance_query)
             news_terms={min(_search_term_forms(term),key=len) for term in topic_terms}
             news_query=' '.join(sorted(news_terms)) or search_query
+            if latest_version:
+                news_query=f'{news_query} latest release'
             news_queries=[news_query]
             # The regional feed often finds a second independent publisher
             # when the topic-only feed repeats a blocked or syndicated page.
-            if 'brasil' not in news_query.split() and not international_news_only(relevance_query):
+            if news_only and 'brasil' not in news_query.split() and not international_news_only(relevance_query):
                 news_queries.append(f'{news_query} Brasil')
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(providers) + len(news_queries)) as pool:
             jobs=[(provider,kind,pool.submit(fetch_provider,url,kind,timeout)) for provider,url,kind in providers]
@@ -113,7 +158,7 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
                         'publisher':publisher,'published':published if kind=='bing-news' else '',
                         'search_result_published':published if kind=='bing-rss' else '',
                         'feed_published':kind=='bing-news','score':relevance})
-    for attempt,(search_query,relevance_query) in enumerate(_search_query_variants(query,freshness)):
+    for attempt,(search_query,relevance_query) in enumerate(query_variants):
         collect_query(search_query,relevance_query,3.5 if attempt==0 else 1.8)
         # Google News RSS links may remain Google wrapper pages that our safe
         # HTTP reader cannot extract. They must not suppress the compact-query
@@ -124,7 +169,7 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
     if freshness and not news_only and _independent_recent_source_count(found,freshness)<2:
         # Current factual questions also benefit from dated publisher URLs in
         # the news feed, even when the user did not ask for a news roundup.
-        compact=_search_query_variants(query,freshness)[-1][1]
+        compact=query_variants[-1][1]
         terms=_fresh_query_terms(compact)
         news_terms={min(_search_term_forms(term),key=len) for term in terms}
         news_query=' '.join(sorted(news_terms)) or compact
@@ -162,16 +207,7 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
                     seen.add(key); found.append(item)
         except Exception: pass
     today=datetime.now().astimezone().date()
-    def rank(item):
-        try: age=max(0,(today-datetime.strptime(item['published'].split()[0],'%d/%m/%Y').date()).days)
-        except Exception: age=window_days
-        # Google News article URLs can resolve to its generic RSS wrapper HTML.
-        # Prefer readable publisher URLs when equally relevant, while retaining
-        # Google candidates as a last resort if no direct result survives.
-        direct_publisher=0.5 if item.get('host')!='news.google.com' else 0
-        news_feed_priority=1.5 if freshness and item.get('provider')=='Bing Notícias' else 0
-        return news_feed_priority+direct_publisher+item['score']+0.2*max(0,1-age/window_days)
-    found.sort(key=rank,reverse=True)
+    found.sort(key=lambda item:_candidate_rank(item,freshness,news_only,today,window_days,query),reverse=True)
     if not found:
         counts='; '.join(f'{name}: {stats["extraidos"]} extraídos, {stats["relevantes"]} relacionados' for name,stats in provider_counts.items()) or 'nenhum resultado extraído'
         drops=', '.join(f'{name} {count}' for name,count in rejected.items() if count)
@@ -184,13 +220,13 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
     candidates=[]; selected_sources=set()
     for item in found:
         if freshness and item['published'] and not _publication_within_window(item['published'],freshness): continue
-        if freshness:
+        if freshness or latest_version:
             source=(item.get('publisher') if item.get('feed_published') else item.get('host')) or item.get('url')
             source=source.casefold()
             if source in selected_sources: continue
             selected_sources.add(source)
         candidates.append(item)
-        if len(candidates)>=(6 if freshness else 2): break
+        if len(candidates)>=(6 if freshness or latest_version else 2): break
     if not candidates:
         if freshness: return 'Não encontrei páginas com data recente verificável para confirmar esse fato. Não vou apresentar um resultado sem data como atual.'
         candidates=found[:2]
@@ -221,6 +257,7 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
                 if item.get('provider')=='Google Notícias' and not excerpt:
                     item['page_unavailable']=True
                 if excerpt:
+                    item['page_excerpt']=excerpt
                     item['snippet']=((item['snippet']+' | Trecho da página aberta agora: ') if item['snippet'] else 'Trecho da página aberta agora: ')+excerpt
                     item['page_opened']=True
                 elif not item.get('stale_page'):
@@ -235,9 +272,11 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
         batch=candidates[next_candidate:next_candidate+2]
         next_candidate+=len(batch)
         read_page_batch(batch)
-        if not freshness or _independent_recent_source_count(usable_pages(),freshness)>=2:
+        if latest_version:
+            if _version_source_consensus(usable_pages()): break
+        elif not freshness or _independent_recent_source_count(usable_pages(),freshness)>=2:
             break
-    if freshness: found=usable_pages()
+    if freshness or latest_version: found=usable_pages()
     if not found:
         if any(item.get('stale_page') for item in attempted):
             return ('As páginas abertas estavam fora da janela pedida. Não consegui confirmar esse dado como atual. '
@@ -250,18 +289,24 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
     if freshness:
         if _independent_recent_source_count(found,freshness)<2:
             return 'As fontes encontradas não bastam para confirmar esse fato atual: preciso de duas publicações independentes, recentes e datadas. Não vou completar a resposta por memória.'
+    if latest_version and not _version_source_consensus(found):
+        return 'Não consegui confirmar a versão mais recente em duas páginas independentes. Não vou escolher um número sem corroborar.'
     output=[]
+    checked=datetime.now().astimezone().strftime('%d/%m/%Y %H:%M %Z')
     for item in found[:8]:
         label=item['title'][:180]
         if item['published']:
             publisher=item.get('publisher') or item.get('host') or item['provider']
             if item.get('feed_date_accepted'): publisher='Feed RSS: '+publisher
             label+=f' [{publisher} · {item["published"]}]'
-        line=label+(f' :: {item["snippet"][:350]}' if item['snippet'] else '')+f' — {item["url"]}'
+        elif latest_version:
+            label+=f' [{item.get("host") or item["provider"]} · página consultada em {checked}]'
+        snippet_limit=1400 if latest_version else 350
+        line=label+(f' :: {item["snippet"][:snippet_limit]}' if item['snippet'] else '')+f' — {item["url"]}'
         output.append(line)
-    checked=datetime.now().astimezone().strftime('%d/%m/%Y %H:%M %Z')
     sources=', '.join(dict.fromkeys(item['provider'] for item in found))
-    return f'Resultados combinados de {sources}; consulta executada em {checked}. Relevância e atualidade da página precisam ser conferidas antes de afirmar fatos:\n'+'\n'.join(output)
+    verification=' Versões iguais foram conferidas em páginas ao vivo de hosts distintos.' if latest_version else ' Relevância e atualidade da página precisam ser conferidas antes de afirmar fatos:'
+    return f'Resultados combinados de {sources}; consulta executada em {checked}.{verification}\n'+'\n'.join(output)
 
 _SEARCH_CACHE={}
 

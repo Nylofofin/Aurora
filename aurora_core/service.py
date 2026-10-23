@@ -4,6 +4,7 @@ from PySide6.QtCore import Qt, QObject, Slot, QTimer, QUrl, QThread, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtMultimedia import QSoundEffect
 from PySide6.QtWidgets import QApplication
+from datetime import datetime
 from urllib.parse import urlparse
 import json, os, re, threading, time, urllib.error, urllib.request
 import aurora_fx
@@ -27,11 +28,54 @@ from .ui.orb import AuroraOrb
 from .voice.tts import Speaker
 from .voice.wake import LocalVoice
 from .web.freshness import _independent_recent_source_count
-from .web.intent import _result_query_relevance, contextual_followup, contextual_source_request, current_search_window, factual_web_intent, local_datetime_answer, news_search_intent, news_unconfirmed_message, requested_response_language, research_request_intent, search_failure_summary, search_intent
+from .web.intent import _result_query_relevance, asks_latest_version, contextual_followup, contextual_source_request, current_search_window, factual_web_intent, local_datetime_answer, news_search_intent, news_unconfirmed_message, requested_response_language, research_request_intent, search_failure_summary, search_intent
 from .web.news_summary import format_news_digest
 from .web.requests import FXRequest, SearchRequest, WeatherRequest
+from .web.pipeline import _version_source_consensus
 
 APPROVAL_TIMEOUT_SECONDS=90
+
+def _has_corroborated_version_pages(items):
+    pages=[]
+    for item in items:
+        marker='Trecho da página aberta agora:'
+        snippet=str(item.get('snippet',''))
+        excerpt=snippet.split(marker,1)[-1] if marker in snippet else ''
+        if excerpt:
+            pages.append({'host':item.get('host',''),'page_excerpt':excerpt})
+    return bool(_version_source_consensus(pages))
+
+def _format_latest_version_answer(items,now=None):
+    """Speak only the version shared by the live pages, separating prereleases."""
+    pages=[]
+    page_texts=[]
+    marker='Trecho da página aberta agora:'
+    for item in items:
+        snippet=str(item.get('snippet',''))
+        excerpt=snippet.split(marker,1)[-1] if marker in snippet else ''
+        if excerpt:
+            pages.append({'host':item.get('host',''),'page_excerpt':excerpt})
+            page_texts.append((item.get('host',''),excerpt))
+    consensus=_version_source_consensus(pages)
+    if not consensus: return ''
+    version,hosts=consensus
+    source_names=[]
+    for host,excerpt in page_texts:
+        if host in hosts and re.search(r'(?<![\w.])v?'+re.escape(version)+r'(?!\w|\.\d)',excerpt,re.I) and host not in source_names:
+            source_names.append(host)
+    checked=(now or datetime.now().astimezone()).strftime('%d/%m/%Y %H:%M %Z')
+    answer=f'A versão mais recente que confirmei é {version}, presente nas páginas de {" e ".join(source_names)}. Consultei essas páginas em {checked}.'
+    prerelease=re.compile(r'(?<![\w.])(\d+\.\d+(?:\.\d+){1,2})\s+(Release Candidate\s+\d+|RC\s*\d*|Beta\s*\d*|Alpha\s*\d*)',re.I)
+    seen=set()
+    for host,excerpt in page_texts:
+        for match in prerelease.finditer(excerpt):
+            preview=(match.group(1),match.group(2))
+            version_key=tuple(map(int,preview[0].split('.')))
+            confirmed_key=tuple(map(int,version.split('.')))
+            if version_key>confirmed_key and preview[0] not in seen:
+                seen.add(preview[0])
+                answer+=f' {host} também lista {preview[0]} {preview[1]}, como pré-lançamento.'
+    return answer
 
 
 class _ObsActionRequest(QThread):
@@ -239,10 +283,23 @@ class AuroraService(QObject):
         asks_current_fact=bool(current_search_window(self.current_prompt))
         if asks_current_fact:
             window=current_search_window(self.current_prompt)
-            verified_current=_independent_recent_source_count(items,window)>=2
+            if asks_latest_version(self.current_prompt):
+                verified_current=_has_corroborated_version_pages(items)
+            else:
+                verified_current=_independent_recent_source_count(items,window)>=2
             if not verified_current:
-                message=news_unconfirmed_message() if news_search_intent(self.current_prompt) else 'Encontrei páginas relacionadas, mas não duas fontes independentes e recentes que confirmem o dado. Não vou responder com informação possivelmente antiga.'
+                if news_search_intent(self.current_prompt):
+                    message=news_unconfirmed_message()
+                elif asks_latest_version(self.current_prompt):
+                    message='Não confirmei a versão mais recente em duas páginas independentes; não vou escolher um número sem corroborar.'
+                else:
+                    message='Encontrei páginas relacionadas, mas não duas fontes independentes e recentes que confirmem o dado. Não vou responder com informação possivelmente antiga.'
                 self.quick_summary_done(message,generation); return
+        if asks_latest_version(self.current_prompt or query):
+            answer=_format_latest_version_answer(items)
+            if answer:
+                self.quick_summary_done(answer,generation)
+                return
         if news_search_intent(self.current_prompt):
             # Keep headlines and attribution intact; model paraphrases have
             # occasionally reversed or embellished a source's claim.

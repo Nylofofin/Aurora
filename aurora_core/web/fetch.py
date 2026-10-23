@@ -2,18 +2,20 @@ from __future__ import annotations
 
 from .parsers import PageMetadata, PageText
 from .security import PUBLIC_OPENER, public_http_url
+from .http_body import decode_http_body
 from datetime import datetime
 import re, urllib.error, urllib.request, unicodedata
 from .intent import _fresh_query_terms
 
 def web_fetch(url):
     public_http_url(url)
-    req=urllib.request.Request(url,headers={'User-Agent':'Aurora-Local/0.1 (public-page reader)','Accept':'text/html,application/xhtml+xml'})
+    req=urllib.request.Request(url,headers={'User-Agent':'Aurora-Local/0.1 (public-page reader)','Accept':'text/html,application/xhtml+xml','Accept-Encoding':'gzip, deflate'})
     with PUBLIC_OPENER.open(req,timeout=18) as response:
         final=response.geturl(); public_http_url(final)
         content_type=response.headers.get_content_type()
         if content_type not in ('text/html','application/xhtml+xml'): raise ValueError('O endereço não retornou uma página HTML.')
         raw=response.read(2_000_001)
+        raw=decode_http_body(raw,response.headers.get('Content-Encoding'),2_000_000)
     if len(raw)>2_000_000: raw=raw[:2_000_000]
     charset='utf-8'
     try: charset=response.headers.get_content_charset() or charset
@@ -28,11 +30,12 @@ def read_public_page(url): return web_fetch(url)
 def _search_page_excerpt(url,query,timeout=2.0):
     """Fetch a small slice of a public result page to ground the answer in its own text."""
     public_http_url(url)
-    req=urllib.request.Request(url,headers={'User-Agent':'Aurora-Local/0.5 (public factual search)','Accept':'text/html,application/xhtml+xml','Cache-Control':'no-cache, no-store, max-age=0'})
+    req=urllib.request.Request(url,headers={'User-Agent':'Aurora-Local/0.5 (public factual search)','Accept':'text/html,application/xhtml+xml','Accept-Encoding':'gzip, deflate','Cache-Control':'no-cache, no-store, max-age=0'})
     with PUBLIC_OPENER.open(req,timeout=timeout) as response:
         final=response.geturl(); public_http_url(final)
         if response.headers.get_content_type() not in ('text/html','application/xhtml+xml'): return ''
         raw=response.read(700_000)
+        raw=decode_http_body(raw,response.headers.get('Content-Encoding'),2_000_000)
     html_text=raw.decode('utf-8',errors='replace')
     metadata=PageMetadata(); metadata.feed(html_text)
     dates=[]; publication_dates=[]

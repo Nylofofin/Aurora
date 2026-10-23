@@ -48,7 +48,7 @@ class PageMetadata(HTMLParser):
             if key in ('article:published_time','article:modified_time','datepublished','datemodified','date','pubdate'):
                 value=attrs.get('content','').strip()
                 if value: self.dates.append((key,value))
-        elif tag=='time':
+        elif tag in ('time','relative-time'):
             value=attrs.get('datetime','').strip()
             if value: self.dates.append(('time',value))
 

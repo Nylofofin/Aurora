@@ -1,13 +1,17 @@
 from datetime import datetime, timezone
 from pathlib import Path
 import urllib.request
+import gzip
 import pytest
 import re
+import zlib
 
 import aurora
 import aurora_core.web.pipeline as search_pipeline
 import aurora_core.web.security as web_security
 import aurora_core.web.providers as search_providers
+from aurora_core.web.intent import asks_latest_version
+from aurora_core.web.http_body import decode_http_body
 
 FIXTURES = Path(__file__).parent / "fixtures"
 NOW = datetime(2026, 10, 22, 12, tzinfo=timezone.utc)
@@ -33,6 +37,98 @@ def test_page_metadata_reads_json_ld_publication_dates():
       </script></html>''')
     assert ("datepublished", "2026-10-21T09:30:00-03:00") in metadata.dates
     assert ("datemodified", "2026-10-22T10:00:00-03:00") in metadata.dates
+
+
+def test_page_metadata_reads_relative_time_custom_elements():
+    metadata = aurora.PageMetadata()
+    metadata.feed('<relative-time datetime="2026-10-20T14:00:00Z">2 days ago</relative-time>')
+    assert ("time", "2026-10-20T14:00:00Z") in metadata.dates
+
+
+@pytest.mark.parametrize("encoding,raw", [
+    ("gzip", gzip.compress(b"plain html text")),
+    ("deflate", zlib.compress(b"plain html text")),
+])
+def test_http_response_body_decodes_supported_compression(encoding, raw):
+    assert decode_http_body(raw, encoding, 100) == b"plain html text"
+
+
+def test_http_response_body_rejects_compression_expansion_over_limit():
+    with pytest.raises(ValueError, match="excede o limite"):
+        decode_http_body(gzip.compress(b"A" * 10_000), "gzip", 100)
+
+
+def test_search_page_excerpt_reads_compressed_html_and_publication_date(monkeypatch):
+    import aurora_core.web.fetch as search_fetch
+    from email.message import Message
+
+    body = gzip.compress(b'''<html><head><meta property="article:published_time" content="2026-10-21T10:00:00Z"></head>
+      <body><p>Nexa project version 3.15.1 was released after the latest test cycle. This release is available from the current project downloads page.</p></body></html>''')
+    headers = Message()
+    headers["Content-Type"] = "text/html; charset=utf-8"
+    headers["Content-Encoding"] = "gzip"
+
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *_args): return None
+        def geturl(self): return "https://example.org/releases"
+        def read(self, _limit): return body
+
+    Response.headers = headers
+    monkeypatch.setattr(search_fetch, "public_http_url", lambda url: url)
+    monkeypatch.setattr(search_fetch, "PUBLIC_OPENER", type("Opener", (), {"open": lambda *_args, **_kwargs: Response()})())
+
+    excerpt, published = search_fetch._search_page_excerpt(
+        "https://example.org/releases", "Nexa project version latest"
+    )
+
+    assert "3.15.1" in excerpt
+    assert published == "21/10/2026"
+
+
+def test_latest_version_intent_prioritizes_release_pages_over_current_news():
+    query = "Qual é a última versão do OBS Studio?"
+    release = {
+        "provider": "Bing RSS", "host": "github.com", "url": "https://github.com/example/app/releases",
+        "published": "", "score": 1.0,
+    }
+    news_tutorial = {
+        "provider": "Bing Notícias", "host": "example.com", "url": "https://example.com/tutorial",
+        "published": "22/10/2026", "score": 1.0,
+    }
+
+    assert asks_latest_version(query)
+    assert not asks_latest_version("Quais são as notícias atuais do OBS Studio?")
+    assert search_pipeline._candidate_rank(release, "30d", False, NOW.date(), 30, query) > search_pipeline._candidate_rank(
+        news_tutorial, "30d", False, NOW.date(), 30, query
+    )
+
+
+def test_latest_version_requires_same_version_on_two_hosts():
+    corroborating = [
+        {"host": "project.example", "page_excerpt": "Current version 3.15.1"},
+        {"host": "docs.example", "page_excerpt": "Documentation for version 3.15.1"},
+    ]
+    conflicting = [
+        {"host": "project.example", "page_excerpt": "Current version 3.15.1"},
+        {"host": "docs.example", "page_excerpt": "Documentation for version 3.14.9"},
+    ]
+
+    assert search_pipeline._version_source_consensus(corroborating)[0] == "3.15.1"
+    assert search_pipeline._version_source_consensus(corroborating[:1]) is None
+    assert search_pipeline._version_source_consensus(conflicting) is None
+
+
+def test_latest_version_queries_generic_release_feed(monkeypatch):
+    _force_provider_failure(monkeypatch)
+    queries = []
+    monkeypatch.setattr(search_pipeline, "search_bing_news", lambda query, *_args: queries.append(query) or [])
+
+    search_pipeline._search_public_web_uncached("Qual é a última versão do Nexa Editor?", "30d", False)
+
+    assert queries
+    assert all("latest release" in query for query in queries)
+    assert any("nexa" in query and "editor" in query for query in queries)
 
 
 def test_modified_timestamp_does_not_override_known_old_publication_date(monkeypatch):

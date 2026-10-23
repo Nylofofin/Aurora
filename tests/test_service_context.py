@@ -3,6 +3,46 @@ import threading
 import time
 
 
+def test_latest_version_guard_requires_matching_page_versions_on_distinct_hosts():
+    source_a = {
+        "host": "python.org",
+        "snippet": "Trecho da página aberta agora: Python 3.15.1 first released today.",
+    }
+    source_b = {
+        "host": "docs.python.org",
+        "snippet": "Trecho da página aberta agora: Python 3.15.1 documentation.",
+    }
+    conflict = {
+        "host": "mirror.example",
+        "snippet": "Trecho da página aberta agora: Python 3.14.9 documentation.",
+    }
+
+    assert service_module._has_corroborated_version_pages([source_a, source_b])
+    assert not service_module._has_corroborated_version_pages([source_a, conflict])
+    assert not service_module._has_corroborated_version_pages([source_a, {**source_b, "host": "python.org"}])
+
+
+def test_latest_version_speech_uses_only_shared_version_and_labels_prerelease():
+    items = [
+        {
+            "host": "obsproject.com",
+            "snippet": "Trecho da página aberta agora: Windows release Version: 32.2.2 Released August 14th.",
+        },
+        {
+            "host": "github.com",
+            "snippet": "Trecho da página aberta agora: OBS Studio 33.0.0 Release Candidate 3; OBS Studio 33.0.0 Beta 6; OBS Studio 32.2.0 Release Candidate 2; OBS Studio 32.2.2.",
+        },
+    ]
+
+    answer = service_module._format_latest_version_answer(items)
+
+    assert "32.2.2" in answer
+    assert "33.0.0 Release Candidate 3" in answer
+    assert "pré-lançamento" in answer
+    assert answer.count("33.0.0") == 1
+    assert "32.2.0" not in answer
+
+
 def test_fast_search_answer_keeps_evidence_in_followup_context(monkeypatch):
     monkeypatch.setattr(
         service_module,
