@@ -29,6 +29,8 @@ DEFAULTS = {
     'obs_host':'127.0.0.1',
     'obs_port':4455,
     'screen_control_apps':[],
+    'companion_enabled':True,
+    'companion_port':8765,
 }
 
 def settings_load():

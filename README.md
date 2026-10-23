@@ -9,9 +9,9 @@
 
 **Experimento:** peça “diagnóstico da Aurora” para obter uma verificação local e somente leitura do Ollama/modelos, dependências de voz, modelo Vosk e sessão gráfica. O diagnóstico não testa microfone, serviços online, OBS ou Spotify e não altera configurações.
 
-## Cliente Android Companion (Alpha em desenvolvimento)
+## Cliente Android Companion (Alpha)
 
-Estamos iniciando um cliente Android para conversas, histórico e modo Live, mantendo inferência, busca e automação no computador. [Baixe o APK debug de prévia](artifacts/aurora-companion-alpha1-debug.apk) para experimentar a interface no celular. Ele ainda não se conecta ao servidor e não é uma Alpha funcional. O plano e as instruções estão em [`android-client/README.md`](android-client/README.md). O Ollama continuará limitado ao próprio PC; a primeira conexão será pareada na rede local e o acesso remoto dependerá de VPN privada.
+O cliente Android Alpha já conversa com o roteador central do PC e mantém histórico no computador. Para conectar, atualize a instalação desktop com esta versão, reinicie `aurora.service` e, no mesmo Wi-Fi, informe no app `https://IP-DO-PC:8765`, o código em `~/.config/aurora/companion/pairing-code.txt` e a impressão SHA-256 em `~/.config/aurora/companion/server-fingerprint.txt`. O app fixa esse certificado e guarda o token de sessão cifrado pelo Android Keystore. O serviço só escuta no endereço IPv4 privado escolhido pelo sistema; não encaminhe a porta para a internet. O protocolo fica pronto para um túnel VPN privado futuro. O APK Alpha debug está nos [assets da Release 1.0.2](https://github.com/ruanminezinoficial2025-ctrl/Aurora/releases/tag/v1.0.2); consulte [`android-client/README.md`](android-client/README.md) para status, instalação e limites atuais. Live por microfone, streaming da tela e automação móvel ainda não estão implementados.
 
 ## Ambiente
 

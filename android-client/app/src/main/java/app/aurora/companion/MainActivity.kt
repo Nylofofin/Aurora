@@ -42,10 +42,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,6 +61,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private val Ink = Color(0xFF090A12)
 private val Panel = Color(0xFF151725)
@@ -80,14 +86,120 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun AuroraShell() {
+    val appContext = LocalContext.current
+    val vault = remember { CredentialVault(appContext) }
+    val saved = remember { vault.load() }
+    val scope = rememberCoroutineScope()
     var showConnect by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
     var connected by remember { mutableStateOf(false) }
-    var endpoint by remember { mutableStateOf("") }
+    var endpoint by remember { mutableStateOf(saved?.first.orEmpty()) }
     var pairingCode by remember { mutableStateOf("") }
+    var fingerprint by remember { mutableStateOf(saved?.second.orEmpty()) }
+    var token by remember { mutableStateOf(saved?.third.orEmpty()) }
     var draft by remember { mutableStateOf("") }
     var live by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    var notice by remember { mutableStateOf("") }
+    var conversationId by remember { mutableStateOf(CompanionClient.newConversationId()) }
+    var conversations by remember { mutableStateOf<List<PcConversation>>(emptyList()) }
     val lines = remember { mutableStateListOf<ChatLine>() }
+
+    LaunchedEffect(saved) {
+        if (saved != null) {
+            try {
+                conversations = withContext(Dispatchers.IO) { CompanionClient(saved.first, saved.second, saved.third).conversations() }
+                connected = true
+            } catch (_: Exception) {
+                // Keep the pairing credentials for temporary Wi-Fi/server outages.
+                connected = false
+                notice = "PC indisponível. Confira a mesma rede Wi-Fi e tente conectar novamente."
+            }
+        }
+    }
+
+    fun connectToPc() {
+        busy = true
+        notice = "Validando certificado e pareando com o PC…"
+        scope.launch {
+            try {
+                val cleanFingerprint = fingerprint.filter { it.isLetterOrDigit() }.lowercase()
+                val newToken = withContext(Dispatchers.IO) {
+                    CompanionClient(endpoint, cleanFingerprint).pair(pairingCode)
+                }
+                vault.save(endpoint, cleanFingerprint, newToken)
+                token = newToken
+                fingerprint = cleanFingerprint
+                connected = true
+                conversationId = CompanionClient.newConversationId()
+                lines.clear()
+                notice = "Aurora conectada ao computador."
+                showConnect = false
+            } catch (error: Exception) {
+                notice = error.message ?: "Não consegui conectar ao Aurora no PC."
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    fun sendCurrentMessage() {
+        val message = draft.trim()
+        if (message.isEmpty() || !connected || busy) return
+        val selectedConversation = conversationId
+        lines += ChatLine(true, message)
+        draft = ""
+        busy = true
+        notice = "Aurora está respondendo pelo computador…"
+        scope.launch {
+            try {
+                val answer = withContext(Dispatchers.IO) {
+                    CompanionClient(endpoint, fingerprint, token).sendMessage(selectedConversation, message)
+                }
+                lines += ChatLine(false, answer)
+                notice = "Conversa sincronizada com o PC."
+            } catch (error: Exception) {
+                lines += ChatLine(false, "Não consegui falar com o PC: ${error.message ?: "verifique a conexão"}.")
+                notice = "A conexão com o PC falhou."
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    fun refreshConversations() {
+        if (!connected || busy) return
+        busy = true
+        scope.launch {
+            try {
+                conversations = withContext(Dispatchers.IO) { CompanionClient(endpoint, fingerprint, token).conversations() }
+                notice = if (conversations.isEmpty()) "Ainda não há conversas salvas no PC." else "Histórico carregado do PC."
+            } catch (error: Exception) {
+                notice = error.message ?: "Não consegui carregar o histórico."
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    fun openConversation(id: String) {
+        if (!connected || busy) return
+        busy = true
+        scope.launch {
+            try {
+                val selected = withContext(Dispatchers.IO) { CompanionClient(endpoint, fingerprint, token).conversation(id) }
+                conversationId = selected.id
+                lines.clear()
+                lines.addAll(selected.messages)
+                notice = "Conversa aberta do histórico do PC."
+                showHistory = false
+            } catch (error: Exception) {
+                notice = error.message ?: "Não consegui abrir essa conversa."
+            } finally {
+                busy = false
+            }
+        }
+    }
 
     MaterialTheme {
         Surface(color = Ink, modifier = Modifier.fillMaxSize()) {
@@ -95,7 +207,7 @@ private fun AuroraShell() {
                 modifier = Modifier.fillMaxSize().padding(WindowInsets.statusBars.asPaddingValues())
                     .padding(WindowInsets.navigationBars.asPaddingValues()).imePadding()
             ) {
-                TopBar(connected, onHistory = { showHistory = true }, onConnect = { showConnect = true })
+                TopBar(connected, onHistory = { showHistory = true; refreshConversations() }, onConnect = { showConnect = true })
                 if (lines.isEmpty()) {
                     Welcome(live, onLive = { live = !live }, connected = connected)
                 } else {
@@ -114,16 +226,13 @@ private fun AuroraShell() {
                 Composer(
                     text = draft,
                     connected = connected,
+                    busy = busy,
                     onText = { draft = it },
-                    onSend = {
-                        val message = draft.trim()
-                        if (message.isNotEmpty() && connected) {
-                            lines += ChatLine(true, message)
-                            draft = ""
-                        }
-                    },
+                    onSend = ::sendCurrentMessage,
+                    onNew = { if (!busy) { conversationId = CompanionClient.newConversationId(); lines.clear(); notice = "Nova conversa no PC." } },
                     onLive = { live = !live }
                 )
+                if (notice.isNotBlank()) Text(notice, color = Muted, fontSize = 11.sp, modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp), textAlign = TextAlign.Center)
             }
         }
     }
@@ -138,12 +247,14 @@ private fun AuroraShell() {
                     Text("O computador é quem executa a Aurora. Primeiro conecte os dois à mesma rede Wi-Fi.", color = Muted)
                     ConnectField(endpoint, { endpoint = it }, "Endereço do servidor (ex.: https://192.168.1.10:8765)")
                     ConnectField(pairingCode, { pairingCode = it }, "Código de pareamento")
-                    Text("Prévia visual: o servidor do PC, o pareamento e o envio de mensagens ainda estão em construção.", color = Muted, fontSize = 12.sp)
+                    ConnectField(fingerprint, { fingerprint = it }, "Impressão digital SHA-256 do certificado (64 caracteres)")
+                    Text("No PC, obtenha o código e a impressão digital em ~/.config/aurora/companion/. O pareamento usa HTTPS com certificado fixado; não exponha a porta do PC à internet.", color = Muted, fontSize = 12.sp)
+                    if (notice.isNotBlank()) Text(notice, color = if (notice.startsWith("Não")) Color(0xFFFFA6AC) else Blue, fontSize = 12.sp)
                 }
             },
             confirmButton = {
-                Button(onClick = { showConnect = false }, colors = ButtonDefaults.buttonColors(containerColor = Violet)) {
-                    Text("Fechar prévia")
+                Button(onClick = ::connectToPc, enabled = !busy, colors = ButtonDefaults.buttonColors(containerColor = Violet)) {
+                    Text(if (busy) "Conectando…" else "Parear com o PC")
                 }
             },
             dismissButton = { TextButton(onClick = { showConnect = false }) { Text("Cancelar", color = Muted) } }
@@ -156,9 +267,15 @@ private fun AuroraShell() {
             containerColor = Panel,
             title = { Text("Conversas", color = Pearl) },
             text = {
-                Text(if (lines.isEmpty()) "Seu histórico aparecerá aqui quando a conexão com o PC estiver pronta." else "Esta conversa está aberta. O histórico sincronizado será carregado do PC.", color = Muted)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (conversations.isEmpty()) Text("Nenhuma conversa carregada. O histórico fica no PC.", color = Muted)
+                    conversations.take(12).forEach { item ->
+                        Text(item.title.ifBlank { "Conversa" }, color = Pearl, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Ink).clickable { openConversation(item.id) }.padding(10.dp))
+                    }
+                }
             },
-            confirmButton = { TextButton(onClick = { showHistory = false }) { Text("Fechar", color = Blue) } }
+            confirmButton = { TextButton(onClick = { refreshConversations() }) { Text(if (busy) "Carregando…" else "Atualizar", color = Blue) } },
+            dismissButton = { TextButton(onClick = { showHistory = false }) { Text("Fechar", color = Muted) } }
         )
     }
 }
@@ -248,18 +365,18 @@ private fun OrbButton(live: Boolean, modifier: Modifier, onClick: () -> Unit) {
 }
 
 @Composable
-private fun Composer(text: String, connected: Boolean, onText: (String) -> Unit, onSend: () -> Unit, onLive: () -> Unit) {
+private fun Composer(text: String, connected: Boolean, busy: Boolean, onText: (String) -> Unit, onSend: () -> Unit, onNew: () -> Unit, onLive: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
         Row(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Panel)
                 .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(28.dp)).padding(9.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("+", color = Muted, fontSize = 25.sp, modifier = Modifier.padding(horizontal = 10.dp))
+            Text("+", color = Muted, fontSize = 25.sp, modifier = Modifier.clickable(enabled = connected && !busy, onClick = onNew).padding(horizontal = 10.dp))
             BasicTextField(
                 value = text,
                 onValueChange = onText,
-                enabled = connected,
+                enabled = connected && !busy,
                 modifier = Modifier.weight(1f).padding(vertical = 12.dp),
                 textStyle = TextStyle(color = Pearl, fontSize = 15.sp),
                 decorationBox = { inner ->
@@ -271,9 +388,9 @@ private fun Composer(text: String, connected: Boolean, onText: (String) -> Unit,
             )
             Text("●", color = if (connected) Blue else Muted, fontSize = 11.sp,
                 modifier = Modifier.padding(horizontal = 8.dp).clickable(enabled = connected, onClick = onLive))
-            Text("↑", color = if (connected) Ink else Muted, fontSize = 20.sp,
-                modifier = Modifier.clip(CircleShape).background(if (connected) Pearl else Color(0xFF353747), CircleShape)
-                    .clickable(enabled = connected, onClick = onSend).padding(horizontal = 13.dp, vertical = 7.dp))
+            Text(if (busy) "…" else "↑", color = if (connected && !busy) Ink else Muted, fontSize = 20.sp,
+                modifier = Modifier.clip(CircleShape).background(if (connected && !busy) Pearl else Color(0xFF353747), CircleShape)
+                    .clickable(enabled = connected && !busy, onClick = onSend).padding(horizontal = 13.dp, vertical = 7.dp))
         }
         Text("O processamento da Aurora acontece no computador pareado.", color = Muted.copy(alpha = 0.72f), fontSize = 10.sp,
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp), textAlign = TextAlign.Center)
