@@ -1,0 +1,31 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- A luminous blue-violet body, kept inside the adaptive icon safe zone. -->
+    <path
+        android:fillColor="#3878F7"
+        android:pathData="M54,18a36,36 0,1 0,0 72a36,36 0,1 0,0 -72z" />
+
+    <!-- Violet aurora current flowing through the lower half of the orb. -->
+    <path
+        android:fillColor="#7655E8"
+        android:pathData="M22,57c10,-8 19,-8 29,-2c10,6 20,7 35,-1c4,-2 6,-4 9,-6c-2,20 -19,36 -41,36c-17,0 -31,-11 -36,-27z" />
+
+    <!-- Pearl-white upper atmosphere and its soft, uneven horizon. -->
+    <path
+        android:fillColor="#F4F7FF"
+        android:pathData="M21,53c8,-7 17,-12 27,-10c10,2 15,9 24,8c8,-1 15,-7 20,-13c-5,-12 -18,-20 -33,-20c-20,0 -36,15 -38,35z" />
+
+    <!-- Cool cyan reflection where the pearl meets the colored current. -->
+    <path
+        android:fillColor="#8BE8FF"
+        android:pathData="M20,57c10,-8 19,-9 30,-3c10,6 20,7 35,-1c-8,10 -19,15 -29,13c-13,-2 -21,-12 -36,-5z" />
+
+    <!-- Small four-point glint: the Aurora mark's recognizable accent. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M77,21c1.4,5.1 3.1,6.8 8,8c-4.9,1.3 -6.6,3 -8,8c-1.3,-5 -3,-6.7 -8,-8c5,-1.2 6.7,-2.9 8,-8z" />
+</vector>
