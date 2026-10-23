@@ -1,15 +1,15 @@
-# Aurora Android Companion — Demo Experimental 0.4.0
+# Aurora Android Companion — Demo Experimental 0.4.1
 
-Cliente Android nativo Alpha. A visão é manter modelos, busca e ações no computador; o telefone será interface, microfone e saída de áudio.
+Cliente Android nativo Demo Experimental. Modelos, busca e automação ficam no computador; o telefone é a interface, microfone e saída de áudio.
 
 ## Estado atual
 
-- APK experimental: [release Android 0.4.0](https://github.com/ruanminezinoficial2025-ctrl/Aurora/releases/tag/android-demo-v0.4.0). É uma build de desenvolvimento assinada para debug.
+- APK experimental: [release Android 0.4.1](https://github.com/ruanminezinoficial2025-ctrl/Aurora/releases/tag/android-demo-v0.4.1). É uma build de desenvolvimento assinada para debug.
 
 - Base Android com Jetpack Compose, tema escuro e esfera Aurora animada em branco, violeta e azul.
 - Pareamento HTTPS com fingerprint SHA-256 digitado fora de banda, código de uso único e token cifrado no Android Keystore.
 - Envio de mensagens pelo roteador central do desktop e histórico de conversas armazenado no PC.
-- Voz experimental por turnos: toque em **Voz**, fale e toque em **Parar**; o PC transcreve em pt-BR e executa a conversa central, e o Android lê a resposta em voz alta.
+- Voz por turnos com foreground service do Android: toque em **Voz**, fale e toque em **Parar**; a notificação deixa o uso do microfone visível e a captura pode continuar com a tela bloqueada. O PC transcreve em pt-BR e executa a conversa central; o Android lê a resposta em voz alta.
 - Descoberta automática do PC por DNS-SD/mDNS quando ambos estão na mesma LAN; a impressão digital TLS continua sendo verificada fora de banda.
 - Controle exclusivo: ao conectar, o stream do microfone e o wake word local do PC são encerrados; **Desconectar** devolve a escuta à Aurora desktop. Se o app ou a rede cair, o lease expira e o PC retoma em até 60 segundos.
 - Comandos explícitos de baixo risco: abrir app/site, controlar volume, consultar hardware e capturar tela. Ações que pedem confirmação presencial (como fechar app ou iniciar gravação OBS) são recusadas pelo mobile nesta demo.
@@ -21,7 +21,7 @@ Cliente Android nativo Alpha. A visão é manter modelos, busca e ações no com
 1. O desktop Aurora é o servidor e conserva inferência, pesquisa, voz e automação.
 2. O app pareia explicitamente com o PC e troca mensagens por um canal autenticado e criptografado. Ollama continua preso a loopback; nunca será exposto ao Wi-Fi.
 3. Conversas e histórico são armazenados no PC e sincronizados ao cliente.
-4. A demo de voz envia gravação PCM mono a 16 kHz (máximo 45 segundos) por HTTPS ao PC. O PC transcreve pela mesma integração Google Speech usada pelo desktop; o Android pronuncia a resposta com o mecanismo TTS instalado. O microfone só é acessado após permissão e toque explícito, enquanto o app está aberto. O áudio fica apenas em memória no PC; o serviço de reconhecimento Google recebe o trecho de fala, como no cliente desktop.
+4. A demo de voz envia gravação PCM mono a 16 kHz (máximo 45 segundos) por HTTPS ao PC. O PC transcreve pela mesma integração Google Speech usada pelo desktop; o Android pronuncia a resposta com o mecanismo TTS instalado. O microfone só é acessado após permissão e toque explícito. Um foreground service exibe uma notificação e mantém a gravação solicitada ativa enquanto a tela está bloqueada; o limite é 45 segundos e fechar à força o app encerra a captura. O áudio fica apenas em memória no PC; o serviço de reconhecimento Google recebe o trecho de fala, como no cliente desktop.
 5. A conexão atual usa a mesma rede local. Acesso remoto futuro deverá usar VPN privada; não encaminhe a porta do PC à internet.
 6. A visualização da tela do PC será uma etapa própria, com início explícito e indicador visível. Automação do próprio Android fica fora desta Alpha.
 

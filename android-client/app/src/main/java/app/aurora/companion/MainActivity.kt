@@ -1,6 +1,8 @@
 package app.aurora.companion
 
 import android.Manifest
+import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
@@ -516,38 +518,53 @@ private fun OrbButton(live: Boolean, modifier: Modifier, activity: String = if (
 
 @Composable
 private fun VoiceCaptureButton(enabled: Boolean, onRecording: (Boolean) -> Unit, onCaptured: (ByteArray) -> Unit, onError: (String) -> Unit) {
+    val appContext = LocalContext.current
     val scope = rememberCoroutineScope()
     var active by remember { mutableStateOf(false) }
     var stopping by remember { mutableStateOf(false) }
     val currentCapture = remember { arrayOfNulls<PcmVoiceCapture>(1) }
     val startCapture: () -> Unit = {
-        val capture = PcmVoiceCapture()
-        currentCapture[0] = capture
-        active = true
-        onRecording(true)
-        scope.launch {
-            try {
-                val wav = withContext(Dispatchers.IO) { capture.captureWav() }
-                if (currentCapture[0] === capture) {
-                    currentCapture[0] = null
-                    active = false
-                    stopping = false
-                    onRecording(false)
-                    onCaptured(wav)
-                }
-            } catch (error: Exception) {
-                if (currentCapture[0] === capture) {
-                    currentCapture[0] = null
-                    active = false
-                    stopping = false
-                    onRecording(false)
-                    onError(error.message ?: "Falha ao capturar o microfone.")
+        val serviceIntent = Intent(appContext, MicCaptureService::class.java).setAction(MicCaptureService.ACTION_START)
+        val foregroundStarted = try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) appContext.startForegroundService(serviceIntent)
+            else appContext.startService(serviceIntent)
+            true
+        } catch (error: Exception) {
+            onError(error.message ?: "Não consegui manter a gravação ativa em segundo plano.")
+            false
+        }
+        if (foregroundStarted) {
+            val capture = PcmVoiceCapture()
+            currentCapture[0] = capture
+            active = true
+            onRecording(true)
+            scope.launch {
+                try {
+                    val wav = withContext(Dispatchers.IO) { capture.captureWav() }
+                    if (currentCapture[0] === capture) {
+                        currentCapture[0] = null
+                        active = false
+                        stopping = false
+                        onRecording(false)
+                        onCaptured(wav)
+                    }
+                } catch (error: Exception) {
+                    if (currentCapture[0] === capture) {
+                        currentCapture[0] = null
+                        active = false
+                        stopping = false
+                        onRecording(false)
+                        onError(error.message ?: "Falha ao capturar o microfone.")
+                    }
+                } finally {
+                    appContext.stopService(Intent(appContext, MicCaptureService::class.java))
                 }
             }
         }
     }
-    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) startCapture() else onError("Permita o microfone para usar a conversa por voz.")
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
+        if (grants[Manifest.permission.RECORD_AUDIO] == true) startCapture()
+        else onError("Permita o microfone para usar a conversa por voz.")
     }
     DisposableEffect(Unit) { onDispose { currentCapture[0]?.stop() } }
     Text(
@@ -560,7 +577,13 @@ private fun VoiceCaptureButton(enabled: Boolean, onRecording: (Boolean) -> Unit,
                 active = false
                 onRecording(false)
                 currentCapture[0]?.stop()
-            } else permission.launch(Manifest.permission.RECORD_AUDIO)
+            } else {
+                val requested = buildList {
+                    add(Manifest.permission.RECORD_AUDIO)
+                    if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
+                }
+                permission.launch(requested.toTypedArray())
+            }
         },
     )
 }
