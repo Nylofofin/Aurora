@@ -1,9 +1,9 @@
 # Aurora — POLARIS-EDGE
 
-**Versão:** `0.1.4b2` (Beta Demo Patch 5, PEP 440) · **Build:** `AUR-20261022.BETA1.P5`
-**Codinome técnico:** `POLARIS-EDGE` — identidade da build local otimizada para execução no edge, com Gemma via Ollama.
+**Versão:** `1.0.0` (primeira release oficial) · **Build:** `AUR-20261022.G1.R1`
+**Geração:** `1` · **Codinome técnico:** `POLARIS-EDGE` — assistente local-first com Gemma via Ollama.
 
-> **Beta Demo incompleta.** Esta build ainda pode conter falhas de voz, busca, interface e integrações. Não é uma versão estável nem um pacote pronto para outras distribuições.
+> **Release pessoal para Linux desktop.** A versão 1.0.0 fecha a primeira geração da Aurora para uso privado. Não inclui pacote Flatpak/RPM nem atualizador automático; consulte os limites e requisitos antes de instalar. O repositório permanece privado.
 
 **A única interface da Aurora é a bolha flutuante.** Não há janela de chat nem janela de resultados. Em espera fica escondida; ao dizer “Aurora”, aparece no canto inferior direito com entrada elástica, um halo breve e o som `assets/audio/entrada.wav`. Ao terminar, encolhe suavemente e desaparece. Cada ativação recebe um pedido; depois de responder, o microfone volta a aguardar apenas a palavra “Aurora”. O contexto curto pode ajudar em um seguimento, mas não mantém a captura de voz aberta entre ativações. Clique com o botão direito na bolha para interromper imediatamente a fala e cancelar o pedido atual. Enquanto estiver visível, você pode arrastá-la para qualquer lugar. A esfera azul-violeta permanece redonda, com brilho líquido em camadas e movimento contínuo. O rótulo de alto contraste indica se está ouvindo, pensando, buscando ou falando. Inferência do Gemma, memória e roteamento de ações são locais. Transcrição de voz, síntese de voz, busca web e serviços externos descritos abaixo usam a internet quando solicitados.
 
@@ -29,7 +29,7 @@ Aurora usa um **instalador nativo em shell** para integrar o serviço de usuári
 
 O serviço usa `start-alpha.sh`, que procura Ollama em `PATH` ou no runtime opcional definido por `AURORA_OLLAMA_RUNTIME_DIR`. O diretório de estado e logs padrão é `~/.local/state/aurora`; para usar um runtime/modelos locais alternativos, configure `AURORA_WORK_DIR`, `AURORA_OLLAMA_RUNTIME_DIR` e, se necessário, `AURORA_OLLAMA_MODELS_DIR` em `~/.config/aurora/runtime.env` (formato `NOME=valor`, uma variável por linha). O serviço carrega esse arquivo se existir.
 
-### Patch de automação e interrupção
+### Automação e interrupção
 
 Capturas usam o portal de tela da sessão e não pedem uma segunda confirmação da Aurora depois do pedido explícito; o portal do sistema ainda pode exigir autorização. A solicitação e a cópia do arquivo rodam fora da interface para manter a bolha responsiva. Quando o portal confirma a captura, Aurora conclui a gravação local do arquivo mesmo se uma interrupção chegar nessa fração de segundo, evitando descartar uma captura já concluída. Ao iniciar gravação, se o OBS estiver fechado e o WebSocket estiver ativo nas configurações, Aurora abre o OBS e aguarda até 8 segundos pelo servidor antes de enviar o comando aprovado; parar a gravação nunca abre o OBS. A conexão e a inicialização do OBS rodam fora da interface. Durante processamento e fala, comandos locais como “para”, “calma”, “espera” e “deixa pra lá” interrompem a solicitação. Tocar a bolha para aprovar uma ação sensível também corta imediatamente o aviso falado.
 
