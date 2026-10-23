@@ -4,6 +4,8 @@ Cliente Android nativo em desenvolvimento. A visão é manter modelos, busca e a
 
 ## Estado atual
 
+- APK debug para instalar no celular: [`artifacts/aurora-companion-alpha1-debug.apk`](../artifacts/aurora-companion-alpha1-debug.apk). É uma build de desenvolvimento assinada para debug.
+
 - Base Android com Jetpack Compose, tema escuro e esfera Aurora animada em branco, violeta e azul.
 - Esboço das telas de conversa, histórico e conexão com o PC.
 - **Ainda não conectado ao servidor**: envio de mensagens, sincronização de conversas, Live, pareamento e streaming ainda não estão funcionais. Os controles visuais não devem ser tratados como ações concluídas.

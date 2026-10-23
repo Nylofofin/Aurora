@@ -11,7 +11,7 @@
 
 ## Cliente Android Companion (Alpha em desenvolvimento)
 
-Estamos iniciando um cliente Android para conversas, histórico e modo Live, mantendo inferência, busca e automação no computador. O esqueleto visual ainda não se conecta ao servidor e não é uma Alpha funcional. O plano e as instruções de compilação estão em [`android-client/README.md`](android-client/README.md). O Ollama continuará limitado ao próprio PC; a primeira conexão será pareada na rede local e o acesso remoto dependerá de VPN privada.
+Estamos iniciando um cliente Android para conversas, histórico e modo Live, mantendo inferência, busca e automação no computador. [Baixe o APK debug de prévia](artifacts/aurora-companion-alpha1-debug.apk) para experimentar a interface no celular. Ele ainda não se conecta ao servidor e não é uma Alpha funcional. O plano e as instruções estão em [`android-client/README.md`](android-client/README.md). O Ollama continuará limitado ao próprio PC; a primeira conexão será pareada na rede local e o acesso remoto dependerá de VPN privada.
 
 ## Ambiente
 
