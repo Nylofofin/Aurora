@@ -119,6 +119,12 @@ class Inference(QThread):
                     msgs.append({'role':'tool','tool_name':name,'content':output})
                     if self.cancelled: return
                 if self.cancelled: return
+                # A local action already has an authoritative result. Do not
+                # spend another (potentially slow) Gemma turn paraphrasing it:
+                # that second request can leave the orb in "thinking" after
+                # the screenshot or other action has completed.
+                if action_only_turn and not other_tool_used:
+                    break
             if not (action_results and not other_tool_used):
                 tail=spoken.strip()
                 if tail and re.search(r'[.!?][\"”’\')\]]*$',tail):

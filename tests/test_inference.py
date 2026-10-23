@@ -42,7 +42,7 @@ def test_translation_waits_until_the_current_ollama_stream_is_closed(monkeypatch
     assert results == ["Frase traduzida. Next sentence."]
 
 
-def test_agent_speaks_action_result_instead_of_model_reinterpreting_it(monkeypatch):
+def test_screenshot_action_returns_without_a_second_model_turn(monkeypatch):
     class Response:
         def __init__(self, message): self.message = message
         def __enter__(self): return self
@@ -50,30 +50,29 @@ def test_agent_speaks_action_result_instead_of_model_reinterpreting_it(monkeypat
         def __iter__(self):
             yield json.dumps({"message": self.message}).encode()
 
-    responses = iter((
-        Response({"tool_calls": [{"function": {
-            "name": "volume_control", "arguments": {"action": "set", "value": 30}
-        }}]}),
-        Response({"content": "Não consegui confirmar a ação."}),
-    ))
+    responses = iter((Response({"tool_calls": [{"function": {
+        "name": "take_screenshot", "arguments": {}
+    }}]}),))
+    requests = []
     monkeypatch.setattr(inference_module.urllib.request, "urlopen",
-                        lambda *_args, **_kwargs: next(responses))
+                        lambda *_args, **_kwargs: requests.append(_args[0]) or next(responses))
     monkeypatch.setattr(inference_module.Inference, "execute_tool",
-                        lambda *_args, **_kwargs: "Volume ajustado para 30%.")
+                        lambda *_args, **_kwargs: "Salvei a captura em Imagens/captura.png.")
     cfg = {
         "endpoint": "http://localhost:11434", "model": "gemma4:test",
         "keep_alive": "5m", "num_ctx": 1024, "agent_num_ctx": 1024,
         "agent_num_predict": 96, "num_thread": 4, "num_gpu": 99,
     }
-    worker = inference_module.Inference(cfg, "coloque o volume em 30%", use_tools=True)
+    worker = inference_module.Inference(cfg, "Faça uma captura de tela", use_tools=True)
     sentences, results = [], []
     worker.sentence.connect(sentences.append)
     worker.result.connect(results.append)
 
     worker.run()
 
-    assert sentences == ["Volume ajustado para 30%."]
-    assert results == ["Volume ajustado para 30%."]
+    assert sentences == ["Salvei a captura em Imagens/captura.png."]
+    assert results == ["Salvei a captura em Imagens/captura.png."]
+    assert len(requests) == 1
 
 
 def test_cancel_before_tool_dispatch_prevents_local_side_effect(monkeypatch):

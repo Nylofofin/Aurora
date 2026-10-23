@@ -24,7 +24,9 @@ SPOTIFY_SCOPES = "user-modify-playback-state user-read-playback-state"
 # Keep the whole local handshake and RPC bounded, but avoid the old 1.5 s
 # cutoff that could expire before OBS confirmed an otherwise valid request.
 OBS_REQUEST_TIMEOUT = 3.0
-OBS_STARTUP_TIMEOUT = 8.0
+# Cold Flatpak startup on this GNOME/Wayland host exceeded the old 8 s window.
+# Keep waiting in the action worker while the UI remains responsive.
+OBS_STARTUP_TIMEOUT = 30.0
 
 
 def _flatpak_obs_config_path() -> Path:
