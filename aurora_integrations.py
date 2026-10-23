@@ -54,6 +54,19 @@ def _flatpak_obs_settings() -> dict:
         return {}
 
 
+def _obs_latest_log_is_safe_mode() -> bool:
+    """Detect OBS safe-mode startup, where obs-websocket is deliberately disabled."""
+    log_dir = Path.home() / ".var/app/com.obsproject.Studio/config/obs-studio/logs"
+    try:
+        newest = max(log_dir.glob("*.txt"), key=lambda path: path.stat().st_mtime)
+        with newest.open("rb") as log:
+            log.seek(max(0, newest.stat().st_size - 128_000))
+            tail = log.read().decode("utf-8", errors="replace").casefold()
+        return "safe mode enabled" in tail and "skipping module 'obs-websocket'" in tail
+    except (OSError, ValueError):
+        return False
+
+
 def site_url_from_request(prompt: str) -> str | None:
     """Return a safe HTTP(S) URL only when speech clearly asks for a site."""
     text = " ".join(str(prompt or "").strip().split())
@@ -673,6 +686,11 @@ def obs_record(action: str, password: str = "", host: str = "127.0.0.1", port: i
                 except OSError:
                     time.sleep(0.2)
             if stream is None:
+                if _obs_latest_log_is_safe_mode():
+                    _append_action_log("obs_record", "unavailable", {"action": action,
+                                        "phase": "safe_mode", "error_type": "WebSocketDisabled"})
+                    return ("O OBS abriu em modo de segurança, que desativa o WebSocket. "
+                            "Não confirmei nem iniciei a gravação.")
                 _append_action_log("obs_record", "unavailable", {"action": action,
                                     "phase": "startup", "error_type": "TimeoutError"})
                 return ("Abri o OBS, mas o WebSocket não ficou disponível. Confira se o servidor "

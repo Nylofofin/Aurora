@@ -556,6 +556,7 @@ def test_obs_start_launches_flatpak_after_approved_websocket_connection_fails(mo
     })
     monkeypatch.setattr(integrations, "OBS_STARTUP_TIMEOUT", 0.01)
     monkeypatch.setattr(integrations.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(integrations, "_obs_latest_log_is_safe_mode", lambda: False)
     launches = []
     monkeypatch.setattr(
         "aurora_core.system.apps.launch_application",
@@ -571,6 +572,28 @@ def test_obs_start_launches_flatpak_after_approved_websocket_connection_fails(mo
     assert log[-1][0][:2] == ("obs_record", "unavailable")
     assert log[-1][0][2]["phase"] == "startup"
     assert log[-1][0][2]["error_type"] == "TimeoutError"
+
+
+def test_obs_safe_mode_timeout_never_claims_or_starts_recording(monkeypatch):
+    log = []
+    monkeypatch.setattr(integrations, "_append_action_log",
+                        lambda *args, **kwargs: log.append((args, kwargs)))
+    monkeypatch.setattr(integrations, "_flatpak_obs_settings", lambda: {
+        "server_enabled": True, "server_port": 4455,
+    })
+    monkeypatch.setattr(integrations, "OBS_STARTUP_TIMEOUT", 0.01)
+    monkeypatch.setattr(integrations.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(integrations, "_obs_latest_log_is_safe_mode", lambda: True)
+    monkeypatch.setattr("aurora_core.system.apps.launch_application",
+                        lambda *_args, **_kwargs: "Solicitei a abertura de OBS Studio.")
+    monkeypatch.setattr(integrations.socket, "create_connection",
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(ConnectionRefusedError()))
+
+    result = integrations.obs_record("start")
+
+    assert "modo de segurança" in result.casefold()
+    assert "não confirmei nem iniciei" in result.casefold()
+    assert log[-1][0][2]["phase"] == "safe_mode"
 
 
 def test_obs_stop_never_launches_obs_when_websocket_is_down(monkeypatch):
