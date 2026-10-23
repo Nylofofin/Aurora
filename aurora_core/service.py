@@ -106,12 +106,15 @@ class _ScreenshotActionRequest(QThread):
         try:
             path=aurora_integrations.capture_screenshot(
                 self.pictures_dir,cancel_event=self.cancel_event,parent_window=self.parent_window)
-            aurora_integrations._append_action_log('screenshot','saved')
+            try: aurora_integrations._append_action_log('screenshot','saved')
+            except Exception: pass  # Audit failure must not strand the action/UI.
             self.completed.emit(True,f'Salvei a captura em {path}.')
         except Exception as exc:
-            aurora_integrations._append_action_log(
-                'screenshot','failed',{'error_type':type(exc).__name__,
-                    'phase':getattr(exc,'phase','unknown')})
+            try:
+                aurora_integrations._append_action_log(
+                    'screenshot','failed',{'error_type':type(exc).__name__,
+                        'phase':getattr(exc,'phase','unknown')})
+            except Exception: pass
             self.completed.emit(False,f'Não consegui confirmar a captura: {exc}')
 
 class AuroraService(QObject):
@@ -471,7 +474,7 @@ class AuroraService(QObject):
         self.action_workers.append(worker)
         self.obs_details[worker]=detail
         worker.completed.connect(self._obs_action_result)
-        worker.finished.connect(lambda w=worker:self.action_workers.remove(w) if w in self.action_workers else None)
+        worker.finished.connect(self._action_worker_finished)
         worker.start()
 
     def _start_screenshot_action(self,detail):
@@ -485,8 +488,23 @@ class AuroraService(QObject):
         self.action_workers.append(worker)
         self.obs_details[worker]=detail
         worker.completed.connect(self._screenshot_action_result)
-        worker.finished.connect(lambda w=worker:self.action_workers.remove(w) if w in self.action_workers else None)
+        worker.finished.connect(self._action_worker_finished)
         worker.start()
+
+    @Slot()
+    def _action_worker_finished(self):
+        """Release the request/UI even if a worker exits without its result signal."""
+        worker=self.sender()
+        if worker in self.action_workers: self.action_workers.remove(worker)
+        detail=self.obs_details.pop(worker,None)
+        if detail is None: return
+        detail['result']='A ação terminou sem retornar um resultado confirmado.'
+        if detail.get('event'): detail['event'].set()
+        current=detail.get('request_generation')==self.request_generation
+        if current and self.orb.isVisible(): self.orb.set_mode('error')
+        cancelled=bool(detail.get('cancel_event') and detail['cancel_event'].is_set())
+        if detail.get('direct') and current and not cancelled and self.voice.request_active.is_set():
+            self.complete_direct_action(detail['result'])
 
     @Slot(object,object)
     def _screenshot_action_result(self,ok,result):

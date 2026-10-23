@@ -298,7 +298,8 @@ def test_direct_screenshot_runs_off_the_gui_thread_and_reports_saved_path(monkey
         return saved_path
 
     monkeypatch.setattr(service_module.aurora_integrations, "capture_screenshot", fake_capture)
-    monkeypatch.setattr(service_module.aurora_integrations, "_append_action_log", lambda *_a, **_k: None)
+    def fail_audit_log(*_a, **_k): raise OSError("state directory unavailable")
+    monkeypatch.setattr(service_module.aurora_integrations, "_append_action_log", fail_audit_log)
     monkeypatch.setattr(service_module, "xdg_user_directory", lambda _kind: str(tmp_path))
     monkeypatch.setattr(service_module.QApplication, "platformName", staticmethod(lambda: "xcb"))
 
@@ -336,6 +337,46 @@ def test_direct_screenshot_runs_off_the_gui_thread_and_reports_saved_path(monkey
     assert observed[1] == "x11:1234"
     assert saved_path.read_bytes() == b"image"
     assert stub.completed == f"Salvei a captura em {saved_path}."
+
+
+def test_action_worker_exit_without_result_releases_waiting_request():
+    from PySide6.QtCore import QCoreApplication, QObject, QThread
+    app = QCoreApplication.instance() or QCoreApplication([])
+
+    class Orb:
+        def __init__(self): self.modes = []
+        def isVisible(self): return True
+        def set_mode(self, mode): self.modes.append(mode)
+
+    class ServiceStub(service_module.AuroraService):
+        def __init__(self):
+            QObject.__init__(self)
+            self.orb = Orb()
+            self.action_workers = []
+            self.obs_details = {}
+            self.request_generation = 7
+            self.voice = type("Voice", (), {"request_active": threading.Event()})()
+
+    class SilentWorker(QThread):
+        def run(self): pass
+
+    stub = ServiceStub()
+    worker = SilentWorker()
+    detail = {"event": threading.Event(), "request_generation": 7,
+              "cancel_event": threading.Event(), "direct": False}
+    stub.action_workers.append(worker)
+    stub.obs_details[worker] = detail
+    worker.finished.connect(stub._action_worker_finished)
+    worker.start()
+    deadline = time.monotonic() + 2
+    while not detail["event"].is_set() and time.monotonic() < deadline:
+        app.processEvents()
+        time.sleep(0.01)
+
+    assert detail["event"].is_set()
+    assert detail["result"] == "A ação terminou sem retornar um resultado confirmado."
+    assert not stub.action_workers
+    assert stub.orb.modes == ["error"]
 
 
 def test_tapping_pending_approval_interrupts_voice_before_execution():

@@ -38,9 +38,9 @@ class LocalVoice(QThread):
     def is_final_cancel_phrase(text,finalized):
         return finalized and normalize_words(text) in {
             'para','pare','parar','cancele','cancela','cancelar','interrompa',
-            'interrompe','interromper','chega','espera','calma para',
-            'nao','nao para','nao calma para','nao espera','calma','pera',
-            'pera ai','deixa','deixa pra la','para agora','para com isso','corta'
+            'interrompe','interromper','chega','calma para',
+            'nao para','nao calma para','nao espera','pera ai','deixa pra la',
+            'para agora','para com isso','corta'
         }
     def cloud_transcribe(self,sr,pcm,fallback):
         try: command=self.recognizer.recognize_google(sr.AudioData(pcm,16000,2),language='pt-BR')

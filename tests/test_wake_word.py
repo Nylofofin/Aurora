@@ -49,10 +49,12 @@ def test_wake_detection_stays_suppressed_until_request_finishes_but_allows_click
 def test_control_cancel_requires_an_exact_final_local_phrase():
     match = LocalVoice.is_final_cancel_phrase
     for phrase in ("para", "pare", "parar", "cancele", "cancela", "cancelar",
-                   "interrompa", "interrompe", "chega", "espera", "calma para",
-                   "não calma para", "não", "calma", "pera aí", "deixa pra lá",
+                   "interrompa", "interrompe", "chega", "calma para",
+                   "não calma para", "pera aí", "deixa pra lá",
                    "para com isso", "corta"):
         assert match(phrase, True)
+    for ambiguous in ("não", "calma", "espera", "pera", "deixa"):
+        assert not match(ambiguous, True)
     assert not match("para", False)
     assert not match("para a janela", True)
 
