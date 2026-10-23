@@ -1,9 +1,9 @@
 # Aurora — POLARIS-EDGE
 
-**Versão:** `1.0.1` (patch de correção da Geração 1) · **Build:** `AUR-20261022.G1.P1`
+**Versão:** `1.0.2` (pré-release de manutenção da Geração 1) · **Build:** `AUR-20261022.G1.P2`
 **Geração:** `1` · **Codinome técnico:** `POLARIS-EDGE` — assistente local-first com Gemma via Ollama.
 
-> **Release pessoal para Linux desktop.** A versão 1.0.1 é um patch de correção da primeira geração da Aurora, para uso privado. Não inclui pacote Flatpak/RPM nem atualizador automático; consulte os limites e requisitos antes de instalar. O repositório permanece privado.
+> **Pré-release pessoal para Linux desktop.** A versão 1.0.2 reorganiza integrações e reúne correções recentes. Ainda requer validação da gravação OBS em segundo plano; consulte os limites antes de instalar. Não inclui pacote Flatpak/RPM nem atualizador automático. O repositório permanece privado.
 
 **A única interface da Aurora é a bolha flutuante.** Não há janela de chat nem janela de resultados. Em espera fica escondida; ao dizer “Aurora”, aparece no canto inferior direito com entrada elástica, um halo breve e o som `assets/audio/entrada.wav`. Ao terminar, encolhe suavemente e desaparece. Cada ativação recebe um pedido; depois de responder, o microfone volta a aguardar apenas a palavra “Aurora”. O contexto curto pode ajudar em um seguimento, mas não mantém a captura de voz aberta entre ativações. Clique com o botão direito na bolha para interromper imediatamente a fala e cancelar o pedido atual. Enquanto estiver visível, você pode arrastá-la para qualquer lugar. A esfera azul-violeta permanece redonda, com brilho líquido em camadas e movimento contínuo. O rótulo de alto contraste indica se está ouvindo, pensando, buscando ou falando. Inferência do Gemma, memória e roteamento de ações são locais. Transcrição de voz, síntese de voz, busca web e serviços externos descritos abaixo usam a internet quando solicitados.
 

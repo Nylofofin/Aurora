@@ -1,5 +1,13 @@
 # Histórico de versões
 
+## 1.0.2 — Polaris-Edge, Patch 2 (pré-release, 2026-10-22)
+
+- Separa OBS, captura pelo portal, Spotify e registro de ações em módulos dedicados sob `aurora_core/system/`, mantendo a fachada de compatibilidade.
+- Atualiza a documentação para distinguir minimização do OBS de execução realmente sem janela.
+- Inclui os commits locais posteriores a 1.0.1; 227 testes automatizados passaram.
+- **Limite conhecido:** a sessão atual do OBS iniciou em Safe Mode e desativou `obs-websocket`; gravação real em segundo plano ainda não foi confirmada. Esta publicação é pré-release.
+- A classe `AuroraService` ainda contém lógica de coordenação que precisa de uma etapa posterior de modularização.
+
 ## 1.0.1 — Polaris-Edge, Patch 1 (2026-10-22)
 
 - Passa a janela X11 da bolha ao portal de screenshot e unifica pedidos diretos e pedidos do Gemma no mesmo worker assíncrono.
