@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QThread, Signal
-import asyncio, queue, re, shutil, subprocess
+import asyncio, queue, re, shutil, subprocess, time
 
 class Speaker(QThread):
     speaking=Signal(bool); audio_started=Signal(); drained=Signal()
     def __init__(self,cfg): super().__init__(); self.cfg=cfg; self.q=queue.Queue(); self.running=True; self.active=False; self.playing=False; self.current_player=None; self.stream_loop=None; self.stream_task=None; self.cancel_generation=0; self.engine=shutil.which('ffplay'); self.fallback=shutil.which('espeak-ng') or shutil.which('espeak')
     def say(self,text):
         text=self.clean(text)
-        if text: self.q.put(text[:1800])
+        if text: self.q.put((text[:1800],time.perf_counter()))
     @staticmethod
     def clean(text):
         text=str(text)
@@ -22,6 +22,8 @@ class Speaker(QThread):
     async def _stream_edge(self,text,generation):
         import asyncio
         import edge_tts
+        from .telemetry import elapsed_ms, log_voice_timing
+        started=time.perf_counter(); first_audio=False
         task=asyncio.current_task(); self.stream_loop=asyncio.get_running_loop(); self.stream_task=task
         player=None
         try:
@@ -31,7 +33,10 @@ class Speaker(QThread):
                 if generation!=self.cancel_generation: raise RuntimeError('speech interrupted')
                 if packet.get('type')=='audio' and packet.get('data'):
                     player.stdin.write(packet['data']); await player.stdin.drain()
-                    if not started: started=True; self.playing=True; self.audio_started.emit()
+                    if not first_audio:
+                        first_audio=True
+                        log_voice_timing('tts_first_audio',elapsed_ms(started))
+                        self.playing=True; self.audio_started.emit()
             player.stdin.close()
             try: await player.stdin.wait_closed()
             except Exception: pass
@@ -45,11 +50,16 @@ class Speaker(QThread):
             if self.stream_task is task: self.stream_task=None; self.stream_loop=None
     def run(self):
         while self.running:
-            try: text=self.q.get(timeout=.3)
+            try: item=self.q.get(timeout=.3)
             except queue.Empty: continue
+            if isinstance(item,tuple) and len(item)==2: text,queued_at=item
+            else: text,queued_at=item,time.perf_counter()
             if not self.engine and not self.fallback:
                 self.speaking.emit(False); self.drained.emit(); continue
+            from .telemetry import elapsed_ms, log_voice_timing
             generation=self.cancel_generation
+            log_voice_timing('tts_queue',elapsed_ms(queued_at))
+            playback_started=time.perf_counter()
             self.active=True; self.speaking.emit(True)
             try:
                 if self.engine:
@@ -68,6 +78,8 @@ class Speaker(QThread):
                     except Exception: pass
             finally:
                 self.current_player=None
+                log_voice_timing('tts_complete',elapsed_ms(playback_started),
+                                 'interrupted' if generation!=self.cancel_generation else 'ok')
             self.playing=False; self.active=False; self.speaking.emit(False)
             if self.q.empty(): self.drained.emit()
     def stop(self):

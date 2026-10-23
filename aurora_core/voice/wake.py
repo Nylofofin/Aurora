@@ -48,8 +48,12 @@ class LocalVoice(QThread):
             'para agora','para com isso','corta'
         }
     def cloud_transcribe(self,sr,pcm,fallback):
+        from .telemetry import elapsed_ms, log_voice_timing
+        started=time.perf_counter(); outcome='google'
         try: command=self.recognizer.recognize_google(sr.AudioData(pcm,16000,2),language='pt-BR')
-        except Exception: command=fallback
+        except Exception:
+            command=fallback; outcome='local_fallback'
+        log_voice_timing('stt',elapsed_ms(started),outcome)
         command=self.strip_wake_word(command)
         if not command: command=self.strip_wake_word(fallback)
         return command

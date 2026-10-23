@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QThread, Signal
-import json, re, threading, urllib.error, urllib.request
+import json, re, threading, time, urllib.error, urllib.request
 from ..config import local_endpoint
 from .prompts import assistant_system_prompt, complete_spoken_response
 from .tools import TOOLS, execute_local_tool
@@ -83,6 +83,8 @@ class Inference(QThread):
                 if self.use_tools: payload['tools']=TOOLS
                 req=urllib.request.Request(ep+'/api/chat',data=json.dumps(payload).encode(),headers={'Content-Type':'application/json'})
                 content=''; calls=[]; deferred_sentences=[]; defer_stream=self.use_tools
+                from ..voice.telemetry import elapsed_ms, log_voice_timing
+                turn_started=time.perf_counter(); first_response_logged=False
                 with urllib.request.urlopen(req,timeout=240) as response:
                     self.active_response=response
                     try:
@@ -91,6 +93,9 @@ class Inference(QThread):
                             try: m=json.loads(raw.decode()).get('message',{})
                             except Exception: continue
                             part=m.get('content','')
+                            if (part or m.get('tool_calls')) and not first_response_logged:
+                                log_voice_timing('llm_first_response',elapsed_ms(turn_started))
+                                first_response_logged=True
                             if part:
                                 content+=part; complete+=part; spoken+=part
                                 pieces=re.split(r'(?<=[.!?])\s+',spoken)
@@ -107,6 +112,7 @@ class Inference(QThread):
                                     spoken=pieces[-1]
                             if m.get('tool_calls'): calls.extend(m['tool_calls'])
                     finally: self.active_response=None
+                log_voice_timing('llm_turn',elapsed_ms(turn_started))
                 call_names=[call.get('function',{}).get('name','') for call in calls]
                 action_only_turn=bool(call_names) and all(name in ACTION_TOOL_NAMES for name in call_names)
                 final_action_turn=not calls and bool(action_results) and not other_tool_used
