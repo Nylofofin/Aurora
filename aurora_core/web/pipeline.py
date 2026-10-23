@@ -198,7 +198,7 @@ def _search_public_web_uncached(query,freshness=None,news_only=None,progress=Non
                         'feed_published':kind=='bing-news','score':relevance}
                     found.append(accepted); provider_found.append(accepted)
                 update={'stage':'searching','tasks':task_names,'workers':workers,
-                        'completed':completed,'total':progress_total,
+                        'completed':completed if not multi_agent else len(finished_agents),'total':progress_total,
                         'sources':[{key:item.get(key,'') for key in ('provider','title','snippet','url','host','publisher','published')} for item in provider_found[:4]]}
                 if multi_agent:
                     if agent_name in pending_by_agent:

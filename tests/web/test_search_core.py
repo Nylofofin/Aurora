@@ -1069,6 +1069,7 @@ def test_composite_query_runs_distinct_subagents_in_bounded_provider_pool(monkey
     first=next(event for event in events if event.get("stage")=="searching")
     assert first["tasks"]==["Subagente 1 · Gemma 3","Subagente 2 · Gemma 4"]
     assert first["workers"]==2
+    assert all(event.get("completed",0)<=event.get("total",0) for event in events if event.get("stage")=="searching")
 
 
 def test_short_cache_avoids_duplicate_search(monkeypatch):
