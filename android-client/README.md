@@ -1,8 +1,8 @@
-# Aurora Android Companion — desenvolvimento após 1.2.2
+# Aurora Android Companion — 1.2.3 · NOVA-COMPANION-MATERIAL-R1
 
 Cliente Android nativo Companion. Modelos, busca e automação ficam no computador; o telefone é a interface, microfone e saída de áudio.
 
-## Novidades da Release 1.2.2
+## Novidades da Release 1.2.3
 
 - **Interface reconstruída sobre a experiência conversacional Aurora**: tela inicial limpa em lavanda e azul, bolha animada, conversa central, composer compacto com acesso ao Live, histórico em gaveta e abas enxutas para Conversa, Desktop e Ajustes.
 - **Conexão acessível**: botão visível de conexão, descoberta do PC na rede, formulário de pareamento com código e pin SHA-256; anteriormente os controles de conexão estavam escondidos e não permitiam completar o pareamento de uma instalação nova.
@@ -15,14 +15,14 @@ Cliente Android nativo Companion. Modelos, busca e automação ficam no computad
   - Controle completo por toque: toque simples clica, toque duplo abre itens, toque longo abre o menu de contexto (botão direito) e arrasto move o cursor.
   - Para voltar, basta dizer *"Sair do desktop"* ou clicar em Sair.
 - O GNOME apresenta o diálogo do portal RemoteDesktop/ScreenCast para o usuário aprovar tela e ponteiro. A Aurora não habilita RDP/VNC globalmente nem ignora o consentimento do sistema.
-- **APK**: [Aurora Android 1.2.2](https://github.com/ruanminezinoficial2025-ctrl/Aurora/releases/tag/android-v1.2.2). Build assinada para debug, até validação em aparelho real.
+- **APK**: [Aurora Android 1.2.3](https://github.com/ruanminezinoficial2025-ctrl/Aurora/releases/tag/android-v1.2.3). Build assinada para debug.
 
-## Reconstrução da interface e do microfone (em desenvolvimento)
+## Reconstrução Android 1.2.3
 
 - A interface está sendo reconstruída em Material 3: navegação inferior com Conversa, PC e Ajustes; composer integrado; histórico em diálogo; telas com largura máxima e controles dimensionados pela área disponível. O desenho da orb e os sons de entrada/saída vêm dos assets do cliente desktop e são incluídos no APK.
 - O Live agora inicia `MicCaptureService` como foreground service enquanto o usuário está na sessão. A notificação deixa a captura visível; tocar no X encerra o loop e o serviço. Uma falha de leitura de `AudioRecord` descarta a instância danificada e tenta recriá-la, em vez de manter um loop silencioso.
 - A captura de microfone depende da permissão e das regras do Android. O serviço precisa ser iniciado enquanto o app está visível; modos de economia de bateria do fabricante, o seletor de privacidade do microfone ou a revogação da permissão ainda podem interrompê-la. O app não contorna essas proteções.
-- Esta revisão ainda não substitui a release 1.2.2 no GitHub. Não há validação visual em aparelho real nesta máquina.
+- Esta versão substitui a interface 1.2.2. Não houve validação visual ou de microfone em aparelho físico antes da publicação; trate o Live como experimental até testar no seu celular.
 
 - Pareamento HTTPS com fingerprint SHA-256 digitado fora de banda, código de uso único e token cifrado no Android Keystore.
 - Envio de mensagens pelo roteador central do desktop e histórico de conversas armazenado no PC.

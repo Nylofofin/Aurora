@@ -1,8 +1,8 @@
 # Aurora — NOVA-TOUCH-R1
 
-**PC:** `1.2.1` · **Android:** `1.2.2` · **Build PC:** `AUR-20261023.G3.PATCH1`
+**Versão:** `1.2.1` (PC) · `1.2.3` (Android) · **Build:** `AUR-20261023.G3.PATCH1`
 **Geração:** `3` · **Codinome técnico PC:** `NOVA-TOUCH-R1` — assistente local-first com Gemma via Ollama e Companion móvel.
-**Codinome técnico Android:** `NOVA-COMPANION-TOUCH-R2` — interface conversacional, Live contínuo, perfil local e Desktop Remoto experimental.
+**Codinome técnico Android:** `NOVA-COMPANION-MATERIAL-R1` — cliente Material 3, Live com foreground mic e Desktop Remoto experimental.
 
 > **Release pessoal para Linux desktop.** A versão 1.0.2 reúne correções de idioma e automação do OBS. A Aurora confirma que a gravação parou antes de encerrar o OBS Flatpak. O OBS é iniciado com pedido de minimização para bandeja; gravação sem janela depende da configuração do próprio OBS e do ambiente gráfico. Não inclui pacote Flatpak/RPM nem atualizador automático. O código-fonte está publicado no GitHub.
 
@@ -10,9 +10,9 @@
 
 **Experimento:** peça “diagnóstico da Aurora” para obter uma verificação local e somente leitura do Ollama/modelos, dependências de voz, modelo Vosk e sessão gráfica. O diagnóstico não testa microfone, serviços online, OBS ou Spotify e não altera configurações.
 
-## Cliente Android Companion (Release v1.2.2)
+## Cliente Android Companion (Release v1.2.3)
 
-O cliente Android **1.2.2 · NOVA-COMPANION-TOUCH-R2** conversa com o roteador central e mantém histórico no PC. Na mesma LAN, **Encontrar meu PC automaticamente** usa DNS-SD/mDNS. O pareamento exige conferir o pin SHA-256 no PC e digitar o código de uso único. Ao adquirir o controle, a captura de microfone/wake do desktop fecha; desconectar devolve a escuta local, e uma queda de rede libera o controle após 60 segundos. Perfil e tema ficam no armazenamento privado do celular, com sincronização local opcional ao PC. Não há login de nuvem. A interface retorna à experiência conversacional Aurora, agora com abas de Conversa, Desktop e Ajustes; o Live abre pelo waveform no composer. O Desktop Remoto combina ScreenCast/PipeWire com entrada por XDG RemoteDesktop, após consentimento visível do GNOME. Instale pela [release Android 1.2.2](https://github.com/ruanminezinoficial2025-ctrl/Aurora/releases/tag/android-v1.2.2); instruções e limites estão em [`android-client/README.md`](android-client/README.md).
+O cliente Android **1.2.3 · NOVA-COMPANION-MATERIAL-R1** conversa com o roteador central e mantém histórico no PC. Na mesma LAN, **Encontrar meu PC automaticamente** usa DNS-SD/mDNS. O pareamento exige conferir o pin SHA-256 no PC e digitar o código de uso único. Ao adquirir o controle, a captura de microfone/wake do desktop fecha; desconectar devolve a escuta local, e uma queda de rede libera o controle após 60 segundos. Perfil e tema ficam no armazenamento privado do celular, com sincronização local opcional ao PC. Não há login de nuvem. A interface foi reconstruída em Material 3, com navegação responsiva de Conversa, PC e Ajustes; o Live abre pelo waveform no composer e mantém o uso do microfone visível por uma notificação. O Desktop Remoto continua experimental e pede consentimento do GNOME. Instale pela [release Android 1.2.3](https://github.com/ruanminezinoficial2025-ctrl/Aurora/releases/tag/android-v1.2.3); instruções e limites estão em [`android-client/README.md`](android-client/README.md).
 
 ## Ambiente
 
