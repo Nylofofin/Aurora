@@ -52,12 +52,17 @@ def execute_action(self,name,args):
         QApplication.processEvents()
         if not self.voice.request_active.is_set(): return 'A captura foi cancelada.'
         try:
+            view=getattr(self.orb,'view',None)
+            parent_window=aurora_integrations.screenshot_parent_identifier(
+                view.winId() if view else None, QApplication.platformName())
             path=aurora_integrations.capture_screenshot(
-                xdg_user_directory('PICTURES'), cancel_event=getattr(self,'action_cancel_event',None))
+                xdg_user_directory('PICTURES'), cancel_event=getattr(self,'action_cancel_event',None),
+                parent_window=parent_window)
             aurora_integrations._append_action_log('screenshot','saved')
             return f'Salvei a captura em {path}.'
         except Exception as exc:
-            aurora_integrations._append_action_log('screenshot','failed',{'error_type':type(exc).__name__})
+            aurora_integrations._append_action_log('screenshot','failed',
+                {'error_type':type(exc).__name__,'phase':getattr(exc,'phase','unknown')})
             return f'Não consegui confirmar a captura: {exc}'
     if name=='spotify_authorize':
         return aurora_integrations.start_spotify_authorization(

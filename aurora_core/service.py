@@ -98,19 +98,20 @@ class _ObsActionRequest(QThread):
 class _ScreenshotActionRequest(QThread):
     completed=Signal(object,object)
 
-    def __init__(self,pictures_dir,cancel_event):
+    def __init__(self,pictures_dir,cancel_event,parent_window=''):
         super().__init__()
-        self.pictures_dir=pictures_dir; self.cancel_event=cancel_event
+        self.pictures_dir=pictures_dir; self.cancel_event=cancel_event; self.parent_window=parent_window
 
     def run(self):
         try:
             path=aurora_integrations.capture_screenshot(
-                self.pictures_dir,cancel_event=self.cancel_event)
+                self.pictures_dir,cancel_event=self.cancel_event,parent_window=self.parent_window)
             aurora_integrations._append_action_log('screenshot','saved')
             self.completed.emit(True,f'Salvei a captura em {path}.')
         except Exception as exc:
             aurora_integrations._append_action_log(
-                'screenshot','failed',{'error_type':type(exc).__name__})
+                'screenshot','failed',{'error_type':type(exc).__name__,
+                    'phase':getattr(exc,'phase','unknown')})
             self.completed.emit(False,f'Não consegui confirmar a captura: {exc}')
 
 class AuroraService(QObject):
@@ -450,6 +451,9 @@ class AuroraService(QObject):
         self.pending=None; self.orb.pending=False
         if detail.get('name') in {'focus_accessible_window','type_accessible_text'}:
             self.voice.disable_control_cancel()
+        if approved and detail.get('name')=='take_screenshot':
+            self._start_screenshot_action(detail)
+            return
         if approved and detail.get('name')=='obs_record':
             self._start_obs_action(detail)
             return
@@ -474,7 +478,10 @@ class AuroraService(QObject):
         self.orb.set_mode('controlling')
         detail['request_generation']=self.request_generation
         detail['cancel_event']=self.action_cancel_event
-        worker=_ScreenshotActionRequest(xdg_user_directory('PICTURES'),self.action_cancel_event)
+        view=getattr(self.orb,'view',None)
+        parent_window=aurora_integrations.screenshot_parent_identifier(
+            view.winId() if view else None, QApplication.platformName())
+        worker=_ScreenshotActionRequest(xdg_user_directory('PICTURES'),self.action_cancel_event,parent_window)
         self.action_workers.append(worker)
         self.obs_details[worker]=detail
         worker.completed.connect(self._screenshot_action_result)

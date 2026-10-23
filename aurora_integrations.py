@@ -159,17 +159,37 @@ def _portal_response_slot() -> str:
     return SLOT(f"receive({_portal_response_code_type()},QVariantMap)")
 
 
+class ScreenshotPortalError(RuntimeError):
+    """Screenshot error tagged with a safe diagnostic stage."""
+
+    def __init__(self, phase: str, message: str):
+        super().__init__(message)
+        self.phase = phase
+
+
+def screenshot_parent_identifier(window_id: int | str | None, platform: str = "xcb") -> str:
+    """Format an X11 window ID for XDG portals, or return no parent."""
+    if str(platform).casefold() != "xcb":
+        return ""
+    try:
+        value = int(window_id)
+    except (TypeError, ValueError):
+        return ""
+    return f"x11:{value:x}" if value > 0 else ""
+
+
 def capture_screenshot(pictures_dir: str | Path, timeout: int = 45,
-                       cancel_event: threading.Event | None = None) -> Path:
+                       cancel_event: threading.Event | None = None,
+                       parent_window: str = "") -> Path:
     """Request a full-screen capture through the XDG portal and save it safely."""
     try:
         from PySide6.QtCore import QEventLoop, QObject, QTimer, Slot
         from PySide6.QtDBus import QDBus, QDBusConnection, QDBusMessage
     except ImportError as exc:
-        raise RuntimeError("O suporte DBus do Qt não está instalado.") from exc
+        raise ScreenshotPortalError("qt_dbus", "O suporte DBus do Qt não está instalado.") from exc
     bus = QDBusConnection.sessionBus()
     if not bus.isConnected():
-        raise RuntimeError("Não conectei ao portal de captura da sessão gráfica.")
+        raise ScreenshotPortalError("session_bus", "Não conectei ao portal de captura da sessão gráfica.")
     token = "aurora_" + secrets.token_hex(8)
     # xdg-desktop-portal derives the Request object path from the caller's
     # unique bus name by replacing both ':' and '.' with '_'. Keeping the
@@ -191,16 +211,21 @@ def capture_screenshot(pictures_dir: str | Path, timeout: int = 45,
     slot = _portal_response_slot()
     if not bus.connect("org.freedesktop.portal.Desktop", request_path,
                        "org.freedesktop.portal.Request", "Response", receiver, slot):
-        raise RuntimeError("Não consegui acompanhar a resposta do portal de captura.")
+        raise ScreenshotPortalError("subscribe", "Não consegui acompanhar a resposta do portal de captura.")
     message = QDBusMessage.createMethodCall(
         "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
         "org.freedesktop.portal.Screenshot", "Screenshot")
-    message.setArguments(["", {"handle_token": token, "interactive": False, "modal": True}])
-    reply = bus.call(message, QDBus.CallMode.BlockWithGui, 5000)
+    message.setArguments([str(parent_window or ""), {"handle_token": token, "interactive": False, "modal": True}])
+    try:
+        reply = bus.call(message, QDBus.CallMode.BlockWithGui, 5000)
+    except Exception as exc:
+        bus.disconnect("org.freedesktop.portal.Desktop", request_path,
+                       "org.freedesktop.portal.Request", "Response", receiver, slot)
+        raise ScreenshotPortalError("portal_request", "A chamada ao portal de captura falhou.") from exc
     if reply.type() == QDBusMessage.MessageType.ErrorMessage:
         bus.disconnect("org.freedesktop.portal.Desktop", request_path,
                        "org.freedesktop.portal.Request", "Response", receiver, slot)
-        raise RuntimeError(reply.errorMessage() or "O portal recusou a captura.")
+        raise ScreenshotPortalError("portal_request", reply.errorMessage() or "O portal recusou a captura.")
     timer = QTimer()
     timer.setSingleShot(True)
     timer.timeout.connect(loop.quit)
@@ -229,17 +254,20 @@ def capture_screenshot(pictures_dir: str | Path, timeout: int = 45,
                    "org.freedesktop.portal.Request", "Response", receiver, slot)
     if "code" not in result:
         if cancelled["value"] or (cancel_event and cancel_event.is_set()):
-            raise RuntimeError("A captura foi cancelada; nenhum arquivo foi salvo.")
-        raise TimeoutError("A captura expirou ou o portal aguarda uma ação do sistema.")
+            raise ScreenshotPortalError("cancelled", "A captura foi cancelada; nenhum arquivo foi salvo.")
+        raise ScreenshotPortalError("response_wait", "A captura expirou ou o portal aguarda uma ação do sistema.")
     if result["code"] != 0:
-        raise RuntimeError("A captura foi cancelada pelo portal ou pelo usuário.")
+        raise ScreenshotPortalError("portal_response", "A captura foi cancelada pelo portal ou pelo usuário.")
     uri = result["data"].get("uri")
     if not uri:
-        raise RuntimeError("O portal concluiu sem informar o arquivo da captura.")
+        raise ScreenshotPortalError("portal_response", "O portal concluiu sem informar o arquivo da captura.")
     # A successful portal response is the capture's commit point. Finish the
     # local copy even if the user interrupts immediately afterwards; otherwise
     # a completed capture could be discarded and misreported as cancelled.
-    return save_screenshot_uri(str(uri), pictures_dir)
+    try:
+        return save_screenshot_uri(str(uri), pictures_dir)
+    except Exception as exc:
+        raise ScreenshotPortalError("save", str(exc)) from exc
 
 
 def _append_action_log(action: str, outcome: str, details: dict | None = None) -> None:
@@ -557,6 +585,8 @@ def obs_record(action: str, password: str = "", host: str = "127.0.0.1", port: i
             from aurora_core.system.apps import launch_application
             launch_result = launch_application("OBS Studio")
             if not launch_result.startswith("Solicitei a abertura"):
+                _append_action_log("obs_record", "unavailable", {"action": action,
+                                    "phase": "launch", "error_type": "LaunchRejected"})
                 return f"Não consegui iniciar o OBS: {launch_result}"
             startup_deadline = time.monotonic() + OBS_STARTUP_TIMEOUT
             stream = None
@@ -569,6 +599,8 @@ def obs_record(action: str, password: str = "", host: str = "127.0.0.1", port: i
                 except OSError:
                     time.sleep(0.2)
             if stream is None:
+                _append_action_log("obs_record", "unavailable", {"action": action,
+                                    "phase": "startup", "error_type": "TimeoutError"})
                 return ("Abri o OBS, mas o WebSocket não ficou disponível. Confira se o servidor "
                         f"está ativo na porta {port}; não iniciei a gravação.")
         # Startup has its own bounded wait. Start the short protocol deadline

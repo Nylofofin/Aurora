@@ -18,6 +18,13 @@ def test_screenshot_portal_request_path_preserves_sender_prefix():
     )
 
 
+def test_screenshot_parent_identifier_uses_x11_hex_window_id():
+    assert integrations.screenshot_parent_identifier(0x12AB) == "x11:12ab"
+    assert integrations.screenshot_parent_identifier(0) == ""
+    assert integrations.screenshot_parent_identifier(None) == ""
+    assert integrations.screenshot_parent_identifier(0x12AB, "wayland") == ""
+
+
 def test_screenshot_portal_uses_qt_encoded_slot_signature():
     from PySide6.QtCore import QObject, Slot
 
@@ -96,27 +103,33 @@ def test_screenshot_is_saved_if_portal_completed_before_cancel_arrived(monkeypat
             ErrorMessage = object()
         @staticmethod
         def createMethodCall(*_args): return Message()
-        def setArguments(self, _args): pass
+        def setArguments(self, args): self.arguments = args
         def type(self): return object()
         def errorMessage(self): return ""
 
     class Bus:
+        calls = []
         def isConnected(self): return True
         def baseService(self): return ":1.42"
         def connect(self, _service, _path, _interface, _signal, receiver, _slot):
             holder["receiver"] = receiver
             return True
         def disconnect(self, *_args): pass
-        def call(self, *_args): return Message()
+        def call(self, message, *_args):
+            self.calls.append(message)
+            return Message()
 
+    bus = Bus()
     monkeypatch.setattr(QtCore, "QEventLoop", Loop)
     monkeypatch.setattr(QtCore, "QTimer", Timer)
     monkeypatch.setattr(QtDBus, "QDBusMessage", Message)
-    monkeypatch.setattr(QtDBus.QDBusConnection, "sessionBus", lambda: Bus())
-    saved = integrations.capture_screenshot(tmp_path / "Pictures", cancel_event=cancelled)
+    monkeypatch.setattr(QtDBus.QDBusConnection, "sessionBus", lambda: bus)
+    saved = integrations.capture_screenshot(tmp_path / "Pictures", cancel_event=cancelled,
+                                            parent_window="x11:abcd")
 
     assert saved.is_file()
     assert saved.read_bytes() == b"completed capture"
+    assert bus.calls[0].arguments[0] == "x11:abcd"
 
 
 
@@ -449,7 +462,9 @@ def test_obs_flatpak_disabled_server_gets_specific_setup_message(monkeypatch):
 
 
 def test_obs_start_launches_flatpak_after_approved_websocket_connection_fails(monkeypatch):
-    monkeypatch.setattr(integrations, "_append_action_log", lambda *_args, **_kwargs: None)
+    log = []
+    monkeypatch.setattr(integrations, "_append_action_log",
+                        lambda *args, **kwargs: log.append((args, kwargs)))
     monkeypatch.setattr(integrations, "_flatpak_obs_settings", lambda: {
         "server_enabled": True, "auth_required": True,
         "server_port": 4455, "server_password": "",
@@ -468,6 +483,9 @@ def test_obs_start_launches_flatpak_after_approved_websocket_connection_fails(mo
 
     assert launches == ["OBS Studio"]
     assert "não iniciei a gravação" in result.casefold()
+    assert log[-1][0][:2] == ("obs_record", "unavailable")
+    assert log[-1][0][2]["phase"] == "startup"
+    assert log[-1][0][2]["error_type"] == "TimeoutError"
 
 
 def test_obs_stop_never_launches_obs_when_websocket_is_down(monkeypatch):

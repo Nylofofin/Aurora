@@ -207,6 +207,32 @@ def test_screenshot_does_not_request_a_second_aurora_confirmation():
     assert stub.pending is None
 
 
+def test_approved_model_screenshot_uses_async_portal_worker():
+    detail = {"name": "take_screenshot", "args": {}, "event": threading.Event(),
+              "result": "Ação recusada."}
+
+    class Orb:
+        pending = True
+        def set_mode(self, _mode): pass
+
+    class Speaker:
+        def interrupt(self): pass
+
+    class ServiceStub:
+        pending = detail
+        orb = Orb()
+        speaker = Speaker()
+        voice = type("Voice", (), {})()
+        def _start_screenshot_action(self, received): self.started = received
+        def execute_action(self, *_args): raise AssertionError("must use the portal worker")
+
+    stub = ServiceStub()
+    service_module.AuroraService.resolve_approval(stub, True)
+
+    assert stub.pending is None
+    assert stub.started is detail
+
+
 def test_obs_approval_runs_off_the_gui_thread(monkeypatch):
     from PySide6.QtCore import QCoreApplication, QObject
     app = QCoreApplication.instance() or QCoreApplication([])
@@ -264,8 +290,9 @@ def test_direct_screenshot_runs_off_the_gui_thread_and_reports_saved_path(monkey
     observed = []
     saved_path = tmp_path / "Aurora_2026-10-22.png"
 
-    def fake_capture(_pictures, cancel_event=None):
+    def fake_capture(_pictures, cancel_event=None, parent_window=""):
         observed.append(threading.get_ident())
+        observed.append(parent_window)
         time.sleep(0.05)
         saved_path.write_bytes(b"image")
         return saved_path
@@ -273,8 +300,12 @@ def test_direct_screenshot_runs_off_the_gui_thread_and_reports_saved_path(monkey
     monkeypatch.setattr(service_module.aurora_integrations, "capture_screenshot", fake_capture)
     monkeypatch.setattr(service_module.aurora_integrations, "_append_action_log", lambda *_a, **_k: None)
     monkeypatch.setattr(service_module, "xdg_user_directory", lambda _kind: str(tmp_path))
+    monkeypatch.setattr(service_module.QApplication, "platformName", staticmethod(lambda: "xcb"))
 
     class Orb:
+        class View:
+            def winId(self): return 0x1234
+        view = View()
         def set_mode(self, _mode): pass
         def isVisible(self): return True
 
@@ -302,6 +333,7 @@ def test_direct_screenshot_runs_off_the_gui_thread_and_reports_saved_path(monkey
         time.sleep(0.01)
 
     assert observed and observed[0] != main_thread
+    assert observed[1] == "x11:1234"
     assert saved_path.read_bytes() == b"image"
     assert stub.completed == f"Salvei a captura em {saved_path}."
 
