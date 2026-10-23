@@ -2,6 +2,7 @@ from datetime import datetime
 import base64
 import hashlib
 import json
+import time
 import socket
 import threading
 
@@ -23,6 +24,26 @@ def test_screenshot_parent_identifier_uses_x11_hex_window_id():
     assert integrations.screenshot_parent_identifier(0) == ""
     assert integrations.screenshot_parent_identifier(None) == ""
     assert integrations.screenshot_parent_identifier(0x12AB, "wayland") == ""
+
+
+def test_gnome_saved_screenshot_is_recovered_after_lost_portal_reply(tmp_path):
+    source = tmp_path / "Screenshot-5.png"
+    source.write_bytes(b"portal-created-image")
+    recovered = integrations._recover_gnome_saved_screenshot(
+        tmp_path, time.time() - 2)
+
+    assert recovered is not None
+    assert recovered.parent == tmp_path / "Aurora"
+    assert recovered.read_bytes() == b"portal-created-image"
+    assert source.exists()
+
+
+def test_gnome_screenshot_recovery_does_not_guess_between_multiple_files(tmp_path):
+    (tmp_path / "Screenshot-5.png").write_bytes(b"one")
+    (tmp_path / "Screenshot-6.png").write_bytes(b"two")
+
+    assert integrations._recover_gnome_saved_screenshot(
+        tmp_path, time.time() - 2) is None
 
 
 def test_screenshot_portal_uses_qt_encoded_slot_signature():

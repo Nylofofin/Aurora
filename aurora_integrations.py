@@ -169,6 +169,28 @@ class ScreenshotPortalError(RuntimeError):
         self.phase = phase
 
 
+def _recover_gnome_saved_screenshot(pictures_dir: str | Path, request_started_at: float) -> Path | None:
+    """Recover the sole new GNOME Screenshot file when its portal reply is lost."""
+    root = Path(pictures_dir).expanduser()
+    try:
+        candidates = [
+            path for path in root.iterdir()
+            if path.is_file() and path.name.casefold().startswith("screenshot")
+            and path.suffix.casefold() in {".png", ".jpg", ".jpeg", ".webp"}
+            and path.stat().st_size > 0
+            and path.stat().st_mtime >= request_started_at - 1.0
+        ]
+    except OSError:
+        return None
+    # Never guess if another screenshot appeared during the same interval.
+    if len(candidates) != 1:
+        return None
+    try:
+        return save_screenshot_uri(candidates[0].resolve().as_uri(), root)
+    except (OSError, ValueError):
+        return None
+
+
 def screenshot_parent_identifier(window_id: int | str | None, platform: str = "xcb") -> str:
     """Format an X11 window ID for XDG portals, or return no parent."""
     if str(platform).casefold() != "xcb":
@@ -218,6 +240,7 @@ def capture_screenshot(pictures_dir: str | Path, timeout: int = 45,
         "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
         "org.freedesktop.portal.Screenshot", "Screenshot")
     message.setArguments([str(parent_window or ""), {"handle_token": token, "interactive": False, "modal": True}])
+    request_started_at = time.time()
     try:
         reply = bus.call(message, QDBus.CallMode.BlockWithGui, 5000)
     except Exception as exc:
@@ -255,6 +278,9 @@ def capture_screenshot(pictures_dir: str | Path, timeout: int = 45,
     bus.disconnect("org.freedesktop.portal.Desktop", request_path,
                    "org.freedesktop.portal.Request", "Response", receiver, slot)
     if "code" not in result:
+        recovered = _recover_gnome_saved_screenshot(pictures_dir, request_started_at)
+        if recovered:
+            return recovered
         if cancelled["value"] or (cancel_event and cancel_event.is_set()):
             raise ScreenshotPortalError("cancelled", "A captura foi cancelada; nenhum arquivo foi salvo.")
         raise ScreenshotPortalError("response_wait", "A captura expirou ou o portal aguarda uma ação do sistema.")
