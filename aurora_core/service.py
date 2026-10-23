@@ -6,7 +6,7 @@ from PySide6.QtMultimedia import QSoundEffect
 from PySide6.QtWidgets import QApplication
 from datetime import datetime
 from urllib.parse import urlparse
-import json, os, re, threading, time, urllib.error, urllib.request
+import json, os, re, sys, threading, time, urllib.error, urllib.request
 import aurora_fx
 import aurora_integrations
 from .config import APP_DIR, hardware_profile, local_endpoint, settings_load, settings_save
@@ -518,7 +518,9 @@ class AuroraService(QObject):
         worker=self.sender()
         if worker in self.action_workers: self.action_workers.remove(worker)
         detail=self.obs_details.pop(worker,None)
-        if detail is None: return
+        if detail is None:
+            self._settle_stale_controlling_mode()
+            return
         detail['result']='A ação terminou sem retornar um resultado confirmado.'
         if detail.get('event'): detail['event'].set()
         current=detail.get('request_generation')==self.request_generation
@@ -526,6 +528,20 @@ class AuroraService(QObject):
         cancelled=bool(detail.get('cancel_event') and detail['cancel_event'].is_set())
         if detail.get('direct') and current and not cancelled and self.voice.request_active.is_set():
             self.complete_direct_action(detail['result'])
+        self._settle_stale_controlling_mode()
+
+    def _settle_stale_controlling_mode(self):
+        if not self.orb.isVisible() or getattr(self.orb,'mode',None)!='controlling': return
+        if any(worker.isRunning() for worker in self.action_workers): return
+        if self.pending: mode='approval'
+        elif self.inf and self.inf.isRunning(): mode='thinking'
+        elif self.speaker.playing: mode='speaking'
+        elif self.speaker.active or not self.speaker.q.empty(): mode='preparing'
+        elif self.voice.request_active.is_set(): mode='listening'
+        else: mode='idle'
+        self.orb.set_mode(mode)
+        print(f'[automation] stale controlling mode recovered to {mode}',file=sys.stderr,flush=True)
+        if mode=='idle': self.schedule_dismiss(900)
 
     @Slot(object,object)
     def _screenshot_action_result(self,ok,result):
@@ -542,6 +558,7 @@ class AuroraService(QObject):
         if current and self.orb.isVisible(): self.orb.set_mode('thinking')
         if detail.get('direct') and current and not cancelled and self.voice.request_active.is_set():
             self.complete_direct_action(detail['result'])
+        self._settle_stale_controlling_mode()
     @Slot(object,object)
     def _obs_action_result(self,ok,result):
         worker=self.sender()
@@ -556,6 +573,7 @@ class AuroraService(QObject):
         if current and self.orb.isVisible(): self.orb.set_mode('thinking')
         if detail.get('direct') and current and not cancelled and self.voice.request_active.is_set():
             self.complete_direct_action(detail['result'])
+        self._settle_stale_controlling_mode()
     def execute_action(self,name,args):
         audited={'open_application','close_application','manage_window','volume_control',
                  'system_info','get_system_info','create_file','remember_preference','forget_preference'}

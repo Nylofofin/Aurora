@@ -411,6 +411,36 @@ def test_action_watchdog_cancels_worker_and_exits_controlling_state():
     assert stub.orb.modes == ["error"]
 
 
+def test_completed_action_recovers_stale_controlling_mode():
+    from PySide6.QtCore import QObject
+
+    class Orb:
+        mode = "controlling"
+        def __init__(self): self.modes = []
+        def isVisible(self): return True
+        def set_mode(self, mode): self.mode = mode; self.modes.append(mode)
+
+    class ServiceStub(service_module.AuroraService):
+        def __init__(self):
+            QObject.__init__(self)
+            self.orb = Orb()
+            self.action_workers = []
+            self.pending = None
+            self.inf = None
+            self.speaker = type("Speaker", (), {
+                "playing": False, "active": False, "q": type("Queue", (), {"empty": lambda _self: True})()
+            })()
+            self.voice = type("Voice", (), {"request_active": threading.Event()})()
+            self.dismiss_delays = []
+        def schedule_dismiss(self, delay): self.dismiss_delays.append(delay)
+
+    stub = ServiceStub()
+    stub._settle_stale_controlling_mode()
+
+    assert stub.orb.mode == "idle"
+    assert stub.dismiss_delays == [900]
+
+
 def test_tapping_pending_approval_interrupts_voice_before_execution():
     sequence = []
     class Speaker:
