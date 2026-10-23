@@ -45,19 +45,30 @@ As configurações ativas ficam em `~/.config/aurora/aurora-settings.json`, com 
 
 ### Testes da busca
 
-Rode a suíte local de parsers, intenção, atualidade, relevância, fontes independentes e cache com `./.venv/bin/python -m pytest -q tests/web`. As respostas HTML de teste ficam em `tests/web/fixtures/`; os testes não fazem requisições à internet.
+Rode a suíte local de parsers, intenção, atualidade, relevância, fontes independentes e cache com `./.venv/bin/python -m pytest -q tests/web`. As respostas HTML de teste ficam em `tests/web/fixtures/`; os testes não fazem requisições à internet. Para avaliar a busca real, o harness executa o caminho de decisão e resposta de `AuroraService.ask`, sem microfone, GUI ou execução de automações. As 553 perguntas ficam em `tests/eval/questions.txt`; a revisão da correção factual continua humana.
+
+Exemplo de avaliação com trace Markdown e métricas JSONL, gravados incrementalmente:
+
+```sh
+./.venv/bin/python scripts/eval_search.py --de 1 --ate 30 \
+  --out reports/eval-001-030.md --jsonl reports/eval-001-030.jsonl
+```
+
+O JSONL registra decisão de busca, latência total, tentativas por provedor, contagens de filtros, páginas candidatas e resposta. Para comparar resultados, escolha o mesmo intervalo, salve cada rodada em arquivos novos e compare latência, fontes/datas e resposta; não trate velocidade sozinha como aprovação.
 
 ### Desenvolver e diagnosticar
 
 - Suíte completa: `./.venv/bin/python -m pytest -q`.
 - Compilação: `./.venv/bin/python -m compileall -q aurora.py aurora_core aurora_fx.py aurora_integrations.py scripts`.
+- Checagem reproduzível antes de release: `scripts/check-desktop-release.sh` (compilação, suíte completa e sintaxe Bash). O GitHub Actions roda a mesma checagem em pushes e pull requests; ela não publica releases.
+- Para instalar dependências de desenvolvimento em um ambiente limpo: `python -m pip install -r requirements-dev.txt`. O `requirements.txt` contém apenas dependências de execução.
 - Rodar na sessão gráfica: `./run.sh` (ou `./start-alpha.sh`, que inicia Ollama se necessário e disponível).
 - Ver logs do serviço: `journalctl --user -u aurora.service -f`.
 - O arquivo legado `requirements-control.txt` ainda lista `pyautogui`, mas nenhuma ferramenta da Aurora o utiliza ou expõe; a dependência ficou fora do caminho de instalação. A remoção do arquivo é uma decisão pendente conforme a regra do projeto. O controle de janelas depende de `wmctrl`/`xdotool` quando presentes.
 
 ## Voz
 
-O reconhecimento local Vosk fica ouvindo a palavra de ativação “Aurora”, em blocos de 200 ms. Após a ativação, captura um pedido e não reabre a escuta até outro wake word. Enquanto processa e fala a resposta, mantém um reconhecedor local pequeno para comandos de interrupção: “para”, “pare”, “cancelar”, “interrompa”, “chega”, “espera”, “corta” e frases como “não, calma, para”. O botão direito na bolha também interrompe fala e pedido. Ao tocar na bolha para aprovar uma ação, a fala de permissão é cortada antes da execução. A fala padrão é português brasileiro (`pt-BR`); um pedido explícito para falar outro idioma vale para aquela resposta, e uma nova ativação volta ao português. Cada trecho reconhecido é enviado ao reconhecimento de fala do Google (`recognize_google`, idioma `pt-BR`) com timeout de 2 s e fallback para a transcrição local. O texto da resposta é convertido em voz pelo Edge TTS com `pt-BR-ThalitaMultilingualNeural` (Thalita Multilingual), não Francisca. Se uma frase gerada vier em inglês sem ter sido solicitada, Aurora tenta traduzi-la localmente para o idioma escolhido. Emojis e descrições comuns de emoji são removidos da voz. O áudio do pedido vai ao Google e a resposta escrita vai ao serviço online do Edge TTS; a detecção da palavra de ativação, da interrupção e os modelos Gemma continuam locais. `./setup-voice.sh` instala as dependências e baixa o modelo Vosk pequeno em português para `assets/vosk-model`.
+O reconhecimento local Vosk fica ouvindo a palavra de ativação “Aurora”, em blocos de 200 ms. Após a ativação, captura um pedido e não reabre a escuta até outro wake word. Enquanto processa e fala a resposta, mantém um reconhecedor local pequeno para comandos de interrupção: “para”, “pare”, “cancelar”, “interrompa”, “chega”, “espera”, “corta” e frases como “não, calma, para”. O botão direito na bolha também interrompe fala e pedido. Ao tocar na bolha para aprovar uma ação, a fala de permissão é cortada antes da execução. A fala padrão é português brasileiro (`pt-BR`); um pedido explícito para falar outro idioma vale para aquela resposta, e uma nova ativação volta ao português. Cada trecho reconhecido é enviado ao reconhecimento de fala do Google (`recognize_google`, idioma `pt-BR`) com timeout de 2 s e fallback para a transcrição local. O texto da resposta é convertido em voz pelo Edge TTS com `pt-BR-ThalitaMultilingualNeural` (Thalita Multilingual), não Francisca. Se uma frase gerada vier em inglês sem ter sido solicitada, Aurora tenta traduzi-la localmente para o idioma escolhido. Emojis e descrições comuns de emoji são removidos da voz. O áudio do pedido vai ao Google e a resposta escrita vai ao serviço online do Edge TTS; a detecção da palavra de ativação, da interrupção e os modelos Gemma continuam locais. O journal registra tempos por etapa (`stt`, primeira resposta do Gemma, turno do modelo e primeiro áudio/voz completa), sem armazenar áudio ou transcrição; consulte `journalctl --user -u aurora.service`. `./setup-voice.sh` instala as dependências e baixa o modelo Vosk pequeno em português para `assets/vosk-model`.
 
 ## Agente interno
 

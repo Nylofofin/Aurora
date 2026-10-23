@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 import shutil
+import subprocess
 import urllib.request
 
 from ..config import VOSK_PATH, local_endpoint
@@ -79,10 +80,30 @@ def _desktop_status() -> str:
     return session
 
 
+def _service_status() -> str:
+    """Read the user unit state without starting, stopping, or changing it."""
+    systemctl = shutil.which("systemctl")
+    if not systemctl:
+        return "serviço systemd --user: systemctl ausente"
+    try:
+        result = subprocess.run(
+            [systemctl, "--user", "show", "aurora.service", "--property=ActiveState,UnitFileState", "--value"],
+            capture_output=True, text=True, timeout=1.5, check=False,
+        )
+        if result.returncode:
+            return "serviço systemd --user: unidade não encontrada ou sessão indisponível"
+        values = [value.strip() for value in result.stdout.splitlines()]
+        active = values[0] if values else "unknown"
+        enabled = values[1] if len(values) > 1 else "unknown"
+        return f"serviço systemd --user: {active}, inicialização {enabled}"
+    except (OSError, subprocess.SubprocessError):
+        return "serviço systemd --user: não foi possível consultar"
+
+
 def run_local_diagnostics(cfg: dict) -> str:
     """Summarize local prerequisites without sending data or changing state."""
     if not isinstance(cfg, dict):
         cfg = {}
     return "Diagnóstico experimental, somente leitura: " + "; ".join(
-        (_ollama_status(cfg), _voice_status(), _desktop_status())
+        (_ollama_status(cfg), _voice_status(), _desktop_status(), _service_status())
     ) + ". Não testei reconhecimento online, voz Edge, OBS ou Spotify."

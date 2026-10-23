@@ -105,3 +105,20 @@ def test_diagnostics_warn_when_wayland_has_no_xwayland(monkeypatch):
     result = diagnostics.run_local_diagnostics({"endpoint": "http://127.0.0.1:11434"})
 
     assert "Wayland sem XWayland" in result
+
+
+def test_service_diagnostics_only_reads_user_unit_state(monkeypatch):
+    monkeypatch.setattr(diagnostics.shutil, "which", lambda _name: "/usr/bin/systemctl")
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append((args, kwargs))
+        return SimpleNamespace(returncode=0, stdout="active\nenabled\n")
+
+    monkeypatch.setattr(diagnostics.subprocess, "run", fake_run)
+
+    result = diagnostics._service_status()
+
+    assert result == "serviço systemd --user: active, inicialização enabled"
+    assert calls[0][0][1:4] == ["--user", "show", "aurora.service"]
+    assert calls[0][1]["timeout"] <= 2
