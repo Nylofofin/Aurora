@@ -175,6 +175,31 @@ class CompanionClient(
         request("POST", "/v1/screen/stop", JSONObject())
     }
 
+    fun sendDesktopInput(action: String, x: Float, y: Float, button: Int = 1, delta: Float = 0f): Boolean {
+        return runCatching {
+            val payload = JSONObject().apply {
+                put("action", action)
+                put("x", x.toDouble())
+                put("y", y.toDouble())
+                put("button", button)
+                put("delta", delta.toDouble())
+            }
+            request("POST", "/v1/desktop/input", payload).optBoolean("success", false)
+        }.getOrDefault(false)
+    }
+
+    fun sendUserProfile(username: String, age: String, avatar: String = "", theme: String = ""): Boolean {
+        return runCatching {
+            val payload = JSONObject().apply {
+                put("username", username)
+                put("age", age)
+                put("avatar", avatar)
+                put("theme", theme)
+            }
+            request("POST", "/v1/user/profile", payload).optBoolean("success", false)
+        }.getOrDefault(false)
+    }
+
     fun screenFrame(after: Int): PcScreenFrame? {
         require(!token.isNullOrBlank()) { "Este celular ainda não está pareado com o PC." }
         val url = URL(baseUrl + "/v1/screen/frame?after=" + after.coerceAtLeast(0))

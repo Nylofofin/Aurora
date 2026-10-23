@@ -307,6 +307,12 @@ class CompanionServer:
                 if path in {"/v1/screen/start", "/v1/screen/stop"}:
                     self._post_screen_stream(path)
                     return
+                if path == "/v1/desktop/input":
+                    self._post_desktop_input()
+                    return
+                if path == "/v1/user/profile":
+                    self._post_user_profile()
+                    return
                 try:
                     payload = self._body()
                 except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
@@ -563,6 +569,52 @@ class CompanionServer:
                 else:
                     outer.screen_stream.stop()
                     self._json(200, {"state": "stopping"})
+
+            def _post_desktop_input(self):
+                if not self._authorized():
+                    self._json(401, {"error": "unauthorized"})
+                    return
+                _, _, token = self.headers.get("Authorization", "").partition(" ")
+                if not outer.owns_control(token):
+                    self._json(409, {"error": "mobile control not acquired"})
+                    return
+                try:
+                    payload = self._body()
+                    if not isinstance(payload, dict):
+                        self._json(400, {"error": "invalid json"})
+                        return
+                    action = str(payload.get("action", "move"))
+                    x = float(payload.get("x", 0.0))
+                    y = float(payload.get("y", 0.0))
+                    button = int(payload.get("button", 1))
+                    delta = float(payload.get("delta", 0.0))
+                    from ..system.remote_input import inject_remote_event
+                    ok = inject_remote_event(action, x, y, button, delta)
+                    self._json(200 if ok else 500, {"success": ok})
+                except Exception as exc:
+                    self._json(400, {"error": str(exc)})
+
+            def _post_user_profile(self):
+                if not self._authorized():
+                    self._json(401, {"error": "unauthorized"})
+                    return
+                try:
+                    payload = self._body()
+                    if not isinstance(payload, dict):
+                        self._json(400, {"error": "invalid json"})
+                        return
+                    username = str(payload.get("username", "")).strip()
+                    age = str(payload.get("age", "")).strip()
+                    from ..memory import user_memory_update
+                    if username:
+                        user_memory_update(f"O nome do usuário é {username}")
+                    if age:
+                        user_memory_update(f"A idade do usuário é {age} anos")
+                    profile_file = outer.directory / "user_profile.json"
+                    _write_private(profile_file, json.dumps(payload, ensure_ascii=False, indent=2))
+                    self._json(200, {"success": True, "saved_profile": payload})
+                except Exception as exc:
+                    self._json(400, {"error": str(exc)})
 
         self.httpd = ThreadingHTTPServer((address, self.port), Handler)
         self.httpd.daemon_threads = True

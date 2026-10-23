@@ -1,7 +1,7 @@
-# Aurora — POLARIS-CONVERGENCE
+# Aurora — NOVA-TOUCH
 
-**Versão:** `1.1.0` (release estável integrada PC e celular) · **Build:** `AUR-20261023.G2.RELEASE`
-**Geração:** `2` · **Codinome técnico:** `POLARIS-CONVERGENCE` — assistente local-first com Gemma via Ollama e integração móvel completa.
+**Versão:** `1.2.0` (release estável integrada PC e celular com Desktop Remoto Touch) · **Build:** `AUR-20261023.G3.RELEASE`
+**Geração:** `3` · **Codinome técnico:** `NOVA-TOUCH` — assistente local-first com Gemma via Ollama, Desktop Remoto Touch e modo Live contínuo.
 
 > **Release pessoal para Linux desktop.** A versão 1.0.2 reúne correções de idioma e automação do OBS. A Aurora confirma que a gravação parou antes de encerrar o OBS Flatpak. O OBS é iniciado com pedido de minimização para bandeja; gravação sem janela depende da configuração do próprio OBS e do ambiente gráfico. Não inclui pacote Flatpak/RPM nem atualizador automático. O código-fonte está publicado no GitHub.
 

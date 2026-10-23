@@ -33,6 +33,17 @@ def route_request(self,prompt):
     local_answer=local_datetime_answer(prompt)
     if local_answer:
         self.quick_summary_done(local_answer,self.request_generation); return
+    lower_prompt = prompt.lower().strip()
+    if re.search(r'\b(mostre|mostrar|abrir|ver|espelhar)\s+(meu\s+)?(computador|pc|desktop|tela)\b', lower_prompt):
+        if getattr(self, 'screen_stream', None):
+            self.screen_stream.start()
+        self.quick_summary_done("Abrindo o desktop remoto. Você já pode visualizar e controlar a tela do computador com toque pelo celular.", self.request_generation)
+        return
+    if re.search(r'\b(sair\s+do\s+desktop|fechar\s+(o\s+)?desktop|encerrar\s+(o\s+)?desktop|fechar\s+tela)\b', lower_prompt):
+        if getattr(self, 'screen_stream', None):
+            self.screen_stream.stop()
+        self.quick_summary_done("Encerrando a transmissão do desktop e voltando ao modo live normal.", self.request_generation)
+        return
     normalized=normalize_words(prompt)
     asks_hardware_temperature=bool(re.search(r'\b(cpu|gpu|processador|placa de video|computador|pc|hardware|placa grafica)\b',normalized))
     if not asks_hardware_temperature and re.search(r'\b(tempo|clima|previs[aã]o|temperatura|vai chover|chove)\b',prompt,re.I):

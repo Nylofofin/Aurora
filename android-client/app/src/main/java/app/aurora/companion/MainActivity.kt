@@ -1,10 +1,8 @@
 package app.aurora.companion
 
 import android.Manifest
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -18,10 +16,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.core.content.ContextCompat
-import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -39,9 +33,12 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -66,13 +63,20 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DrawerValue
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
@@ -95,35 +99,23 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.Dispatchers
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-
-private val Ink = Color(0xFFF7F5FA)
-private val Panel = Color(0xFFFFFFFF)
-private val Muted = Color(0xFF777387)
-private val Violet = Color(0xFF8A70C4)
-private val Blue = Color(0xFF579BC2)
-private val Pearl = Color(0xFF29263A)
-private val SoftLilac = Color(0xFFEAE3F5)
-private val SoftBlue = Color(0xFFE0F0F7)
-
-private fun playPhoneClick(view: View) {
-    view.playSoundEffect(SoundEffectConstants.CLICK)
-}
 
 data class ChatLine(val fromUser: Boolean, val text: String)
 
@@ -131,7 +123,6 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: AuroraViewModel by viewModels()
 
-    // Launcher para pedir permissão de microfone no auto-start da escuta contínua
     private val micPermLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -140,26 +131,23 @@ class MainActivity : ComponentActivity() {
                 viewModel.startWakeListener()
             }
         } else {
-            viewModel.notice = "Conceda permissão de microfone para a escuta contínua funcionar."
+            viewModel.notice = "Permissão de microfone necessária para escuta contínua."
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            AuroraShell(viewModel = viewModel)
+            val colors = AuroraThemes.getTheme(viewModel.currentThemeName)
+            AuroraAppRoot(viewModel = viewModel, colors = colors)
         }
 
-        // ── Auto-start da escuta contínua ────────────────────────────────────
-        // Ao abrir o app, se a permissão já foi concedida e o PC estiver conectado,
-        // inicia o WakeCaptureService (AudioRecord contínuo sem abrir/fechar).
         lifecycleScope.launch {
-            delay(800) // aguarda Activity estabilizar
+            delay(800)
             autoStartContinuousWake()
         }
     }
 
-    /** Inicia escuta contínua sem looping e sem piscar microfone */
     private fun autoStartContinuousWake() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             if (viewModel.connected) {
@@ -184,1004 +172,799 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun AuroraShell(viewModel: AuroraViewModel) {
-    val appContext = LocalContext.current
-    val rootView = LocalView.current
-    val scope = rememberCoroutineScope()
-    val drawerState = rememberDrawerState(DrawerValue.Closed)
-
-    var showConnect by remember { mutableStateOf(false) }
-    var showOverlayPermissionDialog by remember { mutableStateOf(false) }
-    var draft by remember { mutableStateOf("") }
-    val composerFocusRequester = remember { FocusRequester() }
-    val keyboardController = LocalSoftwareKeyboardController.current
-
-    val overlayPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
+private fun AuroraAppRoot(viewModel: AuroraViewModel, colors: AuroraColors) {
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = colors.background,
     ) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(appContext)) {
-            viewModel.notice = "Permissão de bolha flutuante concedida."
-        }
-    }
-
-    val micPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) {
-            viewModel.startWakeListener()
+        if (!viewModel.userProfile.isLoggedIn) {
+            LoginBarrierScreen(viewModel = viewModel, colors = colors)
         } else {
-            viewModel.notice = "A ativação por voz precisa da permissão de microfone."
+            MainAppScaffold(viewModel = viewModel, colors = colors)
         }
     }
+}
 
-    val alwaysOnWakePermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { grants ->
-        if (grants[Manifest.permission.RECORD_AUDIO] == true) {
-            viewModel.startAlwaysOnWake()
-        } else {
-            viewModel.notice = "A escuta permanente precisa de permissão de microfone."
-        }
-    }
+@Composable
+private fun LoginBarrierScreen(viewModel: AuroraViewModel, colors: AuroraColors) {
+    var nameInput by remember { mutableStateOf("") }
+    var ageInput by remember { mutableStateOf("") }
+    var selectedAvatar by remember { mutableStateOf("🌌") }
+    val avatars = listOf("🌌", "⚡", "✨", "🪐", "🐺", "🔮", "🚀")
 
-    DisposableEffect(appContext) {
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent?) {
-                when (intent?.action) {
-                    WakeCaptureService.ACTION_DETECTED -> {
-                        viewModel.stopWakeListener()
-                        if (viewModel.connected && !viewModel.busy) {
-                            playPhoneClick(rootView)
-                            viewModel.enterLiveMode()
-                            viewModel.startVoiceInteraction()
-                            viewModel.notice = "Ouvi Aurora! Estou ouvindo seu comando..."
-                        } else {
-                            viewModel.notice = "Ouvi Aurora. Conecte-se ao PC na mesma rede Wi-Fi."
-                        }
-                    }
-                    WakeCaptureService.ACTION_ERROR -> {
-                        val msg = intent.getStringExtra(WakeCaptureService.EXTRA_MESSAGE).orEmpty()
-                        viewModel.wakeFailure = msg
-                        viewModel.wakeListening = false
-                        viewModel.notice = "A escuta por voz foi interrompida: $msg"
-                    }
-                    AlwaysOnWakeService.ACTION_DETECTED -> {
-                        if (viewModel.connected && !viewModel.busy) {
-                            playPhoneClick(rootView)
-                            viewModel.enterLiveMode()
-                            viewModel.startVoiceInteraction()
-                            viewModel.notice = "Ouvi Aurora! Pode falar seu comando diretamente."
-                        } else {
-                            viewModel.notice = "Ouvi Aurora! Conecte-se ao seu PC para poder conversar."
-                            viewModel.resumeAlwaysOnWake()
-                        }
-                    }
-                    AlwaysOnWakeService.ACTION_ERROR -> {
-                        val msg = intent.getStringExtra(AlwaysOnWakeService.EXTRA_MESSAGE).orEmpty()
-                        viewModel.alwaysOnWakeActive = false
-                        viewModel.notice = "Escuta permanente: $msg"
-                    }
-                    FloatingBubbleService.ACTION_BUBBLE_DISMISSED -> {
-                        viewModel.leaveLiveMode(playExitSound = true)
-                    }
-                }
-            }
-        }
-        val filter = IntentFilter().apply {
-            addAction(WakeCaptureService.ACTION_DETECTED)
-            addAction(WakeCaptureService.ACTION_ERROR)
-            addAction(AlwaysOnWakeService.ACTION_DETECTED)
-            addAction(AlwaysOnWakeService.ACTION_ERROR)
-            addAction(FloatingBubbleService.ACTION_BUBBLE_DISMISSED)
-        }
-        if (Build.VERSION.SDK_INT >= 33) {
-            appContext.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            @Suppress("DEPRECATION")
-            appContext.registerReceiver(receiver, filter)
-        }
-        onDispose { appContext.unregisterReceiver(receiver) }
-    }
-
-    BackHandler(enabled = viewModel.liveMode) {
-        viewModel.leaveLiveMode()
-    }
-
-    fun handleEnterLiveMode() {
-        if (!viewModel.connected) {
-            showConnect = true
-            return
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(appContext)) {
-            val prefs = appContext.getSharedPreferences("aurora_ui_prefs", Context.MODE_PRIVATE)
-            val alreadyAsked = prefs.getBoolean("overlay_asked", false)
-            if (!alreadyAsked) {
-                prefs.edit().putBoolean("overlay_asked", true).apply()
-                showOverlayPermissionDialog = true
-            }
-        }
-        viewModel.enterLiveMode()
-    }
-
-    MaterialTheme {
-        ModalNavigationDrawer(
-            drawerState = drawerState,
-            gesturesEnabled = viewModel.connected && !viewModel.liveMode,
-            drawerContent = {
-                ModalDrawerSheet(drawerContainerColor = Panel, drawerContentColor = Pearl) {
-                    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 20.dp)) {
-                        Text("Aurora", color = Pearl, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
-                        Text("Conversas no seu PC", color = Muted, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp, bottom = 18.dp))
-                        Button(
-                            onClick = {
-                                viewModel.newConversation()
-                                scope.launch { drawerState.close() }
-                            },
-                            enabled = viewModel.connected && !viewModel.busy,
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Violet, contentColor = Pearl),
-                            shape = RoundedCornerShape(16.dp),
-                        ) { Text("＋  Nova conversa", fontWeight = FontWeight.SemiBold) }
-                        Row(
-                            Modifier.fillMaxWidth().padding(top = 22.dp, bottom = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            Text("Recentes", color = Muted, fontSize = 13.sp)
-                            TextButton(onClick = viewModel::refreshConversations, enabled = viewModel.connected && !viewModel.busy) {
-                                Text("Atualizar", color = Blue)
-                            }
-                        }
-                        if (viewModel.conversations.isEmpty()) {
-                            Text("Suas conversas aparecerão aqui.", color = Muted, fontSize = 13.sp, modifier = Modifier.padding(vertical = 12.dp))
-                        }
-                        LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
-                            items(viewModel.conversations, key = { it.id }) { item ->
-                                NavigationDrawerItem(
-                                    label = {
-                                        Text(item.title.ifBlank { "Conversa" }, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                    },
-                                    selected = item.id == viewModel.conversationId,
-                                    onClick = {
-                                        viewModel.openConversation(item.id)
-                                        scope.launch { drawerState.close() }
-                                    },
-                                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
-                                    colors = NavigationDrawerItemDefaults.colors(
-                                        selectedContainerColor = Violet.copy(alpha = 0.22f),
-                                        selectedTextColor = Pearl,
-                                        unselectedTextColor = Muted,
-                                    ),
-                                )
-                            }
-                        }
-                        TextButton(onClick = { scope.launch { drawerState.close() } }, modifier = Modifier.fillMaxWidth()) {
-                            Text("Fechar", color = Muted)
-                        }
-                    }
-                }
-            },
-        ) {
-            Box(Modifier.fillMaxSize()) {
-                Surface(color = Ink, modifier = Modifier.fillMaxSize()) {
-                    Column(
-                        modifier = Modifier.fillMaxSize().padding(WindowInsets.statusBars.asPaddingValues())
-                            .padding(WindowInsets.navigationBars.asPaddingValues()).imePadding()
-                    ) {
-                        TopBar(
-                            connected = viewModel.connected,
-                            remoteState = viewModel.remoteState,
-                            alwaysOnActive = viewModel.wakeListening || viewModel.alwaysOnWakeActive,
-                            onHistory = {
-                                if (viewModel.connected) {
-                                    viewModel.refreshConversations()
-                                    scope.launch { drawerState.open() }
-                                } else showConnect = true
-                            },
-                            onConnect = { showConnect = true },
-                            onDisconnect = viewModel::disconnectFromPc,
-                            onOrbClick = { if (viewModel.connected) handleEnterLiveMode() else showConnect = true },
-                            onToggleAlwaysOn = {
-                                if (viewModel.wakeListening) {
-                                    viewModel.stopWakeListener()
-                                    viewModel.notice = "Escuta contínua desativada."
-                                } else if (viewModel.connected) {
-                                    viewModel.startWakeListener()
-                                } else {
-                                    showConnect = true
-                                    viewModel.notice = "Conecte-se ao PC na mesma rede Wi-Fi para ativar a escuta contínua."
-                                }
-                            }
-                        )
-                        if (viewModel.lines.isEmpty()) {
-                            Welcome(
-                                modifier = Modifier.weight(1f),
-                                live = viewModel.live,
-                                working = viewModel.busy,
-                                connected = viewModel.connected,
-                                activity = if (viewModel.live) "listening" else viewModel.remoteState,
-                                onStartVoice = ::handleEnterLiveMode,
-                                onWrite = {
-                                    if (viewModel.connected) {
-                                        composerFocusRequester.requestFocus()
-                                        keyboardController?.show()
-                                    } else showConnect = true
-                                },
-                                onConnect = { showConnect = true },
-                            )
-                        } else {
-                            LazyColumn(
-                                modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 20.dp),
-                                verticalArrangement = Arrangement.spacedBy(18.dp),
-                                reverseLayout = false
-                            ) {
-                                items(viewModel.lines) { line -> MessageBubble(line) }
-                            }
-                            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
-                                horizontalArrangement = Arrangement.Center) {
-                                OrbButton(
-                                    viewModel.live || viewModel.busy,
-                                    Modifier.size(54.dp),
-                                    activity = if (viewModel.live) "listening" else viewModel.remoteState,
-                                    onClick = ::handleEnterLiveMode
-                                )
-                            }
-                        }
-                        Composer(
-                            text = draft,
-                            connected = viewModel.connected,
-                            busy = viewModel.busy,
-                            liveMode = viewModel.liveMode,
-                            wakeListening = viewModel.wakeListening,
-                            screenActive = viewModel.showScreen,
-                            onText = { draft = it },
-                            onSend = {
-                                val msg = draft
-                                draft = ""
-                                viewModel.sendCurrentMessage(msg)
-                            },
-                            onNew = viewModel::newConversation,
-                            onToggleLive = {
-                                if (viewModel.liveMode) viewModel.leaveLiveMode() else handleEnterLiveMode()
-                            },
-                            onToggleWake = {
-                                playPhoneClick(rootView)
-                                if (viewModel.wakeListening) {
-                                    viewModel.stopWakeListener()
-                                } else if (!viewModel.connected) {
-                                    showConnect = true
-                                } else if (appContext.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                                    viewModel.startWakeListener()
-                                } else {
-                                    micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                }
-                            },
-                            onToggleScreen = {
-                                playPhoneClick(rootView)
-                                viewModel.toggleScreenView()
-                            },
-                            focusRequester = composerFocusRequester,
-                        )
-                        if (viewModel.notice.isNotBlank()) {
-                            Text(
-                                viewModel.notice,
-                                color = Muted,
-                                fontSize = 11.sp,
-                                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                    }
-                }
-                AnimatedVisibility(
-                    visible = viewModel.liveMode,
-                    modifier = Modifier.fillMaxSize(),
-                    enter = fadeIn(tween(180)) + scaleIn(initialScale = 0.78f, animationSpec = spring(dampingRatio = 0.72f, stiffness = 300f)),
-                    exit = fadeOut(tween(190)) + scaleOut(targetScale = 0.76f, animationSpec = spring(dampingRatio = 0.82f, stiffness = 330f)),
-                ) {
-                    LiveOverlay(
-                        modeActive = viewModel.liveMode,
-                        recording = viewModel.live,
-                        working = viewModel.busy,
-                        activity = viewModel.remoteState,
-                        startRequest = viewModel.voiceStartRequest,
-                        stopRequest = viewModel.voiceStopRequest,
-                        onOrbTap = { viewModel.startVoiceInteraction() },
-                        onExit = { viewModel.leaveLiveMode(playExitSound = true) },
-                        onRecording = { viewModel.live = it },
-                        onVoice = viewModel::sendVoiceAudio,
-                        onVoiceError = {
-                            viewModel.notice = it
-                            viewModel.resumeAlwaysOnWake()
-                        },
-                    )
-                }
-                AnimatedVisibility(
-                    visible = viewModel.showScreen,
-                    modifier = Modifier.fillMaxSize(),
-                    enter = fadeIn(tween(150)),
-                    exit = fadeOut(tween(120)),
-                ) {
-                    ScreenPreviewOverlay(
-                        frame = viewModel.screenBitmap,
-                        onClose = viewModel::toggleScreenView,
-                    )
-                }
-            }
-        }
-    }
-
-    if (showConnect) {
-        AlertDialog(
-            onDismissRequest = { showConnect = false },
-            containerColor = Panel,
-            title = { Text("Conectar ao PC", color = Pearl) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("O computador é quem executa a Aurora. Primeiro conecte os dois à mesma rede Wi-Fi.", color = Muted)
-                    Button(onClick = viewModel::findPc, enabled = !viewModel.discovering, colors = ButtonDefaults.buttonColors(containerColor = Panel)) {
-                        Text(if (viewModel.discovering) "Procurando na rede…" else "Encontrar meu PC automaticamente", color = Pearl)
-                    }
-                    ConnectField(viewModel.endpoint, { viewModel.endpoint = it }, "Endereço do servidor (ex.: https://192.168.1.10:8765)")
-                    if (viewModel.token.isBlank()) ConnectField(viewModel.pairingCode, { viewModel.pairingCode = it }, "Código de pareamento")
-                    ConnectField(viewModel.fingerprint, { viewModel.fingerprint = it }, "Impressão digital SHA-256 do certificado (64 caracteres)")
-                    Text("No PC, obtenha o código e a impressão digital em ~/.config/aurora/companion/. O pareamento usa HTTPS com certificado fixado; não exponha a porta do PC à internet.", color = Muted, fontSize = 12.sp)
-                    if (viewModel.notice.isNotBlank()) Text(viewModel.notice, color = if (viewModel.notice.startsWith("Não")) Color(0xFFFFA6AC) else Blue, fontSize = 12.sp)
-                }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    viewModel.connectToPc()
-                    showConnect = false
-                }, enabled = !viewModel.busy, colors = ButtonDefaults.buttonColors(containerColor = Violet)) {
-                    Text(if (viewModel.busy) "Conectando…" else "Parear com o PC")
-                }
-            },
-            dismissButton = { TextButton(onClick = { showConnect = false }) { Text("Cancelar", color = Muted) } }
-        )
-    }
-
-    if (showOverlayPermissionDialog) {
-        AlertDialog(
-            onDismissRequest = { showOverlayPermissionDialog = false },
-            containerColor = Panel,
-            title = { Text("Bolha flutuante da Aurora", color = Pearl) },
-            text = {
-                Text(
-                    "Para continuar ativa como uma bolha flutuante quando você sair do app no modo Live, a Aurora precisa da permissão \"Exibir sobre outros apps\".",
-                    color = Muted,
-                    fontSize = 14.sp
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(colors.background, colors.surface, colors.surfaceVariant)
                 )
-            },
-            confirmButton = {
+            )
+            .padding(24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+            colors = CardDefaults.cardColors(containerColor = colors.surface),
+            shape = RoundedCornerShape(28.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "Aurora AI",
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.primary
+                )
+                Text(
+                    text = "Seu assistente pessoal inteligente",
+                    fontSize = 13.sp,
+                    color = colors.textSecondary,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 20.dp)
+                )
+
+                Text(
+                    text = "Como devemos te chamar?",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = colors.textPrimary,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(8.dp))
+                BasicTextField(
+                    value = nameInput,
+                    onValueChange = { nameInput = it },
+                    textStyle = TextStyle(color = colors.textPrimary, fontSize = 16.sp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(colors.surfaceVariant)
+                        .padding(horizontal = 16.dp, vertical = 14.dp)
+                )
+
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    text = "Idade (opcional)",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = colors.textPrimary,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(8.dp))
+                BasicTextField(
+                    value = ageInput,
+                    onValueChange = { ageInput = it },
+                    textStyle = TextStyle(color = colors.textPrimary, fontSize = 16.sp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(colors.surfaceVariant)
+                        .padding(horizontal = 16.dp, vertical = 14.dp)
+                )
+
+                Spacer(Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    avatars.forEach { av ->
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(if (selectedAvatar == av) colors.primary.copy(alpha = 0.35f) else Color.Transparent)
+                                .border(1.dp, if (selectedAvatar == av) colors.primary else Color.Transparent, CircleShape)
+                                .clickable { selectedAvatar = av },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(av, fontSize = 20.sp)
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(24.dp))
                 Button(
                     onClick = {
-                        showOverlayPermissionDialog = false
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                            val intent = Intent(
-                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                Uri.parse("package:${appContext.packageName}")
-                            )
-                            overlayPermissionLauncher.launch(intent)
-                        }
+                        viewModel.completeLogin("local", nameInput, ageInput, selectedAvatar)
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Violet)
-                ) { Text("Permitir") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showOverlayPermissionDialog = false }) { Text("Agora não", color = Muted) }
-            }
-        )
-    }
-}
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
+                ) {
+                    Text("Começar com Conta Local", fontWeight = FontWeight.Bold, color = Color.White)
+                }
 
-@Composable
-private fun TopBar(
-    connected: Boolean,
-    remoteState: String,
-    alwaysOnActive: Boolean,
-    onHistory: () -> Unit,
-    onConnect: () -> Unit,
-    onDisconnect: () -> Unit,
-    onOrbClick: () -> Unit,
-    onToggleAlwaysOn: () -> Unit,
-) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            OrbButton(false, Modifier.size(38.dp), activity = if (connected) remoteState else "idle", onClick = onOrbClick)
-            Spacer(Modifier.width(11.dp))
-            Column {
-                Text("Aurora", color = Pearl, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                Text(if (connected) "${remoteStateLabel(remoteState)} · PC em pausa" else "Aguardando seu PC", color = Muted, fontSize = 11.sp)
+                Spacer(Modifier.height(10.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = {
+                            viewModel.completeLogin("google", nameInput.ifBlank { "Usuário Google" }, ageInput, "🌐")
+                        },
+                        modifier = Modifier.weight(1f).height(44.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.surfaceVariant)
+                    ) {
+                        Text("Google", fontSize = 12.sp, color = colors.textPrimary)
+                    }
+                    Button(
+                        onClick = {
+                            viewModel.completeLogin("github", nameInput.ifBlank { "Dev GitHub" }, ageInput, "🐙")
+                        },
+                        modifier = Modifier.weight(1f).height(44.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.surfaceVariant)
+                    ) {
+                        Text("GitHub", fontSize = 12.sp, color = colors.textPrimary)
+                    }
+                }
             }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Button(
-                onClick = onToggleAlwaysOn,
-                modifier = Modifier.heightIn(min = 40.dp),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (alwaysOnActive) Violet else SoftLilac,
-                    contentColor = if (alwaysOnActive) Color.White else Pearl,
-                ),
-                shape = RoundedCornerShape(16.dp),
-            ) {
-                Text(if (alwaysOnActive) "Sempre ativa" else "Ouvir", fontSize = 11.sp)
-            }
-            SmallAction("Chats", onHistory)
-            SmallAction(if (connected) "Desconectar" else "Conectar", if (connected) onDisconnect else onConnect)
-        }
-    }
-}
-
-private fun remoteStateLabel(state: String): String = when (state) {
-    "transcribing" -> "Entendendo sua voz"
-    "thinking" -> "Aurora pensando"
-    "searching" -> "Aurora pesquisando"
-    "preparing" -> "Preparando voz da Aurora"
-    "speaking" -> "Aurora falando"
-    "error" -> "Atenção necessária"
-    else -> "Celular conectado"
-}
-
-@Composable
-private fun Welcome(
-    modifier: Modifier = Modifier,
-    live: Boolean,
-    working: Boolean,
-    connected: Boolean,
-    activity: String,
-    onStartVoice: () -> Unit,
-    onWrite: () -> Unit,
-    onConnect: () -> Unit,
-) {
-    Column(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 26.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        OrbButton(live, Modifier.size(150.dp), activity, if (connected) onStartVoice else onConnect)
-        Spacer(Modifier.height(27.dp))
-        Text(
-            when {
-                live -> "Estou ouvindo você"
-                working -> "A Aurora está processando"
-                connected -> "Aurora conectada"
-                else -> "Oi, sou a Aurora"
-            },
-            color = Pearl, fontSize = 26.sp, fontWeight = FontWeight.Medium
-        )
-        Spacer(Modifier.height(9.dp))
-        Text(
-            if (connected) "Toque em Falar com a Aurora para começar. Você também pode escrever uma mensagem."
-            else "Conecte ao computador para conversar com sua assistente.",
-            color = Muted, textAlign = TextAlign.Center, fontSize = 15.sp, lineHeight = 22.sp
-        )
-        Spacer(Modifier.height(22.dp))
-        Button(
-            onClick = if (connected) onStartVoice else onConnect,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-            enabled = !live && !working,
-            colors = ButtonDefaults.buttonColors(containerColor = Violet, contentColor = Pearl),
-            shape = RoundedCornerShape(18.dp),
-        ) {
-            Text(
-                when {
-                    live -> "Gravando sua voz…"
-                    working -> "Aguarde a resposta…"
-                    connected -> "Falar com a Aurora"
-                    else -> "Conectar ao PC"
-                },
-                fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
-        if (connected) {
-            TextButton(onClick = onWrite, modifier = Modifier.heightIn(min = 48.dp)) {
-                Text("Escrever uma mensagem", color = Blue, fontSize = 14.sp)
-            }
-        }
-        if (live) {
-            Spacer(Modifier.height(18.dp))
-            Text("Toque em “Parar e enviar” no campo abaixo quando terminar.", color = Blue, fontSize = 12.sp, textAlign = TextAlign.Center)
         }
     }
 }
 
 @Composable
-private fun OrbButton(live: Boolean, modifier: Modifier, activity: String = if (live) "listening" else "idle", onClick: () -> Unit) {
-    val transition = rememberInfiniteTransition(label = "aurora-orb")
-    val pulseMillis = when (activity) {
-        "transcribing", "thinking", "preparing" -> 1050
-        "searching" -> 1450
-        "speaking" -> 720
-        "listening" -> 850
-        else -> 2500
-    }
-    val auraColor = when (activity) {
-        "searching" -> Blue
-        "speaking" -> Color(0xFFD9C7FF)
-        "thinking", "transcribing", "preparing" -> Violet
-        else -> if (live) Blue else Violet
-    }
-    val breathe by transition.animateFloat(
-        initialValue = 0.96f,
-        targetValue = if (activity == "speaking") 1.10f else if (live || activity != "idle") 1.065f else 1.025f,
-        animationSpec = infiniteRepeatable(tween(pulseMillis, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "orb-breathe"
-    )
-    val drift by transition.animateFloat(
-        initialValue = 0.15f,
-        targetValue = 0.85f,
-        animationSpec = infiniteRepeatable(tween(4600, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "orb-reflection"
-    )
-    val halo by transition.animateFloat(
-        initialValue = 1f,
-        targetValue = if (activity == "speaking") 1.50f else if (live || activity != "idle") 1.38f else 1.08f,
-        animationSpec = infiniteRepeatable(tween(pulseMillis, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "orb-halo-scale"
-    )
-    val haloAlpha by transition.animateFloat(
-        initialValue = if (live || activity != "idle") 0.32f else 0.10f,
-        targetValue = 0.01f,
-        animationSpec = infiniteRepeatable(tween(pulseMillis, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "orb-halo-alpha"
-    )
-    Box(modifier, contentAlignment = Alignment.Center) {
-        Box(Modifier.fillMaxSize().scale(halo).alpha(haloAlpha)
-            .border(1.dp, auraColor, CircleShape))
-        Box(Modifier.fillMaxSize().scale(breathe).clip(CircleShape).background(
-            Brush.linearGradient(
-                colors = listOf(Color(0xFFFFFFFF), Color(0xFFF0EAF8), Color(0xFFD7C8EF), Color(0xFFA9CFE4), Color(0xFF927BC9)),
-                start = Offset(0f, 0f),
-                end = Offset(380f * drift, 540f * (1f - drift))
-            )
-        ).border(1.dp, Color.White.copy(alpha = 0.42f), CircleShape)
-            .clickable(onClick = onClick), contentAlignment = Alignment.TopStart) {
-            Box(Modifier.fillMaxSize().background(
-                Brush.radialGradient(listOf(Color.White.copy(alpha = 0.72f), Color.White.copy(alpha = 0.08f), Color.Transparent), radius = 170f),
-                shape = CircleShape
-            ))
-            Box(Modifier.fillMaxWidth(0.62f).height(40.dp).padding(start = 20.dp, top = 13.dp)
-                .clip(CircleShape).alpha(0.7f).background(Brush.horizontalGradient(listOf(Color.White.copy(0.72f), Color.White.copy(0.02f)))))
-        }
-    }
-}
-
-@Composable
-private fun VoiceCaptureButton(
-    enabled: Boolean,
-    startRequest: Int = 0,
-    stopRequest: Int = 0,
-    label: String = "Voz",
-    onRecording: (Boolean) -> Unit,
-    onCaptured: (ByteArray) -> Unit,
-    onError: (String) -> Unit,
-) {
-    val appContext = LocalContext.current
+private fun MainAppScaffold(viewModel: AuroraViewModel, colors: AuroraColors) {
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    var active by remember { mutableStateOf(false) }
-    var stopping by remember { mutableStateOf(false) }
-    val currentCapture = remember { arrayOfNulls<PcmVoiceCapture>(1) }
 
-    val startCapture: () -> Unit = {
-        val serviceIntent = Intent(appContext, MicCaptureService::class.java).setAction(MicCaptureService.ACTION_START)
-        val foregroundStarted = try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) appContext.startForegroundService(serviceIntent)
-            else appContext.startService(serviceIntent)
-            true
-        } catch (error: Exception) {
-            onError(error.message ?: "Não consegui manter a gravação ativa em segundo plano.")
-            false
-        }
-        if (foregroundStarted) {
-            val capture = PcmVoiceCapture()
-            currentCapture[0] = capture
-            active = true
-            onRecording(true)
-            scope.launch {
-                try {
-                    // Delay para aguardar clique na tela ou som de entrada silenciar
-                    delay(350)
-                    val wav = withContext(Dispatchers.IO) { capture.captureWav() }
-                    if (currentCapture[0] === capture) {
-                        currentCapture[0] = null
-                        active = false
-                        stopping = false
-                        onRecording(false)
-                        if (wav.isNotEmpty()) {
-                            onCaptured(wav)
-                        } else {
-                            onError("Não ouvi seu comando. Diga \"Aurora\" ou toque para tentar.")
-                        }
-                    }
-                } catch (error: Exception) {
-                    if (currentCapture[0] === capture) {
-                        currentCapture[0] = null
-                        active = false
-                        stopping = false
-                        onRecording(false)
-                        onError(error.message ?: "Falha ao capturar o microfone.")
-                    }
-                } finally {
-                    runCatching { appContext.stopService(Intent(appContext, MicCaptureService::class.java)) }
-                }
-            }
-        }
-    }
-
-    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
-        if (grants[Manifest.permission.RECORD_AUDIO] == true) {
-            if (enabled) startCapture()
-        } else onError("Permita o microfone para usar a conversa por voz.")
-    }
-
-    val requestPermission: () -> Unit = {
-        val requested = buildList {
-            add(Manifest.permission.RECORD_AUDIO)
-            if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
-        }
-        permission.launch(requested.toTypedArray())
-    }
-
-    val checkAndStartCapture: () -> Unit = {
-        val hasMic = ContextCompat.checkSelfPermission(appContext, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-        if (hasMic) {
-            startCapture()
-        } else {
-            requestPermission()
-        }
-    }
-
-    var handledStartRequest by remember { mutableStateOf(0) }
-
-    // Ao entrar na tela do Live, inicia a escuta do comando do usuário IMEDIATAMENTE,
-    // sem precisar clicar no botão "Falar"
-    LaunchedEffect(Unit) {
-        if (enabled && !active && !stopping) {
-            checkAndStartCapture()
-        }
-    }
-
-    LaunchedEffect(startRequest) {
-        if (startRequest > handledStartRequest) {
-            handledStartRequest = startRequest
-            if (enabled && !active && !stopping) {
-                checkAndStartCapture()
-            }
-        }
-    }
-
-    LaunchedEffect(stopRequest) {
-        if (stopRequest > 0 && active) {
-            active = false
-            currentCapture[0]?.let { capture ->
-                currentCapture[0] = null
-                capture.stop()
-            }
-            onRecording(false)
-        }
-    }
-
-    DisposableEffect(Unit) { onDispose { currentCapture[0]?.stop() } }
-
-    Button(
-        onClick = {
-            if (active) {
-                stopping = true
-                active = false
-                onRecording(false)
-                currentCapture[0]?.stop()
-            } else {
-                checkAndStartCapture()
-            }
-        },
-        enabled = (enabled || active) && !stopping,
-        modifier = Modifier.heightIn(min = 48.dp),
-        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = if (active) Violet else Panel,
-            contentColor = Pearl,
-            disabledContainerColor = Panel,
-            disabledContentColor = Muted,
-        ),
-        shape = RoundedCornerShape(16.dp),
-    ) {
-        Text(
-            when { active -> "Parar e enviar"; stopping -> "Enviando…"; else -> label },
-            fontSize = 12.sp,
-            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
-        )
-    }
-}
-
-@Composable
-private fun Composer(
-    text: String,
-    connected: Boolean,
-    busy: Boolean,
-    liveMode: Boolean,
-    wakeListening: Boolean,
-    screenActive: Boolean,
-    onText: (String) -> Unit,
-    onSend: () -> Unit,
-    onNew: () -> Unit,
-    onToggleLive: () -> Unit,
-    onToggleWake: () -> Unit,
-    onToggleScreen: () -> Unit,
-    focusRequester: FocusRequester,
-) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
-        Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Panel)
-                .border(1.dp, Violet.copy(alpha = 0.14f), RoundedCornerShape(28.dp)).padding(9.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Button(
-                onClick = onToggleScreen,
-                enabled = connected || screenActive,
-                modifier = Modifier.size(44.dp).semantics {
-                    contentDescription = if (screenActive) "Parar transmissão da tela do PC" else "Mostrar a tela do PC"
-                },
-                contentPadding = PaddingValues(0.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (screenActive) Blue else SoftBlue,
-                    contentColor = if (screenActive) Color.White else Blue,
-                    disabledContainerColor = SoftBlue,
-                    disabledContentColor = Muted,
-                ),
-                shape = CircleShape,
-            ) { Text("PC", fontSize = 10.sp, fontWeight = FontWeight.SemiBold) }
-            Button(
-                onClick = onToggleWake,
-                enabled = connected || wakeListening,
-                modifier = Modifier.size(44.dp).semantics {
-                    contentDescription = if (wakeListening) "Desativar palavra de ativação" else "Ativar palavra de ativação Aurora"
-                },
-                contentPadding = PaddingValues(0.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (wakeListening) Violet else SoftLilac,
-                    contentColor = if (wakeListening) Color.White else Violet,
-                    disabledContainerColor = SoftLilac,
-                    disabledContentColor = Muted,
-                ),
-                shape = CircleShape,
-            ) { Text(if (wakeListening) "On" else "Mic", fontSize = 10.sp, fontWeight = FontWeight.SemiBold) }
-            TextButton(
-                onClick = onNew,
-                enabled = connected && !busy,
-                modifier = Modifier.heightIn(min = 48.dp),
-                contentPadding = PaddingValues(horizontal = 8.dp),
-            ) { Text("＋", color = Muted, fontSize = 22.sp) }
-            BasicTextField(
-                value = text,
-                onValueChange = onText,
-                enabled = connected && !busy,
-                modifier = Modifier.weight(1f).focusRequester(focusRequester).padding(vertical = 12.dp),
-                textStyle = TextStyle(color = Pearl, fontSize = 15.sp),
-                decorationBox = { inner ->
-                    Box {
-                        if (text.isEmpty()) Text(if (connected) "Mensagem para Aurora" else "Conecte ao PC para começar", color = Muted, fontSize = 14.sp)
-                        inner()
-                    }
-                }
-            )
-            WaveformButton(liveMode, connected && !busy, onToggleLive)
-            Button(
-                onClick = onSend,
-                enabled = connected && !busy && text.isNotBlank(),
-                modifier = Modifier.size(48.dp),
-                contentPadding = PaddingValues(0.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Violet, contentColor = Color.White),
-                shape = CircleShape,
-            ) { Text(if (busy) "…" else "↑", fontSize = 22.sp) }
-        }
-        Text("O processamento da Aurora acontece no computador pareado.", color = Muted.copy(alpha = 0.72f), fontSize = 10.sp,
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp), textAlign = TextAlign.Center)
-    }
-}
-
-@Composable
-private fun ScreenPreviewOverlay(frame: ImageBitmap?, onClose: () -> Unit) {
-    Box(
-        Modifier.fillMaxSize().background(Color(0xFF171520)),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (frame != null) {
-            Image(
-                bitmap = frame,
-                contentDescription = "Transmissão ao vivo da tela do PC Aurora",
-                modifier = Modifier.fillMaxSize().padding(top = 72.dp, bottom = 76.dp, start = 10.dp, end = 10.dp),
-                contentScale = ContentScale.Fit,
-            )
-        } else {
-            Text(
-                "Aguardando autorização no computador…",
-                color = Color.White,
-                modifier = Modifier.padding(28.dp),
-                textAlign = TextAlign.Center,
-            )
-        }
-        Row(
-            Modifier.align(Alignment.TopCenter).fillMaxWidth().background(Color(0xFF252330)).padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column {
-                Text("Tela do computador", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                Text("Compartilhamento protegido pelo portal do desktop", color = Color(0xFFD5D0E0), fontSize = 11.sp)
-            }
-            Button(
-                onClick = onClose,
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE8DDF5), contentColor = Pearl),
-                shape = RoundedCornerShape(18.dp),
-            ) { Text("Parar") }
-        }
-    }
-}
-
-@Composable
-private fun WaveformButton(liveMode: Boolean, enabled: Boolean, onClick: () -> Unit) {
-    Button(
-        onClick = onClick,
-        enabled = enabled || liveMode,
-        modifier = Modifier.size(48.dp).semantics {
-            contentDescription = if (liveMode) "Sair do modo Live" else "Entrar no modo Live"
-        },
-        contentPadding = PaddingValues(0.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = if (liveMode) Violet else Panel,
-            contentColor = Pearl,
-            disabledContainerColor = Panel,
-            disabledContentColor = Muted,
-        ),
-        shape = CircleShape,
-    ) {
-        if (liveMode) {
-            Text("×", fontSize = 26.sp, fontWeight = FontWeight.Light)
-        } else {
-            Canvas(Modifier.size(22.dp)) {
-                val heights = listOf(.28f, .52f, .82f, .48f, .94f, .56f, .3f)
-                val step = size.width / (heights.size * 1.7f)
-                val gap = step * .7f
-                heights.forEachIndexed { index, ratio ->
-                    val x = step / 2f + index * (step + gap)
-                    val half = size.height * ratio / 2f
-                    drawLine(
-                        color = if (enabled) Blue else Muted,
-                        start = Offset(x, size.height / 2f - half),
-                        end = Offset(x, size.height / 2f + half),
-                        strokeWidth = 2.4.dp.toPx(),
-                        cap = StrokeCap.Round,
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun LiveOverlay(
-    modeActive: Boolean,
-    recording: Boolean,
-    working: Boolean,
-    activity: String,
-    startRequest: Int,
-    stopRequest: Int,
-    onOrbTap: () -> Unit,
-    onExit: () -> Unit,
-    onRecording: (Boolean) -> Unit,
-    onVoice: (ByteArray) -> Unit,
-    onVoiceError: (String) -> Unit,
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    Box(
-        Modifier.fillMaxSize()
-            .background(
-                Brush.radialGradient(
-                    colors = listOf(Color(0xFFE8DDF5), Color(0xFFE7F1F7), Ink),
-                    radius = 980f,
-                )
-            )
-            .clickable(interactionSource = interactionSource, indication = null, onClick = {}),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            Modifier.fillMaxSize().padding(horizontal = 28.dp, vertical = 22.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("AURORA  /  LIVE", color = Blue, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                Text("CONECTADA AO PC", color = Muted, fontSize = 10.sp)
-            }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                OrbButton(
-                    recording || working || activity == "speaking",
-                    Modifier.size(236.dp),
-                    activity = if (recording) "listening" else activity,
-                    onClick = onOrbTap,
-                )
-                Spacer(Modifier.height(30.dp))
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(
+                drawerContainerColor = colors.surface,
+                drawerContentColor = colors.textPrimary,
+                modifier = Modifier.width(300.dp)
+            ) {
                 Text(
-                    when {
-                        recording -> "Ouvindo seu comando… Fale agora."
-                        working -> "Processando seu pedido…"
-                        activity == "preparing" -> "Preparando resposta…"
-                        activity == "speaking" -> "Aurora falando"
-                        else -> "Sua conversa, ao vivo"
+                    "Aurora Companion",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = colors.primary,
+                    modifier = Modifier.padding(20.dp)
+                )
+                NavigationDrawerItem(
+                    label = { Text("Nova Conversa") },
+                    selected = false,
+                    onClick = {
+                        viewModel.newConversation()
+                        viewModel.activeTab = CompanionTab.CHAT
+                        scope.launch { drawerState.close() }
                     },
-                    color = Pearl,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Medium,
-                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 12.dp)
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    when {
-                        recording -> "Basta falar. A Aurora enviará assim que você terminar."
-                        working -> "Consultando e pensando no computador…"
-                        activity == "preparing" -> "Sintetizando a voz da resposta…"
-                        activity == "speaking" -> "Edge TTS · Thalita em execução"
-                        else -> "Diga \"Aurora\" ou toque na bolha para falar."
-                    },
-                    color = Muted,
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp,
-                    textAlign = TextAlign.Center,
+                    "Histórico do PC",
+                    fontSize = 12.sp,
+                    color = colors.textSecondary,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)
                 )
-                Spacer(Modifier.height(22.dp))
-                VoiceCaptureButton(
-                    enabled = modeActive && !working,
-                    startRequest = startRequest,
-                    stopRequest = stopRequest,
-                    label = "Falar",
-                    onRecording = onRecording,
-                    onCaptured = onVoice,
-                    onError = onVoiceError,
+                LazyColumn(modifier = Modifier.weight(1f)) {
+                    items(viewModel.conversations) { conv ->
+                        NavigationDrawerItem(
+                            label = { Text(conv.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            selected = viewModel.conversationId == conv.id,
+                            onClick = {
+                                viewModel.openConversation(conv.id)
+                                scope.launch { drawerState.close() }
+                            },
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+            }
+        }
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Box(modifier = Modifier.weight(1f)) {
+                when (viewModel.activeTab) {
+                    CompanionTab.CHAT -> ChatTabContent(viewModel = viewModel, colors = colors, onOpenDrawer = { scope.launch { drawerState.open() } })
+                    CompanionTab.LIVE -> LiveTabContent(viewModel = viewModel, colors = colors)
+                    CompanionTab.DESKTOP -> DesktopTabContent(viewModel = viewModel, colors = colors)
+                    CompanionTab.SETTINGS -> SettingsTabContent(viewModel = viewModel, colors = colors)
+                }
+            }
+
+            // Bottom Navigation Bar
+            NavigationBar(
+                containerColor = colors.surface,
+                contentColor = colors.textPrimary,
+                tonalElevation = 6.dp
+            ) {
+                NavigationBarItem(
+                    selected = viewModel.activeTab == CompanionTab.CHAT,
+                    onClick = { viewModel.activeTab = CompanionTab.CHAT },
+                    icon = { Text("💬", fontSize = 18.sp) },
+                    label = { Text("Chat", fontSize = 11.sp) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = colors.primary,
+                        selectedTextColor = colors.primary,
+                        unselectedIconColor = colors.textSecondary,
+                        unselectedTextColor = colors.textSecondary,
+                        indicatorColor = colors.primary.copy(alpha = 0.15f)
+                    )
+                )
+                NavigationBarItem(
+                    selected = viewModel.activeTab == CompanionTab.LIVE,
+                    onClick = {
+                        viewModel.activeTab = CompanionTab.LIVE
+                        if (!viewModel.liveMode) viewModel.enterLiveMode()
+                    },
+                    icon = { Text("🎙️", fontSize = 18.sp) },
+                    label = { Text("Live", fontSize = 11.sp) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = colors.primary,
+                        selectedTextColor = colors.primary,
+                        unselectedIconColor = colors.textSecondary,
+                        unselectedTextColor = colors.textSecondary,
+                        indicatorColor = colors.primary.copy(alpha = 0.15f)
+                    )
+                )
+                NavigationBarItem(
+                    selected = viewModel.activeTab == CompanionTab.DESKTOP,
+                    onClick = {
+                        viewModel.activeTab = CompanionTab.DESKTOP
+                        if (!viewModel.showScreen) viewModel.startScreenView()
+                    },
+                    icon = { Text("🖥️", fontSize = 18.sp) },
+                    label = { Text("Desktop", fontSize = 11.sp) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = colors.primary,
+                        selectedTextColor = colors.primary,
+                        unselectedIconColor = colors.textSecondary,
+                        unselectedTextColor = colors.textSecondary,
+                        indicatorColor = colors.primary.copy(alpha = 0.15f)
+                    )
+                )
+                NavigationBarItem(
+                    selected = viewModel.activeTab == CompanionTab.SETTINGS,
+                    onClick = { viewModel.activeTab = CompanionTab.SETTINGS },
+                    icon = { Text("⚙️", fontSize = 18.sp) },
+                    label = { Text("Ajustes", fontSize = 11.sp) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = colors.primary,
+                        selectedTextColor = colors.primary,
+                        unselectedIconColor = colors.textSecondary,
+                        unselectedTextColor = colors.textSecondary,
+                        indicatorColor = colors.primary.copy(alpha = 0.15f)
+                    )
                 )
             }
-            Button(
-                onClick = onExit,
-                modifier = Modifier.size(58.dp).semantics { contentDescription = "Encerrar modo Live" },
-                contentPadding = PaddingValues(0.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Pearl),
-                shape = CircleShape,
-            ) { Text("×", fontSize = 30.sp, fontWeight = FontWeight.Light) }
         }
     }
 }
 
 @Composable
-private fun MessageBubble(line: ChatLine) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (line.fromUser) Arrangement.End else Arrangement.Start) {
-        Text(line.text, color = Pearl, fontSize = 15.sp, lineHeight = 22.sp,
-            modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(if (line.fromUser) Color(0xFFE9E1F3) else Panel).padding(14.dp))
+private fun ChatTabContent(viewModel: AuroraViewModel, colors: AuroraColors, onOpenDrawer: () -> Unit) {
+    var textDraft by remember { mutableStateOf("") }
+    val keyboard = LocalSoftwareKeyboardController.current
+
+    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+        Spacer(Modifier.height(12.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(colors.surfaceVariant)
+                        .clickable { onOpenDrawer() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("☰", fontSize = 18.sp, color = colors.textPrimary)
+                }
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text(
+                        text = "Aurora",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp,
+                        color = colors.textPrimary
+                    )
+                    Text(
+                        text = if (viewModel.connected) "PC Conectado" else "Offline",
+                        fontSize = 11.sp,
+                        color = if (viewModel.connected) Color(0xFF4CAF50) else colors.textSecondary
+                    )
+                }
+            }
+
+            Text(
+                viewModel.userProfile.avatarIcon,
+                fontSize = 24.sp
+            )
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        // Lista de mensagens
+        LazyColumn(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            reverseLayout = true
+        ) {
+            items(viewModel.lines.reversed()) { line ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    horizontalArrangement = if (line.fromUser) Arrangement.End else Arrangement.Start
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.82f)
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(if (line.fromUser) colors.primary else colors.surfaceVariant)
+                            .padding(14.dp)
+                    ) {
+                        Text(
+                            text = line.text,
+                            color = if (line.fromUser) Color.White else colors.textPrimary,
+                            fontSize = 15.sp,
+                            lineHeight = 21.sp
+                        )
+                    }
+                }
+            }
+        }
+
+        if (viewModel.notice.isNotBlank()) {
+            Text(
+                text = viewModel.notice,
+                fontSize = 11.sp,
+                color = colors.textSecondary,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                textAlign = TextAlign.Center
+            )
+        }
+
+        // Barra de digitação
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 10.dp)
+                .imePadding(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            BasicTextField(
+                value = textDraft,
+                onValueChange = { textDraft = it },
+                textStyle = TextStyle(color = colors.textPrimary, fontSize = 15.sp),
+                cursorBrush = SolidColor(colors.primary),
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(colors.surfaceVariant)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                decorationBox = { innerTextField ->
+                    if (textDraft.isEmpty()) {
+                        Text("Pergunte algo à Aurora…", color = colors.textSecondary, fontSize = 14.sp)
+                    }
+                    innerTextField()
+                }
+            )
+            Spacer(Modifier.width(8.dp))
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .clip(CircleShape)
+                    .background(colors.primary)
+                    .clickable {
+                        if (textDraft.isNotBlank()) {
+                            viewModel.sendCurrentMessage(textDraft)
+                            textDraft = ""
+                            keyboard?.hide()
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Text("➤", color = Color.White, fontSize = 18.sp)
+            }
+        }
     }
 }
 
+/**
+ * Modo Live Imersivo e 100% Hands-Free.
+ * O microfone fica eternamente aberto; sem botões manuais desnecessários de "Falar".
+ */
 @Composable
-private fun ConnectField(value: String, onValue: (String) -> Unit, hint: String) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp)).background(SoftLilac).padding(12.dp)) {
-        if (value.isEmpty()) Text(hint, color = Muted, fontSize = 12.sp)
-        BasicTextField(value, onValueChange = onValue, singleLine = true,
-            textStyle = TextStyle(color = Pearl, fontSize = 14.sp), modifier = Modifier.fillMaxWidth())
+private fun LiveTabContent(viewModel: AuroraViewModel, colors: AuroraColors) {
+    val transition = rememberInfiniteTransition(label = "live-orb")
+    val pulse by transition.animateFloat(
+        initialValue = 0.95f,
+        targetValue = if (viewModel.remoteState == "speaking") 1.12f else 1.05f,
+        animationSpec = infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "pulse"
+    )
+
+    LaunchedEffect(Unit) {
+        if (!viewModel.liveMode) {
+            viewModel.enterLiveMode()
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.radialGradient(
+                    colors = listOf(colors.surfaceVariant, colors.background),
+                    radius = 900f
+                )
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "AURORA  ·  LIVE CONTÍNUO",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.primary
+                )
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(colors.surface.copy(alpha = 0.6f))
+                        .clickable { viewModel.leaveLiveMode(playExitSound = true) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("✕", fontSize = 16.sp, color = colors.textPrimary)
+                }
+            }
+
+            // Orbe Cósmica
+            Box(
+                modifier = Modifier
+                    .size(220.dp)
+                    .scale(pulse)
+                    .clip(CircleShape)
+                    .background(
+                        Brush.radialGradient(
+                            listOf(colors.primary, colors.secondary, Color.Transparent)
+                        )
+                    )
+                    .border(2.dp, colors.accent.copy(alpha = 0.6f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = when (viewModel.remoteState) {
+                        "listening" -> "Ouvindo"
+                        "transcribing" -> "Entendendo"
+                        "preparing" -> "Pensando"
+                        "speaking" -> "Falando"
+                        else -> "Aurora"
+                    },
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    color = Color.White
+                )
+            }
+
+            // Status e Transcrição Recente
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                val lastResponse = viewModel.lines.lastOrNull { !it.fromUser }?.text
+                if (lastResponse != null) {
+                    Text(
+                        text = lastResponse.take(120),
+                        fontSize = 13.sp,
+                        color = colors.textSecondary,
+                        textAlign = TextAlign.Center,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+                }
+                Text(
+                    text = when {
+                        viewModel.live -> "Microfone aberto. Pode falar à vontade."
+                        viewModel.remoteState == "speaking" -> "Aurora respondendo…"
+                        viewModel.remoteState == "transcribing" -> "Processando áudio…"
+                        else -> "Escuta contínua ativa."
+                    },
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = colors.textPrimary
+                )
+            }
+        }
     }
 }
 
+/**
+ * Desktop Remoto com Controle por Toque no Android.
+ */
 @Composable
-private fun SmallAction(label: String, onClick: () -> Unit) {
-    Button(
-        onClick = onClick,
-        modifier = Modifier.heightIn(min = 48.dp),
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Pearl),
-        shape = RoundedCornerShape(18.dp),
-    ) { Text(label, fontSize = 12.sp) }
+private fun DesktopTabContent(viewModel: AuroraViewModel, colors: AuroraColors) {
+    LaunchedEffect(Unit) {
+        if (!viewModel.showScreen) {
+            viewModel.startScreenView()
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("🖥️ Desktop Remoto Touch", fontWeight = FontWeight.Bold, color = colors.textPrimary)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = { viewModel.toggleScreenView() },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.surfaceVariant),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Text(if (viewModel.showScreen) "Pausar" else "Conectar", fontSize = 12.sp, color = colors.textPrimary)
+                }
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .background(Color.Black),
+            contentAlignment = Alignment.Center
+        ) {
+            val bitmap = viewModel.screenBitmap
+            if (bitmap != null) {
+                BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                    val boxWidth = maxWidth.value
+                    val boxHeight = maxHeight.value
+
+                    Image(
+                        bitmap = bitmap,
+                        contentDescription = "Desktop Stream",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInput(Unit) {
+                                detectTapGestures(
+                                    onTap = { offset ->
+                                        val normX = (offset.x / size.width).coerceIn(0f, 1f)
+                                        val normY = (offset.y / size.height).coerceIn(0f, 1f)
+                                        viewModel.sendDesktopInput("click", normX, normY, button = 1)
+                                    },
+                                    onDoubleTap = { offset ->
+                                        val normX = (offset.x / size.width).coerceIn(0f, 1f)
+                                        val normY = (offset.y / size.height).coerceIn(0f, 1f)
+                                        viewModel.sendDesktopInput("double_click", normX, normY, button = 1)
+                                    },
+                                    onLongPress = { offset ->
+                                        val normX = (offset.x / size.width).coerceIn(0f, 1f)
+                                        val normY = (offset.y / size.height).coerceIn(0f, 1f)
+                                        viewModel.sendDesktopInput("click", normX, normY, button = 3)
+                                    }
+                                )
+                            }
+                            .pointerInput(Unit) {
+                                detectDragGestures { change, dragAmount ->
+                                    change.consume()
+                                    val normX = (change.position.x / size.width).coerceIn(0f, 1f)
+                                    val normY = (change.position.y / size.height).coerceIn(0f, 1f)
+                                    viewModel.sendDesktopInput("move", normX, normY)
+                                }
+                            }
+                    )
+                }
+            } else {
+                Text(
+                    "Conectando ao desktop do computador…",
+                    color = Color.White.copy(alpha = 0.7f),
+                    fontSize = 14.sp
+                )
+            }
+        }
+
+        // Instruções de toque
+        Row(
+            modifier = Modifier.fillMaxWidth().background(colors.surface).padding(8.dp),
+            horizontalArrangement = Arrangement.SpaceAround
+        ) {
+            Text("Toque: Clique", fontSize = 11.sp, color = colors.textSecondary)
+            Text("2 Toques: Duplo clique", fontSize = 11.sp, color = colors.textSecondary)
+            Text("Segurar: Botão direito", fontSize = 11.sp, color = colors.textSecondary)
+            Text("Arrasto: Cursor", fontSize = 11.sp, color = colors.textSecondary)
+        }
+    }
+}
+
+/**
+ * Aba de Configurações, Perfil e Temas.
+ */
+@Composable
+private fun SettingsTabContent(viewModel: AuroraViewModel, colors: AuroraColors) {
+    var editName by remember { mutableStateOf(viewModel.userProfile.username) }
+    var editAge by remember { mutableStateOf(viewModel.userProfile.age) }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
+            Text("⚙️ Configurações & Perfil", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = colors.textPrimary)
+        }
+
+        // Cartão Perfil
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = colors.surface),
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Text("Perfil do Usuário", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = colors.primary)
+                    Spacer(Modifier.height(10.dp))
+                    Text("Nome", fontSize = 12.sp, color = colors.textSecondary)
+                    BasicTextField(
+                        value = editName,
+                        onValueChange = { editName = it },
+                        textStyle = TextStyle(color = colors.textPrimary, fontSize = 15.sp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(colors.surfaceVariant)
+                            .padding(12.dp)
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text("Idade", fontSize = 12.sp, color = colors.textSecondary)
+                    BasicTextField(
+                        value = editAge,
+                        onValueChange = { editAge = it },
+                        textStyle = TextStyle(color = colors.textPrimary, fontSize = 15.sp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(colors.surfaceVariant)
+                            .padding(12.dp)
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    Button(
+                        onClick = {
+                            viewModel.updateUserProfile(editName, editAge, viewModel.userProfile.avatarIcon)
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
+                    ) {
+                        Text("Salvar Perfil no Celular & PC", color = Color.White)
+                    }
+                }
+            }
+        }
+
+        // Cartão de Temas
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = colors.surface),
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Text("Tema Visual", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = colors.primary)
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf("aurora" to "Lilás", "dark" to "Escuro", "light" to "Claro", "neon" to "Neon").forEach { (themeKey, label) ->
+                            Button(
+                                onClick = { viewModel.updateTheme(themeKey) },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (viewModel.currentThemeName == themeKey) colors.primary else colors.surfaceVariant
+                                )
+                            ) {
+                                Text(label, fontSize = 11.sp, color = if (viewModel.currentThemeName == themeKey) Color.White else colors.textPrimary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Cartão Conexão PC
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = colors.surface),
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Text("Conexão com Computador", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = colors.primary)
+                    Spacer(Modifier.height(10.dp))
+                    Text("Endereço: ${viewModel.endpoint.ifBlank { "Nenhum" }}", fontSize = 13.sp, color = colors.textSecondary)
+                    Text("Status: ${if (viewModel.connected) "Conectado" else "Desconectado"}", fontSize = 13.sp, color = colors.textSecondary)
+                    Spacer(Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = { viewModel.findPc() },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = colors.surfaceVariant)
+                        ) {
+                            Text("Buscar PC", color = colors.textPrimary)
+                        }
+                        Button(
+                            onClick = { if (viewModel.connected) viewModel.disconnectFromPc() else viewModel.connectToPc() },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
+                        ) {
+                            Text(if (viewModel.connected) "Desconectar" else "Conectar", color = Color.White)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Cartão Escuta Permanente & Sessão
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = colors.surface),
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Escuta 'Hey Aurora'", fontWeight = FontWeight.Medium, color = colors.textPrimary)
+                            Text("Ativação contínua em segundo plano", fontSize = 12.sp, color = colors.textSecondary)
+                        }
+                        Switch(
+                            checked = viewModel.alwaysOnWakeActive,
+                            onCheckedChange = { viewModel.toggleAlwaysOnWake() },
+                            colors = SwitchDefaults.colors(checkedThumbColor = colors.primary)
+                        )
+                    }
+
+                    Spacer(Modifier.height(14.dp))
+                    TextButton(
+                        onClick = { viewModel.logout() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Sair da Conta (Logout)", color = Color.Red)
+                    }
+                }
+            }
+        }
+    }
 }

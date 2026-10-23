@@ -16,20 +16,36 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+enum class CompanionTab {
+    CHAT,
+    LIVE,
+    DESKTOP,
+    SETTINGS
+}
 
 class AuroraViewModel(application: Application) : AndroidViewModel(application) {
 
     private val appContext = application.applicationContext
     private val vault = CredentialVault(appContext)
+    private val profileManager = UserProfileManager(appContext)
     private val savedCredentials = vault.load()
     private val discovery = LanDiscovery(appContext)
     val audioPlayer = RemoteAudioPlayer(appContext.cacheDir)
     private val soundCache = mutableStateMapOf<String, ByteArray>()
+
+    // Perfil do Usuário e Tema
+    var userProfile by mutableStateOf(profileManager.loadProfile())
+        private set
+    var currentThemeName by mutableStateOf(userProfile.selectedTheme)
+    var activeTab by mutableStateOf(if (userProfile.isLoggedIn) CompanionTab.CHAT else CompanionTab.SETTINGS)
 
     var connected by mutableStateOf(false)
         private set
@@ -60,9 +76,7 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
 
     var showScreen by mutableStateOf(false)
     var screenBitmap by mutableStateOf<ImageBitmap?>(null)
-
-    var voiceStartRequest by mutableStateOf(0)
-    var voiceStopRequest by mutableStateOf(0)
+    var touchOptimizationActive by mutableStateOf(true)
 
     var conversationId by mutableStateOf(CompanionClient.newConversationId())
     var conversations by mutableStateOf<List<PcConversation>>(emptyList())
@@ -70,10 +84,67 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
 
     private var heartbeatJob: Job? = null
     private var screenStreamJob: Job? = null
+    private var liveModeLoopJob: Job? = null
+    private var currentLiveCapture: PcmVoiceCapture? = null
 
     init {
         if (savedCredentials != null) {
             autoConnectSaved()
+        }
+    }
+
+    fun completeLogin(type: String, username: String, age: String, avatar: String) {
+        val updated = userProfile.copy(
+            isLoggedIn = true,
+            loginType = type,
+            username = username.ifBlank { "Usuário" },
+            age = age,
+            avatarIcon = avatar.ifBlank { "🌌" },
+            selectedTheme = currentThemeName,
+        )
+        userProfile = updated
+        profileManager.saveProfile(updated)
+        activeTab = CompanionTab.CHAT
+        syncProfileWithPc()
+    }
+
+    fun updateTheme(newTheme: String) {
+        currentThemeName = newTheme
+        val updated = userProfile.copy(selectedTheme = newTheme)
+        userProfile = updated
+        profileManager.saveProfile(updated)
+        syncProfileWithPc()
+    }
+
+    fun updateUserProfile(username: String, age: String, avatar: String) {
+        val updated = userProfile.copy(
+            username = username.ifBlank { "Usuário" },
+            age = age,
+            avatarIcon = avatar,
+            selectedTheme = currentThemeName,
+        )
+        userProfile = updated
+        profileManager.saveProfile(updated)
+        syncProfileWithPc()
+        notice = "Perfil atualizado e sincronizado com o PC."
+    }
+
+    fun logout() {
+        profileManager.logout()
+        userProfile = userProfile.copy(isLoggedIn = false)
+    }
+
+    private fun syncProfileWithPc() {
+        if (!connected || token.isBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                CompanionClient(endpoint, fingerprint, token).sendUserProfile(
+                    username = userProfile.username,
+                    age = userProfile.age,
+                    avatar = userProfile.avatarIcon,
+                    theme = currentThemeName,
+                )
+            }
         }
     }
 
@@ -89,6 +160,7 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
                 connected = true
                 notice = "PC conectado; controle e áudio transferidos para o celular."
                 warmLiveSounds()
+                syncProfileWithPc()
                 startHeartbeatLoop()
                 startWakeListener()
             } catch (_: Exception) {
@@ -119,6 +191,7 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
                 conversationId = CompanionClient.newConversationId()
                 lines.clear()
                 notice = "Controle transferido para o celular. A Aurora do PC dormiu."
+                syncProfileWithPc()
                 startHeartbeatLoop()
                 startWakeListener()
             } catch (error: Exception) {
@@ -171,10 +244,7 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
                     }
                 } catch (_: Exception) {
                     stopWakeListener()
-                    if (live) voiceStopRequest += 1
-                    live = false
-                    liveMode = false
-                    liveSessionId += 1
+                    leaveLiveMode(playExitSound = false)
                     audioPlayer.stop()
                     soundCache.clear()
                     remoteState = "idle"
@@ -226,6 +296,7 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
                 lines += ChatLine(false, reply.answer)
                 rememberConversation(currentConv, trimmed)
                 notice = "Conversa sincronizada com o PC."
+                checkVoiceCommandsForNavigation(trimmed, reply.answer)
                 playPcSpeech(reply.answer)
             } catch (error: Exception) {
                 lines += ChatLine(false, "Não consegui falar com o PC: ${error.message ?: "verifique a conexão"}.")
@@ -236,30 +307,169 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun sendVoiceAudio(wav: ByteArray) {
-        if (!connected || busy) return
-        val currentConv = conversationId
-        val requestLiveSession = liveSessionId
-        busy = true
-        notice = "Transcrevendo no PC e consultando a Aurora…"
+    /**
+     * LOOP CONTÍNUO DE FALA NO MODO LIVE (100% Hands-Free).
+     * O microfone NUNCA para de escutar; quando o usuário fala, envia ao PC, toca a resposta,
+     * e o microfone reabre IMEDIATAMENTE sem fechar nem precisar clicar em nada.
+     */
+    private fun startContinuousLiveLoop() {
+        liveModeLoopJob?.cancel()
+        liveModeLoopJob = viewModelScope.launch(Dispatchers.IO) {
+            Log.i("AuroraLive", "Iniciando loop contínuo de conversação hands-free")
+            while (isActive && liveMode && connected) {
+                val capture = PcmVoiceCapture()
+                currentLiveCapture = capture
+                withContext(Dispatchers.Main) {
+                    live = true
+                    remoteState = "listening"
+                    notice = "Ouvindo você… Pode falar a qualquer momento."
+                }
+
+                // Captura a fala com VAD local
+                val wav = capture.captureWav()
+                currentLiveCapture = null
+
+                if (!isActive || !liveMode || !connected) break
+
+                if (wav.isEmpty()) {
+                    // Usuário permaneceu em silêncio ou apenas ruído de fundo:
+                    // CONTINUA OUVINDO! NÃO FECHA O MICROFONE!
+                    delay(150)
+                    continue
+                }
+
+                // Voz capturada! Enviar ao PC
+                withContext(Dispatchers.Main) {
+                    live = false
+                    remoteState = "transcribing"
+                    notice = "Aurora pensando…"
+                }
+
+                val currentConv = conversationId
+                val completion = runCatching {
+                    CompanionClient(endpoint, fingerprint, token).sendVoice(currentConv, wav)
+                }.getOrNull()
+
+                if (!isActive || !liveMode || !connected) break
+
+                if (completion == null) {
+                    withContext(Dispatchers.Main) {
+                        notice = "Não entendi bem o comando. Ouvindo novamente…"
+                    }
+                    delay(300)
+                    continue
+                }
+
+                withContext(Dispatchers.Main) {
+                    lines += ChatLine(true, completion.transcript)
+                    lines += ChatLine(false, completion.answer)
+                    rememberConversation(currentConv, completion.transcript)
+                    checkVoiceCommandsForNavigation(completion.transcript, completion.answer)
+                }
+
+                // Sintetiza e toca a resposta pelo PC
+                withContext(Dispatchers.Main) {
+                    remoteState = "preparing"
+                    notice = "Aurora respondendo…"
+                }
+
+                val speechBytes = runCatching {
+                    CompanionClient(endpoint, fingerprint, token).speech(completion.answer)
+                }.getOrNull()
+
+                if (speechBytes != null && speechBytes.isNotEmpty() && isActive && liveMode) {
+                    val playbackFinished = CompletableDeferred<Unit>()
+                    withContext(Dispatchers.Main) {
+                        audioPlayer.play(speechBytes, fileExtension = ".mp3", onStarted = {
+                            remoteState = "speaking"
+                        }) {
+                            playbackFinished.complete(Unit)
+                        }
+                    }
+                    playbackFinished.await()
+                }
+
+                // Delay curto para amortecer eco residual do alto-falante
+                delay(200)
+                // O loop reinicia automaticamente: escuta aberta de novo!
+            }
+            withContext(Dispatchers.Main) {
+                live = false
+                remoteState = "idle"
+            }
+        }
+    }
+
+    private fun checkVoiceCommandsForNavigation(userInput: String, reply: String) {
+        val lower = userInput.lowercase()
+        if (lower.contains("mostre meu computador") || lower.contains("mostrar computador") ||
+            lower.contains("ver computador") || lower.contains("abrir desktop") || lower.contains("mostrar a tela")) {
+            activeTab = CompanionTab.DESKTOP
+            startScreenView()
+        } else if (lower.contains("sair do desktop") || lower.contains("fechar desktop") || lower.contains("fechar tela")) {
+            activeTab = CompanionTab.LIVE
+            stopScreenView()
+        }
+    }
+
+    fun playPcSpeech(text: String, liveSession: Int? = null) {
+        if (!connected) return
+        remoteState = "preparing"
         viewModelScope.launch {
             try {
-                val result = withContext(Dispatchers.IO) {
-                    CompanionClient(endpoint, fingerprint, token).sendVoice(currentConv, wav)
+                val bytes = withContext(Dispatchers.IO) {
+                    CompanionClient(endpoint, fingerprint, token).speech(text)
                 }
-                lines += ChatLine(true, result.transcript)
-                lines += ChatLine(false, result.answer)
-                rememberConversation(currentConv, result.transcript)
-                notice = "Resposta da Thalita recebida do PC."
-                if (liveMode && liveSessionId == requestLiveSession) {
-                    playPcSpeech(result.answer, requestLiveSession)
+                if (!connected || (liveSession != null && (!liveMode || liveSessionId != liveSession))) {
+                    return@launch
+                }
+                audioPlayer.play(bytes, fileExtension = ".mp3", onStarted = {
+                    remoteState = "speaking"
+                }) {
+                    remoteState = "ready"
                 }
             } catch (error: Exception) {
-                notice = "Falha na conversa por voz: ${error.message ?: "verifique a conexão"}."
-                resumeAlwaysOnWake()
-            } finally {
-                busy = false
+                remoteState = "ready"
+                notice = "Texto recebido; erro de áudio: ${error.message}."
             }
+        }
+    }
+
+    fun enterLiveMode() {
+        if (!connected) return
+        if (liveMode) return
+        stopWakeListener()
+        pauseAlwaysOnWake()
+        audioPlayer.stop()
+        liveSessionId += 1
+        liveMode = true
+        activeTab = CompanionTab.LIVE
+        playPcSound("entrada.wav")
+        startContinuousLiveLoop()
+    }
+
+    fun leaveLiveMode(playExitSound: Boolean = true) {
+        if (!liveMode) return
+        liveModeLoopJob?.cancel()
+        liveModeLoopJob = null
+        currentLiveCapture?.stop()
+        currentLiveCapture = null
+        audioPlayer.stop()
+        live = false
+        liveSessionId += 1
+        liveMode = false
+        hideFloatingBubble()
+        if (playExitSound) playPcSound("saida.wav")
+        resumeAlwaysOnWake()
+        if (connected) {
+            startWakeListener()
+        }
+    }
+
+    fun sendDesktopInput(action: String, x: Float, y: Float, button: Int = 1, delta: Float = 0f) {
+        if (!connected || token.isBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            CompanionClient(endpoint, fingerprint, token).sendDesktopInput(action, x, y, button, delta)
         }
     }
 
@@ -291,6 +501,7 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
                 conversationId = selected.id
                 lines.clear()
                 lines.addAll(selected.messages)
+                activeTab = CompanionTab.CHAT
                 notice = "Conversa aberta do histórico do PC."
             } catch (error: Exception) {
                 notice = error.message ?: "Não consegui abrir essa conversa."
@@ -335,94 +546,7 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
         if (!connected) return
         viewModelScope.launch {
             val bytes = loadBundledSound(name)
-            if (bytes != null) audioPlayer.play(bytes, fileExtension = ".wav", onFinished = { success ->
-                if (!success && connected) notice = "O som $name está no app, mas o celular não conseguiu reproduzi-lo."
-            })
-            else if (connected) notice = "O som $name embutido no app não pôde ser carregado."
-        }
-    }
-
-    fun playPcSpeech(text: String, liveSession: Int? = null) {
-        if (!connected) return
-        remoteState = "preparing"
-        updateBubbleActivity("preparing")
-        viewModelScope.launch {
-            val requestStartedAt = SystemClock.elapsedRealtime()
-            try {
-                val bytes = withContext(Dispatchers.IO) {
-                    CompanionClient(endpoint, fingerprint, token).speech(text)
-                }
-                val audioReceivedAt = SystemClock.elapsedRealtime()
-                if (!connected || (liveSession != null && (!liveMode || liveSessionId != liveSession))) {
-                    if (connected && remoteState == "preparing") {
-                        remoteState = "ready"
-                        updateBubbleActivity("ready")
-                    }
-                    return@launch
-                }
-                audioPlayer.play(bytes, fileExtension = ".mp3", onStarted = {
-                    Log.i("AuroraCompanion", "Voz pronta: total=${SystemClock.elapsedRealtime() - requestStartedAt}ms; reprodução=${SystemClock.elapsedRealtime() - audioReceivedAt}ms; áudio=${bytes.size} bytes")
-                    remoteState = "speaking"
-                    updateBubbleActivity("speaking")
-                }) { success ->
-                    remoteState = "ready"
-                    updateBubbleActivity("ready")
-                    if (!success) notice = "MP3 da Thalita chegou (${bytes.size} bytes), mas o Android falhou ao reproduzir."
-                    if (liveMode) {
-                        // Modo Live contínuo: após responder o primeiro comando, CONTINUA OUVINDO!
-                        startVoiceInteraction()
-                    } else {
-                        resumeAlwaysOnWake()
-                        if (connected) {
-                            startWakeListener()
-                        }
-                    }
-                }
-            } catch (error: Exception) {
-                remoteState = "ready"
-                updateBubbleActivity("ready")
-                notice = "Texto recebido; voz do PC falhou: ${error.message ?: "erro de áudio"}."
-                if (liveMode) {
-                    startVoiceInteraction()
-                } else {
-                    resumeAlwaysOnWake()
-                    if (connected) {
-                        startWakeListener()
-                    }
-                }
-            }
-        }
-    }
-
-    fun enterLiveMode() {
-        if (!connected) return
-        if (liveMode) return
-        stopWakeListener()
-        pauseAlwaysOnWake()
-        audioPlayer.stop()
-        liveSessionId += 1
-        liveMode = true
-        playPcSound("entrada.wav")
-    }
-
-    fun leaveLiveMode(playExitSound: Boolean = true) {
-        if (!liveMode) return
-        audioPlayer.stop()
-        if (live) voiceStopRequest += 1
-        liveSessionId += 1
-        liveMode = false
-        hideFloatingBubble()
-        if (playExitSound) playPcSound("saida.wav")
-        resumeAlwaysOnWake()
-        if (connected) {
-            startWakeListener()
-        }
-    }
-
-    fun startVoiceInteraction() {
-        if (connected && !busy) {
-            pauseAlwaysOnWake()
-            voiceStartRequest += 1
+            if (bytes != null) audioPlayer.play(bytes, fileExtension = ".wav")
         }
     }
 
@@ -442,9 +566,9 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
             }
         }.onSuccess {
             wakeListening = true
-            notice = "Ativação por voz ligada. O áudio vai ao PC para detecção local."
+            notice = "Ativação por voz ligada."
         }.onFailure {
-            notice = "Não consegui ativar a escuta: ${it.message ?: "verifique a permissão de microfone"}."
+            notice = "Não consegui ativar a escuta: ${it.message}."
         }
     }
 
@@ -474,9 +598,9 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
             }
         }.onSuccess {
             alwaysOnWakeActive = true
-            notice = "Escuta permanente ativada. Diga \"Aurora\" a qualquer momento."
+            notice = "Escuta permanente ativada."
         }.onFailure {
-            notice = "Falha ao iniciar escuta permanente: ${it.message}"
+            notice = "Falha ao iniciar escuta: ${it.message}"
         }
     }
 
@@ -484,7 +608,7 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
         val intent = Intent(appContext, AlwaysOnWakeService::class.java).apply {
             action = AlwaysOnWakeService.ACTION_STOP
         }
-        runCatching { appContext.startService(intent) }
+        runCatching { appContext.stopService(intent) }
         alwaysOnWakeActive = false
         notice = "Escuta permanente desativada."
     }
@@ -506,31 +630,23 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun toggleAlwaysOnWake() {
-        if (alwaysOnWakeActive) {
-            stopAlwaysOnWake()
-        } else {
-            startAlwaysOnWake()
-        }
+        if (alwaysOnWakeActive) stopAlwaysOnWake() else startAlwaysOnWake()
     }
 
     fun toggleScreenView() {
         if (!connected) return
-        if (showScreen) {
-            stopScreenView()
-        } else {
-            startScreenView()
-        }
+        if (showScreen) stopScreenView() else startScreenView()
     }
 
-    private fun startScreenView() {
+    fun startScreenView() {
         showScreen = true
         screenBitmap = null
-        notice = "Solicitando a tela do PC. Confirme o compartilhamento na janela do computador."
+        notice = "Transmissão da tela ativa. Controle por toque habilitado."
         viewModelScope.launch {
             runCatching {
                 withContext(Dispatchers.IO) { CompanionClient(endpoint, fingerprint, token).startScreenStream() }
             }.onFailure {
-                notice = "Não consegui iniciar a tela do PC: ${it.message ?: "verifique o desktop"}."
+                notice = "Não consegui iniciar a tela do PC: ${it.message}."
                 showScreen = false
             }
         }
@@ -548,9 +664,9 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
                             BitmapFactory.decodeByteArray(next.jpeg, 0, next.jpeg.size)?.asImageBitmap()
                         }
                         if (decoded != null) screenBitmap = decoded
-                    } else delay(200)
+                    } else delay(100)
                 } catch (error: Exception) {
-                    notice = "A transmissão da tela parou: ${error.message ?: "verifique a conexão"}."
+                    notice = "Transmissão parou: ${error.message}."
                     showScreen = false
                     screenBitmap = null
                     break
@@ -589,13 +705,14 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
         val intent = Intent(appContext, FloatingBubbleService::class.java).apply {
             action = FloatingBubbleService.ACTION_HIDE
         }
-        runCatching { appContext.startService(intent) }
+        runCatching { appContext.stopService(intent) }
     }
 
-    /** A bolha agora é stateless — não precisa de update de atividade. */
     fun updateBubbleActivity(activity: String) = Unit
 
     override fun onCleared() {
+        liveModeLoopJob?.cancel()
+        currentLiveCapture?.stop()
         audioPlayer.release()
         discovery.stop()
         heartbeatJob?.cancel()

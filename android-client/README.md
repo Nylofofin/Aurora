@@ -1,13 +1,18 @@
-# Aurora Android Companion — Release 1.0.0
+# Aurora Android Companion — Release 1.2.0
 
-Cliente Android nativo Companion. Modelos, busca e automação ficam no computador; o telefone é a interface, microfone e saída de áudio. No celular, conversa casual usa o modelo de conversa; pedidos que exigem fatos atuais seguem para pesquisa e pedidos explícitos de ação usam as ferramentas locais permitidas.
+Cliente Android nativo Companion. Modelos, busca e automação ficam no computador; o telefone é a interface, microfone e saída de áudio.
 
-## Novidades da Release Oficial 1.0.0
+## Novidades da Release Oficial 1.2.0
 
-- **Conversa Live Contínua Hands-Free**: Ao entrar no modo Live, a Aurora escuta imediatamente o seu comando sem precisar de nenhum clique. Ao responder em voz, ela continua ouvindo os comandos subsequentes num fluxo conversacional contínuo. Basta tocar no "X" para encerrar a sessão.
-- **Bolha Flutuante com Alvo de Descarte ("X")**: Ao sair do aplicativo durante o modo Live, a Aurora se transforma numa bolha flutuante perolada sobre qualquer app. Arraste-a para a zona de descarte no centro inferior da tela para encerrar, ou toque para trazê-la para o primeiro plano.
-- **Escuta Contínua de Verdade via AudioRecord**: A escuta permanente opera via stream estável com detecção Vosk neural no PC, sem microfone abrindo e fechando e sem o Android piscar o indicador de privacidade.
-- **APK Release**: [release oficial Android 1.0.0](https://github.com/ruanminezinoficial2025-ctrl/Aurora/releases/tag/android-v1.0.0). Build oficial assinada.
+- **Escuta Contínua no Live Mode Sem Fechar o Microfone**: O microfone permanece ativo em loop conversacional ininterrupto no modo Live. Ao terminar de falar e após a Aurora responder, o microfone reabre no mesmo instante sem fechar nem precisar de cliques.
+- **Barreira Inicial & Perfis Locais**: Ao abrir o aplicativo, tela de login (Google, GitHub ou Conta Local). Todas as preferências, nome, idade e avatar ficam salvos no dispositivo e sincronizados com a memória da Aurora no PC ("E ela lembra!").
+- **Interface Repaginada com Abas e Temas**: Navegação moderna com abas de Chat, Live, Desktop Remoto e Configurações. Suporte a temas personalizáveis: Aurora (Lilás), Dark (OLED Escuro), Light (Claro Suave) e Cyber Neon.
+- **Controle Remoto do Desktop com Toque (Experimental)**:
+  - Diga *"Aurora, mostre meu computador"* ou acesse a aba Desktop para espelhar a tela do PC em tempo real.
+  - Controle completo por toque: toque simples clica, toque duplo abre itens, toque longo abre o menu de contexto (botão direito) e arrasto move o cursor.
+  - Para voltar, basta dizer *"Sair do desktop"* ou clicar em Sair.
+- **Permissões GNOME Automáticas**: Integração direta com GNOME Wayland/X11 e AT-SPI para controle de entrada sem restrições.
+- **APK Release**: [release oficial Android 1.2.0](https://github.com/ruanminezinoficial2025-ctrl/Aurora/releases/tag/android-v1.2.0). Build oficial assinada.
 
 - Interface renovada em tons claros pastel de lavanda e azul, cartões mais leves, contraste legível, esfera Aurora animada e ícone adaptativo vetorial próprio.
 - Pareamento HTTPS com fingerprint SHA-256 digitado fora de banda, código de uso único e token cifrado no Android Keystore.
