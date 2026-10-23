@@ -1,4 +1,4 @@
-# Aurora Android Companion — Release 1.2.2 · NOVA-COMPANION-TOUCH-R2
+# Aurora Android Companion — desenvolvimento após 1.2.2
 
 Cliente Android nativo Companion. Modelos, busca e automação ficam no computador; o telefone é a interface, microfone e saída de áudio.
 
@@ -8,7 +8,7 @@ Cliente Android nativo Companion. Modelos, busca e automação ficam no computad
 - **Conexão acessível**: botão visível de conexão, descoberta do PC na rede, formulário de pareamento com código e pin SHA-256; anteriormente os controles de conexão estavam escondidos e não permitiam completar o pareamento de uma instalação nova.
 - **Perfil Local**: nome, idade opcional, avatar e tema ficam no armazenamento privado do Android; preferências selecionadas são enviadas pela LAN/TLS para personalização local no PC. Não há autenticação Google/GitHub nem conta na nuvem.
 - **Personalização visual**: Aurora pastel é o tema inicial; Noturno, Névoa e Neon ficam em opções separadas e legíveis.
-- **Modo Live contínuo**: o `AudioRecord` permanece aberto na sessão, e o waveform no campo de mensagem abre a tela imersiva de voz; o botão X encerra o Live.
+- **Modo Live contínuo**: o `AudioRecord` é recriado se o Android invalidar o dispositivo durante a sessão; o waveform no composer abre a tela imersiva de voz; o botão X encerra o Live.
 - **Desktop remoto experimental por toque**: a aba Desktop pede consentimento do portal GNOME e mostra a tela do PC; toque, toque duplo, toque longo e arrasto enviam eventos de ponteiro.
 - **Comandos de voz do Desktop**:
   - Diga *"Aurora, mostre meu computador"* ou acesse a aba Desktop para espelhar a tela do PC em tempo real.
@@ -16,6 +16,13 @@ Cliente Android nativo Companion. Modelos, busca e automação ficam no computad
   - Para voltar, basta dizer *"Sair do desktop"* ou clicar em Sair.
 - O GNOME apresenta o diálogo do portal RemoteDesktop/ScreenCast para o usuário aprovar tela e ponteiro. A Aurora não habilita RDP/VNC globalmente nem ignora o consentimento do sistema.
 - **APK**: [Aurora Android 1.2.2](https://github.com/ruanminezinoficial2025-ctrl/Aurora/releases/tag/android-v1.2.2). Build assinada para debug, até validação em aparelho real.
+
+## Reconstrução da interface e do microfone (em desenvolvimento)
+
+- A interface está sendo reconstruída em Material 3: navegação inferior com Conversa, PC e Ajustes; composer integrado; histórico em diálogo; telas com largura máxima e controles dimensionados pela área disponível. O desenho da orb e os sons de entrada/saída vêm dos assets do cliente desktop e são incluídos no APK.
+- O Live agora inicia `MicCaptureService` como foreground service enquanto o usuário está na sessão. A notificação deixa a captura visível; tocar no X encerra o loop e o serviço. Uma falha de leitura de `AudioRecord` descarta a instância danificada e tenta recriá-la, em vez de manter um loop silencioso.
+- A captura de microfone depende da permissão e das regras do Android. O serviço precisa ser iniciado enquanto o app está visível; modos de economia de bateria do fabricante, o seletor de privacidade do microfone ou a revogação da permissão ainda podem interrompê-la. O app não contorna essas proteções.
+- Esta revisão ainda não substitui a release 1.2.2 no GitHub. Não há validação visual em aparelho real nesta máquina.
 
 - Pareamento HTTPS com fingerprint SHA-256 digitado fora de banda, código de uso único e token cifrado no Android Keystore.
 - Envio de mensagens pelo roteador central do desktop e histórico de conversas armazenado no PC.
@@ -38,18 +45,18 @@ Cliente Android nativo Companion. Modelos, busca e automação ficam no computad
 1. O desktop Aurora é o servidor e conserva inferência, pesquisa, voz e automação.
 2. O app pareia explicitamente com o PC e troca mensagens por um canal autenticado e criptografado. Ollama continua preso a loopback; nunca será exposto ao Wi-Fi.
 3. Conversas e histórico são armazenados no PC e sincronizados ao cliente.
-4. A demo de voz envia gravação PCM mono a 16 kHz (máximo 45 segundos) por HTTPS ao PC. O PC transcreve pela integração Google Speech e gera a resposta falada via Edge TTS; o app recebe e reproduz o MP3 sem usar TTS Google/Android. O microfone só é acessado após permissão e toque explícito. Um foreground service exibe uma notificação e mantém a gravação solicitada ativa enquanto a tela está bloqueada; o limite é 45 segundos e fechar à força o app encerra a captura. O áudio capturado fica apenas em memória no PC; o serviço de reconhecimento Google recebe o trecho de fala, como no cliente desktop.
+4. A demo de voz envia trechos PCM mono a 16 kHz (até 45 segundos cada) por HTTPS ao PC. O PC transcreve pela integração Google Speech e gera a resposta falada via Edge TTS; o app recebe e reproduz o MP3 sem usar TTS Google/Android. Após a permissão, tocar no waveform inicia uma sessão Live explícita e um foreground service com notificação visível. A captura contínua entre turnos segue sujeita às políticas de microfone, bateria e privacidade do Android; fechar à força o app encerra a sessão. O áudio capturado fica apenas em memória no PC; o serviço de reconhecimento Google recebe cada trecho de fala, como no cliente desktop.
 5. A conexão atual usa a mesma rede local. Acesso remoto futuro deverá usar VPN privada; não encaminhe a porta do PC à internet.
 6. Tela e ponteiro remoto usam os portais GNOME RemoteDesktop/ScreenCast, PipeWire e GStreamer. O usuário aprova o compartilhamento e controle no diálogo do desktop; a Aurora não ativa RDP/VNC globalmente nem contorna o portal. O fluxo é limitado à sessão aprovada e termina ao desconectar.
 
 ## Começar uma conversa
 
 1. No PC, deixe a Aurora e o servidor Companion ativos. Conecte celular e PC à mesma rede Wi-Fi.
-2. No app, toque em **Conectar ao PC** e pareie. Com conexão ativa, a tela inicial mostra **Falar com a Aurora** e **Escrever uma mensagem**.
-3. Para conversa Live, toque no botão **waveform** no campo inferior. A bolha cresce para o centro e toca o som de entrada; toque em **Falar** ou na bolha, permita o microfone, fale e toque em **Parar e enviar**. A resposta falada usa o áudio Edge TTS gerado no PC. Toque no **X** para sair.
-4. Para texto, toque em **Escrever uma mensagem**, digite no campo inferior e toque no botão de envio **↑**.
-5. Abra **Conversas** na barra superior para navegar pelo histórico ou criar um chat novo. O modo agente pode executar ferramentas compatíveis de baixo risco no PC; ações que exigem confirmação presencial são recusadas imediatamente no celular.
-6. Para ativação por voz, toque em **Mic** no campo de mensagem e mantenha a sessão conectada. Para ver o computador, toque em **PC** e aceite o compartilhamento na janela do desktop. Em Linux, o host precisa ter o portal ScreenCast, PipeWire, GStreamer e as bindings `python3-gobject`/`python3-dbus`; quando o venv isolado não enxerga essas bindings, o Companion inicia um worker curto com o Python do sistema só para captura e envio de quadros.
+2. No app, toque em **Conectar** e pareie. A tela inicial oferece conversa por texto e acesso ao Live.
+3. Para conversar por voz, toque no waveform no composer e permita o microfone. O Android mostra uma notificação durante a sessão; fale naturalmente e toque no **X** para sair. A resposta falada usa áudio Edge TTS gerado no PC.
+4. Para texto, digite no composer e toque em **↑**. O botão **+** inicia uma conversa nova.
+5. Abra o histórico pelo botão de menu no topo. A navegação inferior reúne Conversa, PC e Ajustes.
+6. Em **Ajustes**, escolha o tema, edite o perfil local ou ative a palavra de ativação. Para ver e controlar o computador, abra **PC** e aprove o compartilhamento no desktop. Em Linux, o host precisa ter o portal ScreenCast, PipeWire, GStreamer e as bindings `python3-gobject`/`python3-dbus`; quando o venv isolado não enxerga essas bindings, o Companion inicia um worker curto com o Python do sistema só para captura e envio de quadros.
 
 ## Compilar
 

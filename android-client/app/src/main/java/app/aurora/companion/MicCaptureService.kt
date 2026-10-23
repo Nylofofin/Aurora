@@ -14,6 +14,11 @@ import android.os.IBinder
 class MicCaptureService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
+    override fun onDestroy() {
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        super.onDestroy()
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -35,7 +40,7 @@ class MicCaptureService : Service() {
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL_ID, "Voz da Aurora", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "Indica quando a Aurora está capturando uma fala solicitada."
+                description = "Indica quando a sessão Live da Aurora está usando o microfone."
             },
         )
     }
@@ -48,8 +53,8 @@ class MicCaptureService : Service() {
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Notification.Builder(this, CHANNEL_ID)
         else Notification.Builder(this)
         return builder.setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentTitle("Aurora está ouvindo")
-            .setContentText("Fala capturada após seu toque. Toque em Parar para enviar; limite de 45 s.")
+            .setContentTitle("Aurora Live está ouvindo")
+            .setContentText("Microfone ativo nesta sessão. Volte ao app e toque no X para encerrar.")
             .setCategory(Notification.CATEGORY_SERVICE)
             .setOngoing(true)
             .setOnlyAlertOnce(true)

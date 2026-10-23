@@ -22,6 +22,8 @@ class PcmVoiceCapture {
     private val stopped = AtomicBoolean(false)
     @Volatile private var recorder: AudioRecord? = null
     @Volatile private var recordingStarted = false
+    @Volatile var lastCaptureError: String? = null
+        private set
 
     fun stop() {
         stopped.set(true)
@@ -40,6 +42,7 @@ class PcmVoiceCapture {
         )
         if (minBuffer <= 0) {
             Log.e(TAG, "AudioRecord minBufferSize inválido: $minBuffer")
+            lastCaptureError = "O Android não disponibilizou o microfone."
             return ByteArray(0)
         }
 
@@ -51,11 +54,13 @@ class PcmVoiceCapture {
                 ).also { recorder = it }
             } catch (e: Exception) {
                 Log.e(TAG, "Erro ao instanciar AudioRecord", e)
+                lastCaptureError = e.message ?: "Não foi possível abrir o microfone."
                 return ByteArray(0)
             }
 
         if (audio.state != AudioRecord.STATE_INITIALIZED) {
             Log.e(TAG, "AudioRecord não inicializado (recurso ocupado)")
+            lastCaptureError = "O microfone está ocupado ou indisponível."
             runCatching { audio.release() }
             if (recorder === audio) recorder = null
             recordingStarted = false
@@ -81,6 +86,7 @@ class PcmVoiceCapture {
             if (!recordingStarted) {
                 audio.startRecording()
                 recordingStarted = true
+                lastCaptureError = null
             }
             while (!stopped.get() && (System.nanoTime() - startedAt) < 45_000_000_000L) {
                 val readShorts = audio.read(buffer, 0, buffer.size)
@@ -127,12 +133,13 @@ class PcmVoiceCapture {
                         }
                     }
                 } else if (readShorts < 0) {
-                    throw IllegalStateException("AudioRecord.read falhou: $readShorts")
+                    throw IllegalStateException("AudioRecord.read falhou ($readShorts)")
                 }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Exceção durante leitura do microfone", e)
-            close()
+            lastCaptureError = e.message ?: "Falha na captura do microfone"
+            releaseRecorderForRetry()
         }
 
         if (!hasSpoken) {
@@ -154,6 +161,11 @@ class PcmVoiceCapture {
     @Synchronized
     fun close() {
         stopped.set(true)
+        releaseRecorderForRetry()
+    }
+
+    @Synchronized
+    private fun releaseRecorderForRetry() {
         val active = recorder
         recorder = null
         recordingStarted = false

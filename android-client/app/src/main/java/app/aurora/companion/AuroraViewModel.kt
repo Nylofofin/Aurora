@@ -208,6 +208,9 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
         stopWakeListener()
         val wasLive = liveMode
         if (wasLive) leaveLiveMode(playExitSound = false)
+        // Leaving Live normally resumes the PC wake stream. A disconnect must keep the
+        // microphone closed instead of briefly restarting a stream whose lease is ending.
+        stopWakeListener()
         audioPlayer.stop()
         heartbeatJob?.cancel()
         heartbeatJob = null
@@ -335,7 +338,13 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
                 if (wav.isEmpty()) {
                     // Usuário permaneceu em silêncio ou apenas ruído de fundo:
                     // CONTINUA OUVINDO! NÃO FECHA O MICROFONE!
-                    delay(150)
+                    val captureError = capture.lastCaptureError
+                    if (captureError != null) {
+                        withContext(Dispatchers.Main) {
+                            notice = "O Android interrompeu a captura; tentando reabrir o microfone."
+                        }
+                    }
+                    delay(if (captureError == null) 150 else 700)
                     continue
                 }
 
@@ -446,6 +455,11 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
         stopWakeListener()
         pauseAlwaysOnWake()
         audioPlayer.stop()
+        if (!startLiveMicrophoneService()) {
+            resumeAlwaysOnWake()
+            if (connected) startWakeListener()
+            return
+        }
         liveSessionId += 1
         liveMode = true
         activeTab = CompanionTab.LIVE
@@ -459,6 +473,7 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
         liveModeLoopJob = null
         currentLiveCapture?.stop()
         currentLiveCapture = null
+        stopLiveMicrophoneService()
         audioPlayer.stop()
         live = false
         liveSessionId += 1
@@ -470,6 +485,27 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
         if (connected) {
             startWakeListener()
         }
+    }
+
+    /**
+     * Keeps the explicitly started Live session eligible for microphone capture when the
+     * activity is backgrounded. Android requires the service to start while the activity is
+     * visible and keeps its ongoing notification visible for the whole capture session.
+     */
+    private fun startLiveMicrophoneService(): Boolean {
+        val intent = Intent(appContext, MicCaptureService::class.java).apply {
+            action = MicCaptureService.ACTION_START
+        }
+        return runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) appContext.startForegroundService(intent)
+            else appContext.startService(intent)
+        }.onFailure { error ->
+            notice = "O Android não iniciou o serviço de microfone: ${error.message ?: "verifique a permissão"}."
+        }.isSuccess
+    }
+
+    private fun stopLiveMicrophoneService() {
+        runCatching { appContext.stopService(Intent(appContext, MicCaptureService::class.java)) }
     }
 
     fun sendDesktopInput(action: String, x: Float, y: Float, button: Int = 1, delta: Float = 0f) {
