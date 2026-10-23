@@ -162,7 +162,7 @@ def test_screenshot_recovers_gnome_file_during_portal_wait(monkeypatch, tmp_path
     class Loop:
         def quit(self): holder["quit"] = True
         def exec(self):
-            recovery = next(timer for timer in holder["timers"] if timer.interval == 250)
+            recovery = next(timer for timer in holder["timers"] if timer.interval == 100)
             recovery.callback()
             recovery.callback()
             assert holder["quit"]

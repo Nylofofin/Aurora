@@ -278,7 +278,7 @@ def capture_screenshot(pictures_dir: str | Path, timeout: int = 45,
     # Response signal. Watch for the resulting file while the request is
     # pending, rather than waiting for the full 45-second timeout to recover it.
     recovery_timer = QTimer()
-    recovery_timer.setInterval(250)
+    recovery_timer.setInterval(100)
     recovery_state = {"signature": None, "stable": 0}
     def recover_when_file_is_ready():
         signature = _gnome_saved_screenshot_signature(pictures_dir, request_started_at)

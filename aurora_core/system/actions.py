@@ -59,7 +59,7 @@ def execute_action(self,name,args):
                 xdg_user_directory('PICTURES'), cancel_event=getattr(self,'action_cancel_event',None),
                 parent_window=parent_window)
             aurora_integrations._append_action_log('screenshot','saved')
-            return f'Salvei a captura em {path}.'
+            return 'Pronto, tirei o print. Salvei em Imagens, na pasta Aurora.'
         except Exception as exc:
             aurora_integrations._append_action_log('screenshot','failed',
                 {'error_type':type(exc).__name__,'phase':getattr(exc,'phase','unknown')})

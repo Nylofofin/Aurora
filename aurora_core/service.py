@@ -108,7 +108,7 @@ class _ScreenshotActionRequest(QThread):
                 self.pictures_dir,cancel_event=self.cancel_event,parent_window=self.parent_window)
             try: aurora_integrations._append_action_log('screenshot','saved')
             except Exception: pass  # Audit failure must not strand the action/UI.
-            self.completed.emit(True,f'Salvei a captura em {path}.')
+            self.completed.emit(True,'Pronto, tirei o print. Salvei em Imagens, na pasta Aurora.')
         except Exception as exc:
             try:
                 aurora_integrations._append_action_log(

@@ -283,7 +283,7 @@ def test_obs_approval_runs_off_the_gui_thread(monkeypatch):
     assert detail["result"] == "Gravação iniciada no OBS."
 
 
-def test_direct_screenshot_runs_off_the_gui_thread_and_reports_saved_path(monkeypatch, tmp_path):
+def test_direct_screenshot_runs_off_the_gui_thread_and_uses_natural_confirmation(monkeypatch, tmp_path):
     from PySide6.QtCore import QCoreApplication, QObject
     app = QCoreApplication.instance() or QCoreApplication([])
     main_thread = threading.get_ident()
@@ -336,7 +336,8 @@ def test_direct_screenshot_runs_off_the_gui_thread_and_reports_saved_path(monkey
     assert observed and observed[0] != main_thread
     assert observed[1] == "x11:1234"
     assert saved_path.read_bytes() == b"image"
-    assert stub.completed == f"Salvei a captura em {saved_path}."
+    assert stub.completed == "Pronto, tirei o print. Salvei em Imagens, na pasta Aurora."
+    assert str(saved_path) not in stub.completed
 
 
 def test_action_worker_exit_without_result_releases_waiting_request():
