@@ -11,6 +11,8 @@
 
 **Experimento:** peça “diagnóstico da Aurora” para obter uma verificação local e somente leitura do Ollama/modelos, dependências de voz, modelo Vosk e sessão gráfica. O diagnóstico não testa microfone, serviços online, OBS ou Spotify e não altera configurações.
 
+**Protótipo experimental de cartões e motion:** abra `prototypes/aurora-motion-prototype.html` no navegador para explorar a composição da bolha com cartões de informação, etapas visuais e lembretes demonstrativos. Os dados são fictícios; os cartões e lembretes ainda não estão conectados ao serviço desktop e não salvam agendamentos.
+
 ## Histórico Android
 
 O Companion Android chegou à versão `1.2.3` como experimento. Não é mais uma plataforma mantida nem há APK disponível para download. O registro documenta o que foi compilado, os testes feitos e os limites encontrados; consulte [`android-client/ARCHIVE.md`](android-client/ARCHIVE.md).
