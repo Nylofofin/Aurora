@@ -379,6 +379,38 @@ def test_action_worker_exit_without_result_releases_waiting_request():
     assert stub.orb.modes == ["error"]
 
 
+def test_action_watchdog_cancels_worker_and_exits_controlling_state():
+    from PySide6.QtCore import QObject
+
+    class Orb:
+        def __init__(self): self.modes = []
+        def isVisible(self): return True
+        def set_mode(self, mode): self.modes.append(mode)
+
+    class ServiceStub(service_module.AuroraService):
+        def __init__(self):
+            QObject.__init__(self)
+            self.orb = Orb()
+            self.obs_details = {}
+            self.request_generation = 9
+            self.voice = type("Voice", (), {"request_active": threading.Event()})()
+
+    stub = ServiceStub()
+    worker = object()
+    cancel_event = threading.Event()
+    detail = {"event": threading.Event(), "request_generation": 9,
+              "cancel_event": cancel_event, "direct": False}
+    stub.obs_details[worker] = detail
+
+    stub._expire_action_worker(worker, detail, "A captura excedeu o limite de tempo.")
+
+    assert detail["event"].is_set()
+    assert cancel_event.is_set()
+    assert detail["result"] == "A captura excedeu o limite de tempo."
+    assert worker not in stub.obs_details
+    assert stub.orb.modes == ["error"]
+
+
 def test_tapping_pending_approval_interrupts_voice_before_execution():
     sequence = []
     class Speaker:

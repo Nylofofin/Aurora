@@ -476,6 +476,8 @@ class AuroraService(QObject):
         worker.completed.connect(self._obs_action_result)
         worker.finished.connect(self._action_worker_finished)
         worker.start()
+        self._schedule_action_watchdog(worker,detail,38,
+            'O OBS não respondeu dentro do limite de tempo; não confirmei a gravação.')
 
     def _start_screenshot_action(self,detail):
         self.orb.set_mode('controlling')
@@ -490,6 +492,25 @@ class AuroraService(QObject):
         worker.completed.connect(self._screenshot_action_result)
         worker.finished.connect(self._action_worker_finished)
         worker.start()
+        self._schedule_action_watchdog(worker,detail,50,
+            'A captura excedeu o limite de tempo; não confirmei o arquivo.')
+
+    def _schedule_action_watchdog(self,worker,detail,timeout_seconds,message):
+        QTimer.singleShot(timeout_seconds*1000,
+            lambda w=worker,d=detail,m=message:self._expire_action_worker(w,d,m))
+
+    def _expire_action_worker(self,worker,detail,message):
+        if self.obs_details.get(worker) is not detail: return
+        detail['result']=message
+        self.obs_details.pop(worker,None)
+        cancel_event=detail.get('cancel_event')
+        already_cancelled=bool(cancel_event and cancel_event.is_set())
+        if cancel_event: cancel_event.set()
+        if detail.get('event'): detail['event'].set()
+        current=detail.get('request_generation')==self.request_generation
+        if current and self.orb.isVisible(): self.orb.set_mode('error')
+        if detail.get('direct') and current and not already_cancelled and self.voice.request_active.is_set():
+            self.complete_direct_action(message)
 
     @Slot()
     def _action_worker_finished(self):
