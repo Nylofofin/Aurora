@@ -1,4 +1,7 @@
-from aurora_core.web.orchestra import plan_research_subagents, resource_worker_limit
+from aurora_core.web.orchestra import (
+    local_parallel_tool_calls, local_worker_limit, plan_research_subagents,
+    resource_worker_limit,
+)
 
 
 def test_resource_budget_reduces_workers_under_load_or_low_memory():
@@ -7,6 +10,23 @@ def test_resource_budget_reduces_workers_under_load_or_low_memory():
     assert resource_worker_limit(4, load_per_cpu=0.1, available_ram=1 * 1024**3, cpu_count=8) == 1
     assert resource_worker_limit(4, load_per_cpu=0.1, available_ram=12 * 1024**3, cpu_count=2) == 1
     assert resource_worker_limit(1, load_per_cpu=0.0, available_ram=12 * 1024**3, cpu_count=8) == 1
+
+
+def test_local_workers_are_capped_and_mutations_never_fan_out():
+    assert local_worker_limit(4, load_per_cpu=0.1, available_ram=12 * 1024**3, cpu_count=8) == 2
+    allowed = [
+        {"function": {"name": "get_system_info", "arguments": {}}},
+        {"function": {"name": "inspect_accessible_windows", "arguments": {"application": "Editor"}}},
+    ]
+    assert local_parallel_tool_calls(allowed)
+    assert not local_parallel_tool_calls(allowed[:1])
+    assert not local_parallel_tool_calls(allowed + [
+        {"function": {"name": "open_application", "arguments": {"command": "Editor"}}}
+    ])
+    assert not local_parallel_tool_calls([
+        {"function": {"name": "volume_control", "arguments": {"action": "set", "value": 20}}},
+        {"function": {"name": "get_system_info", "arguments": {}}},
+    ])
 
 
 def test_explicit_comparison_becomes_independent_research_subagents():

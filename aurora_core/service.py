@@ -606,13 +606,20 @@ class AuroraService(QObject):
     def research_progress(self,event,generation):
         if generation!=self.request_generation: return
         research_card=getattr(self,'research_card',None)
-        if research_card: research_card.update_progress(generation,event)
+        if research_card:
+            if (isinstance(event,dict) and event.get('mode')=='local' and not getattr(self,'companion_request',None)
+                    and research_card.generation!=generation):
+                research_card.begin(generation,event.get('title') or self.current_prompt,self.orb.frameGeometry(),mode='local')
+            research_card.update_progress(generation,event)
         stage=event.get('stage') if isinstance(event,dict) else None
-        if stage in {'planning','validating','reading','synthesizing'}: self.orb.set_mode('thinking')
+        if stage in {'planning','validating','reading','synthesizing','executing'}: self.orb.set_mode('thinking')
         elif stage=='searching': self.orb.set_mode('searching')
     def answer_done(self,text,generation=None):
         if generation is not None and generation!=self.request_generation: return
         self.response_summary=Speaker.clean(' '.join(str(text).split())); self.response_finished=True
+        research_card=getattr(self,'research_card',None)
+        if generation is not None and research_card and research_card.generation==generation:
+            research_card.finish(generation,self.response_summary)
         self.remember_exchange(self.current_prompt,self.response_summary+(' '+self.active_search_context if self.active_search_context else ''))
         if getattr(self,'companion_request',None):
             self.voice.speaking=False

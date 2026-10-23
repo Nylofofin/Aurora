@@ -112,12 +112,12 @@ def test_mobile_agent_requests_are_sent_to_the_local_tools_model(monkeypatch):
     monkeypatch.setattr(routing, "factual_web_intent", lambda _prompt: False)
     monkeypatch.setattr(routing, "research_request_intent", lambda _prompt: False)
     class Signal:
-        def connect(self, _callback): pass
+        def connect(self, _callback, *_args): pass
 
     class FakeInference:
         def __init__(self, *args, **kwargs):
             self.args, self.kwargs = args, kwargs
-            self.sentence = self.search = self.approval = self.error = self.result = Signal()
+            self.sentence = self.search = self.progress = self.approval = self.error = self.result = Signal()
 
     monkeypatch.setattr(routing, "Inference", FakeInference)
 
@@ -152,12 +152,12 @@ def test_mobile_small_talk_uses_conversation_model_without_tools(monkeypatch):
     monkeypatch.setattr(routing, "research_request_intent", lambda _prompt: False)
 
     class Signal:
-        def connect(self, _callback): pass
+        def connect(self, _callback, *_args): pass
 
     class FakeInference:
         def __init__(self, *args, **kwargs):
             self.args, self.kwargs = args, kwargs
-            self.sentence = self.search = self.approval = self.error = self.result = Signal()
+            self.sentence = self.search = self.progress = self.approval = self.error = self.result = Signal()
 
     monkeypatch.setattr(routing, "Inference", FakeInference)
 

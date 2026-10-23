@@ -1,4 +1,6 @@
 import json
+import threading
+import time
 
 import aurora_core.llm.inference as inference_module
 from aurora_core.web.language import likely_portuguese, likely_spanish
@@ -156,3 +158,54 @@ def test_cancel_before_tool_dispatch_prevents_local_side_effect(monkeypatch):
 
     assert worker.cancelled
     assert dispatched == []
+
+
+def test_independent_local_read_tools_run_in_parallel_and_keep_model_order(monkeypatch):
+    cfg = {"endpoint": "http://localhost:11434", "model": "gemma4:test",
+           "keep_alive": "5m", "num_ctx": 1024, "agent_num_ctx": 1024,
+           "agent_num_predict": 96, "num_thread": 4, "num_gpu": 99}
+    worker = inference_module.Inference(cfg, "Consulte hardware e janelas", use_tools=True)
+    monkeypatch.setattr(inference_module, "local_worker_limit", lambda count: 2)
+    gate = threading.Barrier(2)
+    calls = [
+        {"function": {"name": "get_system_info", "arguments": {}}},
+        {"function": {"name": "inspect_accessible_windows", "arguments": {"application": "Editor"}}},
+    ]
+
+    def execute(name, _args):
+        gate.wait(timeout=1)
+        if name == "get_system_info":
+            time.sleep(0.03)
+        return name
+
+    monkeypatch.setattr(worker, "execute_tool", execute)
+    events = []
+    worker.progress.connect(events.append)
+    outputs = worker._execute_tool_batch(calls)
+
+    assert [output for _call, _name, output in outputs] == [
+        "get_system_info", "inspect_accessible_windows"
+    ]
+    assert events[0]["mode"] == "local"
+    assert events[0]["workers"] == 2
+    assert events[-1]["completed"] == 2
+
+
+def test_local_mutations_stay_sequential(monkeypatch):
+    cfg = {"endpoint": "http://localhost:11434", "model": "gemma4:test",
+           "keep_alive": "5m", "num_ctx": 1024, "agent_num_ctx": 1024,
+           "agent_num_predict": 96, "num_thread": 4, "num_gpu": 99}
+    worker = inference_module.Inference(cfg, "Abra o editor e verifique o hardware", use_tools=True)
+    calls = [
+        {"function": {"name": "open_application", "arguments": {"command": "Editor"}}},
+        {"function": {"name": "get_system_info", "arguments": {}}},
+    ]
+    seen = []
+    monkeypatch.setattr(worker, "execute_tool", lambda name, _args: seen.append(name) or name)
+    monkeypatch.setattr(inference_module, "local_worker_limit",
+                        lambda _count: (_ for _ in ()).throw(AssertionError("parallel fan-out not allowed")))
+
+    outputs = worker._execute_tool_batch(calls)
+
+    assert seen == ["open_application", "get_system_info"]
+    assert [output for _call, _name, output in outputs] == seen

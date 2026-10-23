@@ -13,6 +13,7 @@ _STAGES = {
     "planning": "Preparando pesquisa",
     "planning_complete": "Pesquisa preparada",
     "searching": "Pesquisando em paralelo",
+    "executing": "Consultando ferramentas locais",
     "validating": "Validando fontes",
     "reading": "Abrindo páginas verificadas",
     "synthesizing": "Preparando resposta",
@@ -31,6 +32,7 @@ class ResearchCard(QWidget):
         self.setWindowTitle("Aurora · pesquisa")
         self.resize(366, 390)
         self.generation = None
+        self.mode = "web"
         self._tasks = []
         self._finished = set()
         self._live_sources = []
@@ -118,9 +120,10 @@ class ResearchCard(QWidget):
         self._position.setDuration(250)
         self._position.setEasingCurve(QEasingCurve.Type.OutCubic)
 
-    def begin(self, generation, query, anchor):
+    def begin(self, generation, query, anchor, mode="web"):
         self._hide_timer.stop()
         self.generation = generation
+        self.mode = mode
         self._tasks = [str(query)]
         self._finished.clear()
         self._live_sources.clear()
@@ -129,6 +132,8 @@ class ResearchCard(QWidget):
         self._set_stage("searching")
         self._set_workers(self._tasks, 1)
         self._clear_sources()
+        self.source_heading.setVisible(mode != "local")
+        self.source_area.setVisible(mode != "local")
         self.progress.setValue(8)
         self._show_near(anchor)
 
@@ -167,6 +172,12 @@ class ResearchCard(QWidget):
             timing = f" · {duration / 1000:.1f} s" if duration is not None and event.get("finished_task") else ""
             self.stage_label.setText(f"Pesquisando em paralelo · {completed}/{total} etapas{timing}")
             self.progress.setValue(10 + int(55 * completed / total))
+            self._paint_workers()
+        elif stage == "executing":
+            completed = int(event.get("completed", len(self._finished)))
+            total = max(1, int(event.get("total", len(self._tasks))))
+            self.stage_label.setText(f"Consultando ferramentas locais · {completed}/{total}")
+            self.progress.setValue(12 + int(76 * completed / total))
             self._paint_workers()
         elif stage == "validating":
             counts = event.get("counts", {})

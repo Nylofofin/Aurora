@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QThread, Signal
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 import json, re, threading, time, urllib.error, urllib.request
 from ..config import local_endpoint
 from .prompts import assistant_system_prompt, complete_spoken_response
@@ -11,6 +12,7 @@ from ..web.language import likely_english, likely_portuguese, likely_spanish
 from ..web.intent import _is_historical_query, current_search_window, guided_learning_intent
 from ..web.fetch import read_public_page
 from ..web.pipeline import search_public_web
+from ..web.orchestra import local_parallel_tool_calls, local_worker_limit
 
 ACTION_TOOL_NAMES = {
     'open_url', 'take_screenshot', 'spotify_play', 'obs_record',
@@ -21,7 +23,7 @@ ACTION_TOOL_NAMES = {
 }
 
 class Inference(QThread):
-    phrase=Signal(str); sentence=Signal(str); state=Signal(str); approval=Signal(str,object); result=Signal(str); error=Signal(str); search=Signal(str,str)
+    phrase=Signal(str); sentence=Signal(str); state=Signal(str); approval=Signal(str,object); result=Signal(str); error=Signal(str); search=Signal(str,str); progress=Signal(object)
     def __init__(self, cfg, prompt, model=None, use_tools=False, history=None, system_prompt=None,response_language='Português brasileiro'): super().__init__(); self.cfg=cfg; self.prompt=prompt; self.model=model or cfg['model']; self.use_tools=use_tools; self.history=(history or [])[-6:]; self.system_prompt=system_prompt; self.response_language=response_language; self.cancelled=False; self.active_response=None
     def cancel(self):
         self.cancelled=True
@@ -122,16 +124,9 @@ class Inference(QThread):
                         spoken_parts.append(item); self.sentence.emit(item)
                 if not calls: break
                 msgs.append({'role':'assistant','content':content,'tool_calls':calls})
-                for call in calls:
-                    # A cancellation may arrive after the model stream closes but
-                    # before the next tool call. Never start a local side effect
-                    # once the user has cancelled the request.
-                    if self.cancelled: return
-                    fn=call.get('function',{}); name=fn.get('name',''); args=fn.get('arguments',{})
-                    if isinstance(args,str):
-                        try: args=json.loads(args)
-                        except Exception: args={}
-                    output=self.execute_tool(name,args)
+                outputs=self._execute_tool_batch(calls)
+                if outputs is None: return
+                for call,name,output in outputs:
                     if name in ACTION_TOOL_NAMES:
                         action_results.append(str(output))
                     else:
@@ -164,6 +159,77 @@ class Inference(QThread):
             self.error.emit(f'Ollama local retornou {e.code}. Confira a tag {self.model}.')
         except Exception as e:
             self.error.emit('Não conectei ao Ollama local. Confira se ele está ativo e se o Gemma está instalado.')
+
+    def _execute_tool_batch(self,calls):
+        """Run only independent read-only local inspections concurrently."""
+        if not local_parallel_tool_calls(calls):
+            outputs=[]
+            for call in calls:
+                if self.cancelled: return None
+                fn=call.get('function',{}); name=fn.get('name',''); args=fn.get('arguments',{})
+                if isinstance(args,str):
+                    try: args=json.loads(args)
+                    except Exception: args={}
+                outputs.append((call,name,self.execute_tool(name,args)))
+            return outputs
+
+        worker_count=local_worker_limit(len(calls))
+        def label(call):
+            fn=call.get('function',{}); name=fn.get('name','')
+            args=fn.get('arguments',{})
+            if isinstance(args,str):
+                try: args=json.loads(args)
+                except Exception: args={}
+            detail=args.get('application') if isinstance(args,dict) else None
+            if name=='volume_control': return 'Consultar volume'
+            if name=='get_system_info': return 'Consultar hardware'
+            return f'Inspecionar {str(detail or "aplicativo")[:48]}'
+        tasks=[label(call) for call in calls]
+        self.progress.emit({'mode':'local','stage':'executing','title':self.prompt,
+                            'tasks':tasks,'workers':worker_count,'completed':0,'total':len(calls)})
+        if worker_count < 2:
+            outputs=[]
+            for index,call in enumerate(calls):
+                if self.cancelled: return None
+                fn=call.get('function',{}); name=fn.get('name',''); args=fn.get('arguments',{})
+                if isinstance(args,str):
+                    try: args=json.loads(args)
+                    except Exception: args={}
+                output=self.execute_tool(name,args)
+                outputs.append((call,name,output))
+                self.progress.emit({'mode':'local','stage':'executing','title':self.prompt,
+                    'tasks':tasks,'workers':1,'completed':index+1,'total':len(calls),
+                    'finished_task':tasks[index]})
+            return outputs
+        executor=ThreadPoolExecutor(max_workers=worker_count,thread_name_prefix='aurora-local-agent')
+        pending={}; outputs=[None]*len(calls); completed=0
+        try:
+            for index,call in enumerate(calls):
+                if self.cancelled:
+                    for future in pending: future.cancel()
+                    return None
+                fn=call.get('function',{}); name=fn.get('name',''); args=fn.get('arguments',{})
+                if isinstance(args,str):
+                    try: args=json.loads(args)
+                    except Exception: args={}
+                pending[executor.submit(self.execute_tool,name,args)]=(index,call,name)
+            while pending:
+                if self.cancelled:
+                    for future in pending: future.cancel()
+                    return None
+                done,_=wait(tuple(pending),timeout=0.1,return_when=FIRST_COMPLETED)
+                for future in done:
+                    index,call,name=pending.pop(future)
+                    try: output=future.result()
+                    except Exception as exc: output=f'Consulta local falhou: {type(exc).__name__}.'
+                    outputs[index]=(call,name,output); completed+=1
+                    self.progress.emit({'mode':'local','stage':'executing','title':self.prompt,
+                        'tasks':tasks,'workers':worker_count,'completed':completed,'total':len(calls),
+                        'finished_task':tasks[index]})
+            return outputs
+        finally:
+            executor.shutdown(wait=not self.cancelled,cancel_futures=True)
+
     def execute_tool(self,name,args):
         local_result=execute_local_tool(name,args,self.cfg)
         if local_result is not None: return local_result

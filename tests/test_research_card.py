@@ -55,3 +55,21 @@ def test_research_card_consumes_live_pipeline_sources_and_read_stage(monkeypatch
     assert card.stage_label.text() == "Abrindo páginas verificadas · 1/2"
     card.hide()
     app.processEvents()
+
+
+def test_research_card_shows_local_parallel_inspection_without_web_sources(monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    card = ResearchCard()
+    monkeypatch.setattr(card, "_show_near", lambda _anchor: None)
+    card.begin(9, "Consulte hardware e volume", None, mode="local")
+    card.update_progress(9, {
+        "mode": "local", "stage": "executing", "tasks": ["Consultar hardware", "Consultar volume"],
+        "workers": 2, "completed": 1, "total": 2, "finished_task": "Consultar volume",
+    })
+
+    assert card.source_heading.isHidden()
+    assert card.source_area.isHidden()
+    assert card.stage_label.text() == "Consultando ferramentas locais · 1/2"
+    assert card.worker_labels[1].text().endswith("concluída")
+    card.hide()
+    app.processEvents()

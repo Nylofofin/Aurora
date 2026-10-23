@@ -93,3 +93,32 @@ def resource_worker_limit(task_count: int, *, load_per_cpu=None, available_ram=N
     if load_per_cpu >= 0.55 or (available_ram is not None and available_ram < 6 * 1024**3):
         return min(2, task_count)
     return min(3, task_count)
+
+
+_LOCAL_READ_ONLY_TOOLS = {"get_system_info", "inspect_accessible_windows", "volume_control"}
+
+
+def local_parallel_tool_calls(calls) -> bool:
+    """Allow fan-out only when every requested local tool is a safe read."""
+    if len(calls) < 2:
+        return False
+    for call in calls:
+        function = call.get("function", {}) if isinstance(call, dict) else {}
+        name = function.get("name", "")
+        args = function.get("arguments", {})
+        if isinstance(args, str):
+            import json
+            try:
+                args = json.loads(args)
+            except (TypeError, ValueError):
+                return False
+        if name not in _LOCAL_READ_ONLY_TOOLS or not isinstance(args, dict):
+            return False
+        if name == "volume_control" and args.get("action", "status") != "status":
+            return False
+    return True
+
+
+def local_worker_limit(task_count: int, **pressure) -> int:
+    """Keep local inspection fan-out smaller than web fan-out."""
+    return min(2, resource_worker_limit(task_count, **pressure))
