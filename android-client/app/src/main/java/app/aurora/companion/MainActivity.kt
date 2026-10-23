@@ -9,6 +9,8 @@ import android.view.SoundEffectConstants
 import android.view.View
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
+import android.util.Log
 import android.graphics.BitmapFactory
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -320,12 +322,20 @@ private fun AuroraShell() {
         if (!connected) return
         remoteState = "preparing"
         scope.launch {
+            val requestStartedAt = SystemClock.elapsedRealtime()
             try {
                 val bytes = withContext(Dispatchers.IO) {
                     CompanionClient(endpoint, fingerprint, token).speech(text)
                 }
-                if (!connected || (liveSession != null && (!liveMode || liveSessionId != liveSession))) return@launch
-                audioPlayer.play(bytes, fileExtension = ".mp3", onStarted = { remoteState = "speaking" }) { success ->
+                val audioReceivedAt = SystemClock.elapsedRealtime()
+                if (!connected || (liveSession != null && (!liveMode || liveSessionId != liveSession))) {
+                    if (connected && remoteState == "preparing") remoteState = "ready"
+                    return@launch
+                }
+                audioPlayer.play(bytes, fileExtension = ".mp3", onStarted = {
+                    Log.i("AuroraCompanion", "Voz pronta: total=${SystemClock.elapsedRealtime() - requestStartedAt}ms; reprodução=${SystemClock.elapsedRealtime() - audioReceivedAt}ms; áudio=${bytes.size} bytes")
+                    remoteState = "speaking"
+                }) { success ->
                     remoteState = "ready"
                     if (!success) notice = "MP3 da Thalita chegou (${bytes.size} bytes), mas o Android falhou ao reproduzir."
                 }
@@ -411,7 +421,10 @@ private fun AuroraShell() {
         while (connected && token.isNotBlank()) {
             delay(15_000)
             try {
-                remoteState = withContext(Dispatchers.IO) { CompanionClient(endpoint, fingerprint, token).heartbeatControl() }
+                val serverState = withContext(Dispatchers.IO) { CompanionClient(endpoint, fingerprint, token).heartbeatControl() }
+                // Keep the phone's animation aligned with local playback; server heartbeats
+                // only report that synthesis finished, not whether Android is still playing.
+                if (remoteState != "preparing" && remoteState != "speaking") remoteState = serverState
             } catch (_: Exception) {
                 appContext.stopService(Intent(appContext, WakeCaptureService::class.java))
                 wakeListening = false
@@ -807,6 +820,7 @@ private fun remoteStateLabel(state: String): String = when (state) {
     "transcribing" -> "Entendendo sua voz"
     "thinking" -> "Aurora pensando"
     "searching" -> "Aurora pesquisando"
+    "preparing" -> "Preparando voz da Aurora"
     "speaking" -> "Aurora falando"
     "error" -> "Atenção necessária"
     else -> "Celular conectado"
@@ -880,7 +894,7 @@ private fun Welcome(
 private fun OrbButton(live: Boolean, modifier: Modifier, activity: String = if (live) "listening" else "idle", onClick: () -> Unit) {
     val transition = rememberInfiniteTransition(label = "aurora-orb")
     val pulseMillis = when (activity) {
-        "transcribing", "thinking" -> 1050
+        "transcribing", "thinking", "preparing" -> 1050
         "searching" -> 1450
         "speaking" -> 720
         "listening" -> 850
@@ -889,7 +903,7 @@ private fun OrbButton(live: Boolean, modifier: Modifier, activity: String = if (
     val auraColor = when (activity) {
         "searching" -> Blue
         "speaking" -> Color(0xFFD9C7FF)
-        "thinking", "transcribing" -> Violet
+        "thinking", "transcribing", "preparing" -> Violet
         else -> if (live) Blue else Violet
     }
     val breathe by transition.animateFloat(
@@ -1262,6 +1276,7 @@ private fun LiveOverlay(
                     when {
                         recording -> "Estou ouvindo você"
                         working -> "A Aurora está pensando"
+                        activity == "preparing" -> "Preparando minha voz"
                         activity == "speaking" -> "A Thalita está falando"
                         else -> "Sua conversa, ao vivo"
                     },
@@ -1275,6 +1290,7 @@ private fun LiveOverlay(
                     when {
                         recording -> "Fale com naturalidade. Toque em Parar e enviar quando terminar."
                         working -> "Sua fala está sendo processada no computador."
+                        activity == "preparing" -> "A resposta chegou; estou preparando o áudio do PC."
                         activity == "speaking" -> "Resposta gerada no PC com Edge TTS · Thalita"
                         else -> "Toque na bolha ou em Falar para iniciar seu próximo turno."
                     },
