@@ -10,7 +10,7 @@ from ..config import APP_DIR, settings_save
 class AuroraOrb(QObject):
     start_voice=Signal(); quit_requested=Signal(); hide_requested=Signal(); hidden=Signal()
     def __init__(self,cfg):
-        super().__init__(); self.cfg=cfg; self.anchor=QRectF(0,0,136,136).toRect(); self.mode='hidden'; self.hiding=False; self.visibility_generation=0; self.visibility_attempts=0
+        super().__init__(); self.cfg=cfg; self.anchor=QRectF(0,0,136,136).toRect(); self.mode='hidden'; self.hiding=False; self.visibility_generation=0; self.visibility_attempts=0; self._completion_pulse_generation=0
         # Embed Quick in a translucent QWidget top-level. QQuickView's scene
         # rendered in its FBO but XWayland returned a black native surface on
         # this host; QQuickWidget paints the same QML into the composited
@@ -60,10 +60,17 @@ class AuroraOrb(QObject):
         self._drag_moved(x,y)
         self.cfg['bubble_position']=[self.view.x(),self.view.y()]; settings_save(self.cfg)
     def set_mode(self,mode):
-        self.mode=mode; self.root.setProperty('mode',mode)
+        previous=self.mode; self.mode=mode; self.root.setProperty('mode',mode)
+        if previous=='speaking' and mode!='speaking': self.root.setProperty('speechPulse',0.0)
         if mode!='listening': self.root.setProperty('inputLevel',0.0)
     def set_input_level(self,level):
         if self.mode=='listening': self.root.setProperty('inputLevel',max(0.0,min(1.0,float(level))))
+    def set_speech_level(self,level):
+        self.root.setProperty('speechPulse',max(0.0,min(1.0,float(level))))
+    def pulse_complete(self):
+        self._completion_pulse_generation+=1; generation=self._completion_pulse_generation
+        self.root.setProperty('completionPulse',0.0); self.root.setProperty('completionPulse',1.0)
+        QTimer.singleShot(140,lambda g=generation:self.root.setProperty('completionPulse',0.0) if g==self._completion_pulse_generation else None)
     def reveal(self,mode='listening'):
         self.visibility_generation+=1; generation=self.visibility_generation; self.visibility_attempts=0
         self.hiding=False

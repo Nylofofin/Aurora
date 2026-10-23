@@ -4,7 +4,7 @@ from PySide6.QtCore import QThread, Signal
 import asyncio, queue, re, shutil, subprocess, time
 
 class Speaker(QThread):
-    speaking=Signal(bool); audio_started=Signal(); drained=Signal()
+    speaking=Signal(bool); audio_started=Signal(); drained=Signal(); speech_level=Signal(float)
     def __init__(self,cfg): super().__init__(); self.cfg=cfg; self.q=queue.Queue(); self.running=True; self.active=False; self.playing=False; self.current_player=None; self.stream_loop=None; self.stream_task=None; self.cancel_generation=0; self.engine=shutil.which('ffplay'); self.fallback=shutil.which('espeak-ng') or shutil.which('espeak')
     def say(self,text):
         text=self.clean(text)
@@ -19,17 +19,21 @@ class Speaker(QThread):
         text=re.sub(r'[,;:]+([.!?])',r'\1',text).strip(' ,;:')
         text=re.sub(r'([.!?])(?:\s*[.!?])+',r'\1',text)
         return ' '.join(text.split())
+    @staticmethod
+    def word_boundary_pulse(text):
+        letters=sum(char.isalnum() for char in str(text))
+        return min(.88,.28+min(letters,12)*.045) if letters else .18
     async def _stream_edge(self,text,generation):
         import asyncio
         import edge_tts
         from .telemetry import elapsed_ms, log_voice_timing
         started=time.perf_counter(); first_audio=False
         task=asyncio.current_task(); self.stream_loop=asyncio.get_running_loop(); self.stream_task=task
-        player=None
+        player=None; pulse_release=None
         try:
             player=await asyncio.create_subprocess_exec(self.engine,'-nodisp','-autoexit','-loglevel','quiet','-f','mp3','-i','pipe:0',stdin=asyncio.subprocess.PIPE,stdout=asyncio.subprocess.DEVNULL,stderr=asyncio.subprocess.DEVNULL)
-            self.current_player=player; started=False
-            async for packet in edge_tts.Communicate(text,self.cfg.get('tts_voice','pt-BR-ThalitaMultilingualNeural'),rate='+8%').stream():
+            self.current_player=player; started=time.perf_counter()
+            async for packet in edge_tts.Communicate(text,self.cfg.get('tts_voice','pt-BR-ThalitaMultilingualNeural'),rate='+8%',boundary='WordBoundary').stream():
                 if generation!=self.cancel_generation: raise RuntimeError('speech interrupted')
                 if packet.get('type')=='audio' and packet.get('data'):
                     player.stdin.write(packet['data']); await player.stdin.drain()
@@ -37,6 +41,16 @@ class Speaker(QThread):
                         first_audio=True
                         log_voice_timing('tts_first_audio',elapsed_ms(started))
                         self.playing=True; self.audio_started.emit()
+                elif packet.get('type')=='WordBoundary':
+                    self.speech_level.emit(self.word_boundary_pulse(packet.get('text','')))
+                    if pulse_release and not pulse_release.done(): pulse_release.cancel()
+                    duration=max(.06,min(float(packet.get('duration',0))/10_000_000*.72,.42))
+                    async def release_after_word(delay):
+                        try:
+                            await asyncio.sleep(delay)
+                            if generation==self.cancel_generation: self.speech_level.emit(.08)
+                        except asyncio.CancelledError: pass
+                    pulse_release=asyncio.create_task(release_after_word(duration))
             player.stdin.close()
             try: await player.stdin.wait_closed()
             except Exception: pass
@@ -46,6 +60,8 @@ class Speaker(QThread):
                 player.kill(); await player.wait()
             raise
         finally:
+            if pulse_release and not pulse_release.done(): pulse_release.cancel()
+            self.speech_level.emit(0.0)
             if player is not None and self.current_player is player: self.current_player=None
             if self.stream_task is task: self.stream_task=None; self.stream_loop=None
     def run(self):

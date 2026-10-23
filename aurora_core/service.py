@@ -143,7 +143,7 @@ class AuroraService(QObject):
         self.feedback=QSoundEffect(); self.feedback.setSource(QUrl.fromLocalFile(str(APP_DIR/'assets'/'audio'/'entrada.wav'))); self.feedback.setVolume(.34)
         self.exit_feedback=QSoundEffect(); self.exit_feedback.setSource(QUrl.fromLocalFile(str(APP_DIR/'assets'/'audio'/'saida.wav'))); self.exit_feedback.setVolume(.30)
         self.orb.hidden.connect(self.play_exit_feedback)
-        self.speaker=Speaker(self.cfg); self.speaker.speaking.connect(self.speaking_changed); self.speaker.audio_started.connect(self.audio_started); self.speaker.start()
+        self.speaker=Speaker(self.cfg); self.speaker.speaking.connect(self.speaking_changed); self.speaker.audio_started.connect(self.audio_started); self.speaker.speech_level.connect(self.orb.set_speech_level,Qt.ConnectionType.QueuedConnection); self.speaker.start()
         self.voice=LocalVoice(self.cfg)
         # These callbacks touch the floating window/QSoundEffect. Queue them explicitly
         # because LocalVoice emits from its audio-capture thread.
@@ -605,6 +605,7 @@ class AuroraService(QObject):
         generation=self.activity_generation
         def finish():
             if generation==self.activity_generation and self.response_finished and not self.speaker.active and self.speaker.q.empty() and not (self.inf and self.inf.isRunning()) and not self.weather_busy():
+                self.orb.pulse_complete()
                 if getattr(self,'continuous_mode',True) and not self._mobile_audio_owned():
                     # No modo contínuo: após responder a pergunta, continua ouvindo o próximo comando
                     self.voice.end_request()

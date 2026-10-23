@@ -11,7 +11,8 @@ Item {
     property bool motionEnabled: false
     property real revealScale: 1.0
     property real inputLevel: 0.0
-    property real speechPulse: 0.18
+    property real speechPulse: 0.0
+    property real completionPulse: 0.0
     property real pressX: 0
     property real pressY: 0
     property real windowStartX: 0
@@ -31,7 +32,7 @@ Item {
         : mode === "searching" ? 0.32
         : mode === "thinking" || mode === "preparing" || mode === "weather" ? 0.25 : 0.14
     readonly property real voiceEnergy: mode === "listening" ? inputLevel : 0.0
-    readonly property real outputEnergy: mode === "speaking" ? speechPulse : 0.0
+    readonly property real outputEnergy: mode === "speaking" ? Math.max(speechPulse, 0.14) : 0.0
 
     signal startVoice()
     signal hideRequested()
@@ -44,6 +45,8 @@ Item {
     Behavior on tintStrength { NumberAnimation { duration: 420; easing.type: Easing.InOutCubic } }
     Behavior on animatedStateColor { ColorAnimation { duration: 460; easing.type: Easing.InOutCubic } }
     Behavior on inputLevel { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
+    Behavior on speechPulse { NumberAnimation { duration: 70; easing.type: Easing.OutCubic } }
+    Behavior on completionPulse { NumberAnimation { duration: 95; easing.type: Easing.OutCubic } }
 
     // A single glass sphere. All motion and state cues stay on its surface.
     Item {
@@ -52,28 +55,14 @@ Item {
         transformOrigin: Item.Center
         property real breathing: 0.0
         property real sheenTravel: 0.0
+        scale: 0.985 + breathing * 0.015 + root.voiceEnergy * 0.022 + root.outputEnergy * 0.024 + root.completionPulse * 0.038
+        Behavior on scale { NumberAnimation { duration: root.mode === "speaking" || root.mode === "listening" ? 85 : 240; easing.type: Easing.OutCubic } }
 
         SequentialAnimation on breathing {
             running: root.motionEnabled
             loops: Animation.Infinite
             NumberAnimation { from: 0; to: 1; duration: root.mode === "searching" ? 1900 : 3900; easing.type: Easing.InOutSine }
             NumberAnimation { from: 1; to: 0; duration: root.mode === "searching" ? 2100 : 4500; easing.type: Easing.InOutSine }
-        }
-        SequentialAnimation on scale {
-            running: root.motionEnabled
-            loops: Animation.Infinite
-            NumberAnimation {
-                from: root.mode === "speaking" ? 0.99 : 0.982
-                to: root.mode === "speaking" ? 1.045 : 1.018
-                duration: root.mode === "speaking" ? 360 : root.mode === "searching" ? 1250 : 3900
-                easing.type: Easing.InOutSine
-            }
-            NumberAnimation {
-                from: root.mode === "speaking" ? 1.045 : 1.018
-                to: root.mode === "speaking" ? 0.99 : 0.982
-                duration: root.mode === "speaking" ? 440 : root.mode === "searching" ? 1450 : 4500
-                easing.type: Easing.InOutSine
-            }
         }
         SequentialAnimation on sheenTravel {
             running: root.motionEnabled
@@ -103,12 +92,12 @@ Item {
         // Soft state color and depth are blended into the sphere itself.
         Shape {
             anchors.fill: parent
-            opacity: root.tintStrength
+            opacity: Math.min(0.88, root.tintStrength + root.voiceEnergy * 0.13 + root.outputEnergy * 0.12 + root.completionPulse * 0.18)
             ShapePath {
                 strokeColor: "transparent"; strokeWidth: 0
                 fillGradient: RadialGradient {
-                    centerX: 57 + sphere.sheenTravel * 11; centerY: 60; centerRadius: 64
-                    focalX: 35 + sphere.sheenTravel * 9; focalY: 24; focalRadius: 0
+                    centerX: 57 + sphere.sheenTravel * 11 + root.voiceEnergy * 8 - root.outputEnergy * 6; centerY: 60 + root.completionPulse * 5; centerRadius: 64
+                    focalX: 35 + sphere.sheenTravel * 9 + root.voiceEnergy * 7; focalY: 24 - root.outputEnergy * 4; focalRadius: 0
                     GradientStop { position: 0.0; color: Qt.rgba(root.animatedStateColor.r, root.animatedStateColor.g, root.animatedStateColor.b, 0.68) }
                     GradientStop { position: 0.56; color: Qt.rgba(root.animatedStateColor.r, root.animatedStateColor.g, root.animatedStateColor.b, 0.32) }
                     GradientStop { position: 1.0; color: "#00000000" }
@@ -134,10 +123,11 @@ Item {
         // Pearl reflection sweeps over the orb; its response tracks voice
         // input/output without adding glyphs, dots, or detached indicators.
         Shape {
-            x: 12 + sphere.sheenTravel * 3 + root.voiceEnergy * 2
-            y: 4 + sphere.breathing * 2
+            x: 12 + sphere.sheenTravel * 3 + root.voiceEnergy * 6 - root.outputEnergy * 4
+            y: 4 + sphere.breathing * 2 - root.completionPulse * 2
             width: 88; height: 69
-            opacity: 0.72 + root.voiceEnergy * 0.24 + root.outputEnergy * 0.18
+            opacity: Math.min(1.0, 0.64 + root.voiceEnergy * 0.28 + root.outputEnergy * 0.25 + root.completionPulse * 0.32)
+            scale: 1.0 + root.voiceEnergy * 0.035 + root.outputEnergy * 0.04 + root.completionPulse * 0.06
             ShapePath {
                 strokeColor: "transparent"; strokeWidth: 0
                 fillGradient: RadialGradient {

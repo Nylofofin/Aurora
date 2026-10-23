@@ -1,0 +1,40 @@
+import aurora_core.ui.orb as orb_module
+from aurora_core.voice.tts import Speaker
+
+
+def test_word_boundary_pulse_is_bounded_and_responds_to_word_length():
+    short = Speaker.word_boundary_pulse("oi")
+    long = Speaker.word_boundary_pulse("sincronização")
+
+    assert 0.0 < short < long <= 0.88
+    assert Speaker.word_boundary_pulse("…") == 0.18
+
+
+def test_completion_pulse_only_resets_from_latest_timer(monkeypatch):
+    timers = []
+
+    class Root:
+        def __init__(self):
+            self.values = []
+
+        def setProperty(self, name, value):
+            self.values.append((name, value))
+
+    class OrbStub:
+        pulse_complete = orb_module.AuroraOrb.pulse_complete
+
+        def __init__(self):
+            self.root = Root()
+            self._completion_pulse_generation = 0
+
+    monkeypatch.setattr(orb_module.QTimer, "singleShot", lambda _ms, callback: timers.append(callback))
+    orb = OrbStub()
+    orb.pulse_complete()
+    first_timer = timers.pop()
+    orb.pulse_complete()
+    latest_timer = timers.pop()
+
+    first_timer()
+    assert orb.root.values[-1] == ("completionPulse", 1.0)
+    latest_timer()
+    assert orb.root.values[-1] == ("completionPulse", 0.0)
