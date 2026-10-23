@@ -20,7 +20,7 @@ jobs:
           python-version: '3.12'
           cache: pip
       - name: Install system audio runtime
-        run: sudo apt-get update && sudo apt-get install -y libportaudio2 libegl1
+        run: sudo apt-get update && sudo apt-get install -y libportaudio2 libegl1 libpulse0
       - name: Install Python dependencies
         run: python -m pip install -r requirements-dev.txt
       - name: Compile, test, and validate shell scripts
