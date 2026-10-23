@@ -1,30 +1,29 @@
-# Aurora Android Companion — Release 1.2.1 · NOVA-COMPANION-TOUCH
+# Aurora Android Companion — Release 1.2.2 · NOVA-COMPANION-TOUCH-R2
 
 Cliente Android nativo Companion. Modelos, busca e automação ficam no computador; o telefone é a interface, microfone e saída de áudio.
 
-## Novidades da Release 1.2.1
+## Novidades da Release 1.2.2
 
-- **Escuta Contínua no Live Mode**: Um único `AudioRecord` permanece aberto na sessão Live e o VAD segmenta as falas sem destruir/reabrir o microfone após cada resposta. A captura retoma automaticamente após a voz da Aurora.
-- **Perfil Local**: Ao abrir o aplicativo, informe nome, idade opcional e avatar. O perfil fica no armazenamento local privado do Android; ao conectar, preferências selecionadas são enviadas pela LAN/TLS para personalização local no PC. Não há login Google/GitHub nem conta na nuvem.
-- **Interface Repaginada com Abas e Temas**: Navegação moderna com abas de Chat, Live, Desktop Remoto e Configurações. Suporte a temas personalizáveis: Aurora (Lilás), Dark (OLED Escuro), Light (Claro Suave) e Cyber Neon.
-- **Controle Remoto do Desktop com Toque (Experimental, com consentimento GNOME)**:
+- **Interface reconstruída sobre a experiência conversacional Aurora**: tela inicial limpa em lavanda e azul, bolha animada, conversa central, composer compacto com acesso ao Live, histórico em gaveta e abas enxutas para Conversa, Desktop e Ajustes.
+- **Conexão acessível**: botão visível de conexão, descoberta do PC na rede, formulário de pareamento com código e pin SHA-256; anteriormente os controles de conexão estavam escondidos e não permitiam completar o pareamento de uma instalação nova.
+- **Perfil Local**: nome, idade opcional, avatar e tema ficam no armazenamento privado do Android; preferências selecionadas são enviadas pela LAN/TLS para personalização local no PC. Não há autenticação Google/GitHub nem conta na nuvem.
+- **Personalização visual**: Aurora pastel é o tema inicial; Noturno, Névoa e Neon ficam em opções separadas e legíveis.
+- **Modo Live contínuo**: o `AudioRecord` permanece aberto na sessão, e o waveform no campo de mensagem abre a tela imersiva de voz; o botão X encerra o Live.
+- **Desktop remoto experimental por toque**: a aba Desktop pede consentimento do portal GNOME e mostra a tela do PC; toque, toque duplo, toque longo e arrasto enviam eventos de ponteiro.
+- **Comandos de voz do Desktop**:
   - Diga *"Aurora, mostre meu computador"* ou acesse a aba Desktop para espelhar a tela do PC em tempo real.
   - Controle completo por toque: toque simples clica, toque duplo abre itens, toque longo abre o menu de contexto (botão direito) e arrasto move o cursor.
   - Para voltar, basta dizer *"Sair do desktop"* ou clicar em Sair.
 - O GNOME apresenta o diálogo do portal RemoteDesktop/ScreenCast para o usuário aprovar tela e ponteiro. A Aurora não habilita RDP/VNC globalmente nem ignora o consentimento do sistema.
-- **APK Release**: [release integrada Android + PC 1.2.1](https://github.com/ruanminezinoficial2025-ctrl/Aurora/releases/tag/v1.2.1). Build assinada para debug, até validação em aparelho real.
+- **APK**: [Aurora Android 1.2.2](https://github.com/ruanminezinoficial2025-ctrl/Aurora/releases/tag/android-v1.2.2). Build assinada para debug, até validação em aparelho real.
 
-- **Live mantém o AudioRecord aberto entre turnos**: o VAD fecha apenas o segmento de fala, sem destruir e reabrir a sessão do microfone após cada resposta.
-
-- Interface renovada em tons claros pastel de lavanda e azul, cartões mais leves, contraste legível, esfera Aurora animada e ícone adaptativo vetorial próprio.
 - Pareamento HTTPS com fingerprint SHA-256 digitado fora de banda, código de uso único e token cifrado no Android Keystore.
 - Envio de mensagens pelo roteador central do desktop e histórico de conversas armazenado no PC.
-- Tela inicial com ações explícitas **Falar com a Aurora** e **Escrever uma mensagem**; os controles de enviar, voz, histórico e conexão são botões com área de toque ampliada.
-- Voz por turnos com foreground service do Android: toque em **Falar com a Aurora** ou **Voz**, fale e toque em **Parar e enviar**; a notificação deixa o uso do microfone visível e a captura pode continuar com a tela bloqueada. O PC transcreve em pt-BR, executa a conversa central e devolve o áudio sintetizado.
+- No Live, o microfone fica ativo entre turnos e uma notificação deixa seu uso visível. A transcrição acontece em pt-BR no PC e a resposta sintetizada volta como áudio.
 - Respostas de voz geradas pelo PC via Edge TTS na voz configurada (Thalita por padrão) e enviadas em um POST HTTPS binário separado (`audio/mpeg`), sem Base64 no JSON do chat. O cliente não usa o TTS Google/Android. A síntese precisa de internet no PC e pode levar alguns segundos; se falhar, a mensagem permanece e a interface mostra a etapa/erro.
 - Durante o controle pelo celular, a fala parcial e os sons da bolha não tocam nos alto-falantes do PC. Os sons de entrada/saída são assets WAV embutidos no APK, sem streaming pela rede. A voz Edge TTS é gerada no PC e enviada em MP3; o cliente usa extensão reconhecível pelo Android e avisa se não conseguir reproduzir. O som de saída é carregado do APK antes de liberar o controle ao desktop. Cliques usam o feedback de interface configurado no Android.
-- Modo Live em tela cheia: o botão waveform abre uma bolha central animada e toca o som de entrada; a escuta por turnos permanece ativa até tocar no X, que encerra e toca o som de saída.
-- Wake word experimental pelo botão **Mic**. Com a sessão conectada, um serviço de microfone em primeiro plano envia PCM por HTTPS ao PC; o modelo Vosk local reconhece “Aurora”. Se o app estiver visível, o Live inicia sem outro toque. O indicador de microfone permanece na notificação; com o app em segundo plano, é necessário abrir a notificação e tocar em **Falar** para continuar.
+- O waveform do composer abre o Live em tela cheia e toca o som de entrada; a escuta contínua permanece até tocar no X, que encerra a sessão e toca o som de saída.
+- Wake word mobile é experimental. Com conexão ao PC e permissão de microfone, o serviço em primeiro plano envia PCM por HTTPS ao Vosk local do computador. O indicador de microfone permanece na notificação.
 - Desktop Remoto pelo botão **Desktop**. O portal GNOME solicita consentimento para tela e ponteiro; quadros JPEG são enviados por HTTPS e os toques mapeados viram eventos de ponteiro no mesmo stream aprovado. O fluxo não salva imagens e encerra ao sair, desconectar ou após 30 segundos sem visualizador.
 - Gaveta lateral com histórico completo de conversas do PC, seleção de chat e ação de nova conversa.
 - Descoberta automática do PC por DNS-SD/mDNS quando ambos estão na mesma LAN; a impressão digital TLS continua sendo verificada fora de banda.

@@ -463,6 +463,7 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
         live = false
         liveSessionId += 1
         liveMode = false
+        activeTab = CompanionTab.CHAT
         hideFloatingBubble()
         if (playExitSound) playPcSound("saida.wav")
         resumeAlwaysOnWake()

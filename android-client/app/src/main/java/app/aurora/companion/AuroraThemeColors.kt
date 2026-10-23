@@ -16,15 +16,15 @@ data class AuroraColors(
 
 object AuroraThemes {
     val CosmicAurora = AuroraColors(
-        background = Color(0xFF0F0C1B),
-        surface = Color(0xFF1B162C),
-        surfaceVariant = Color(0xFF292242),
-        primary = Color(0xFFA58AF5),
-        secondary = Color(0xFF68B7DE),
-        accent = Color(0xFFD6C2FA),
-        textPrimary = Color(0xFFF7F5FA),
-        textSecondary = Color(0xFFA5A0B8),
-        isDark = true,
+        background = Color(0xFFF7F5FA),
+        surface = Color(0xFFFFFFFF),
+        surfaceVariant = Color(0xFFEFEAF7),
+        primary = Color(0xFF8066C6),
+        secondary = Color(0xFF559DC5),
+        accent = Color(0xFFB8A2E4),
+        textPrimary = Color(0xFF29263A),
+        textSecondary = Color(0xFF777387),
+        isDark = false,
     )
 
     val DeepDark = AuroraColors(
