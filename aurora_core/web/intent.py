@@ -1,6 +1,8 @@
+# SPDX-License-Identifier: GPL-3.0-only
 from __future__ import annotations
 
 from ..system.files import normalize_words
+from ..system.calculator import calculate_local_expression
 from datetime import datetime
 import re, unicodedata
 import math
@@ -94,6 +96,7 @@ def factual_web_intent(prompt):
     plain=unicodedata.normalize('NFKD',str(prompt)).encode('ascii','ignore').decode('ascii').lower()
     if re.search(r'\b(como voce esta|como voce ta|como voce se sente|como voce vai|como vai voce|como foi (?:o )?(?:seu|sua)|tudo bem|quem e voce|o que voce e|qual (?:e )?seu nome|qual sua opiniao|minha opiniao|na sua opiniao|o que acha|o que voce acha|o que voce faria|o que eu faco|o que devo fazer|me ajuda a pensar|me aconselha|me da um conselho|queria conversar|vamos conversar|conversa comigo|desabafar|me sinto)\b',plain):
         return False
+    if calculate_local_expression(prompt): return False
     if research_request_intent(plain): return True
     return bool(re.search(r'^\s*(?:aurora[, ]*)?(?:qual\b|quais\b|quem\b|quando\b|onde\b|quanto\b|como\b|por que\b|porque\b|o que\b)',plain) or re.search(
         r'\b(me fale sobre|me explica|explique|compare|diferenca entre|informacoes sobre|tell me about|how much|what (?:was|were|is|are)|who (?:was|is)|when did|where is|how does)\b',plain))

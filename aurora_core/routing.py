@@ -1,9 +1,11 @@
+# SPDX-License-Identifier: GPL-3.0-only
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
 import re, aurora_fx
 from .llm.inference import Inference
 from .system.commands import parse_local_command
+from .system.calculator import calculate_local_expression
 from .system.files import normalize_words
 from .voice.wake import LocalVoice
 from .web.intent import (
@@ -33,6 +35,9 @@ def route_request(self,prompt):
     local_answer=local_datetime_answer(prompt)
     if local_answer:
         self.quick_summary_done(local_answer,self.request_generation); return
+    calculation=calculate_local_expression(prompt)
+    if calculation:
+        self.quick_summary_done(calculation,self.request_generation); return
     lower_prompt = prompt.lower().strip()
     if re.search(r'\b(mostre|mostrar|abrir|ver|espelhar)\s+(meu\s+)?(computador|pc|desktop|tela)\b', lower_prompt):
         if getattr(self, 'screen_stream', None):

@@ -61,7 +61,7 @@ def test_phone_wake_audio_is_accepted_only_during_mobile_control_and_is_bounded(
 
 def test_phone_wake_audio_is_evaluated_by_vosk_on_its_owner_thread():
     import json
-    import threading
+    from PySide6.QtCore import QThread
 
     class FakeWakeRecognizer:
         def AcceptWaveform(self, _block): return True
@@ -70,14 +70,19 @@ def test_phone_wake_audio_is_evaluated_by_vosk_on_its_owner_thread():
 
     voice = LocalVoice({})
     voice.mobile_owned.set()
-    worker = threading.Thread(target=voice._drain_mobile_audio, args=(FakeWakeRecognizer(),))
+
+    class WakeWorker(QThread):
+        def run(self):
+            voice._drain_mobile_audio(FakeWakeRecognizer())
+
+    worker = WakeWorker()
     worker.start()
     try:
         assert voice.feed_mobile_audio(b"\0\0") is True
     finally:
         voice.mobile_owned.clear()
-        worker.join(timeout=1)
-    assert not worker.is_alive()
+        assert worker.wait(1000)
+    assert not worker.isRunning()
 
 
 def test_wake_detection_stays_suppressed_until_request_finishes_but_allows_click():

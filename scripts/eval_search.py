@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Trace Aurora's existing ask/search/answer path without opening UI or audio."""
+# SPDX-License-Identifier: GPL-3.0-only
 from __future__ import annotations
 
 import argparse
@@ -51,6 +52,7 @@ class Trace:
         self.fx_guard = None
         self.fx_quote = None
         self.fx_api_timings = ()
+        self.errors = []
         self.filter_counts = {"relevancia": 0, "data_fonte": 0, "data_pagina_ausente": 0, "url": 0, "redirecionamento": 0}
 
     def append(self, name, value):
@@ -70,6 +72,36 @@ class OrbStub:
 
     def dismiss(self):
         pass
+
+    def frameGeometry(self):
+        return None
+
+
+class ResearchCardStub:
+    """Capture the card API without creating any GUI widget during eval."""
+
+    def __init__(self):
+        self.generation = None
+        self.events = []
+
+    def begin(self, generation, *_args, **_kwargs):
+        self.generation = generation
+
+    def update_progress(self, generation, event):
+        if generation == self.generation:
+            self.events.append(event)
+
+    def set_sources(self, generation, items):
+        if generation == self.generation:
+            self.events.append({"stage": "sources", "items": items})
+
+    def finish(self, generation, summary):
+        if generation == self.generation:
+            self.events.append({"stage": "finished", "summary": summary})
+            self.generation = None
+
+    def hide(self):
+        self.generation = None
 
 
 class SpeakerStub:
@@ -109,6 +141,7 @@ class EvalService(QObject):
         self.active_search_context = ""
         self.response_language = "Português brasileiro"
         self.orb = OrbStub()
+        self.research_card = ResearchCardStub()
         self.voice = SimpleNamespace(
             speaking=False,
             request_active=threading.Event(),
@@ -124,6 +157,17 @@ class EvalService(QObject):
     def start_background_request(self, request):
         self.background_requests.append(request)
         request.start()
+
+    def _mobile_audio_owned(self):
+        # No mobile Companion is connected in this headless evaluation.
+        return False
+
+    def research_progress(self, event, generation):
+        aurora.AuroraService.research_progress(self, event, generation)
+
+    def queue_sentence(self, _text, _generation):
+        # Evaluation records the completed spoken answer, not streamed audio.
+        pass
 
     def start_inference(self, inference, generation):
         # Keep Aurora's actual local inference path in evaluations, while
@@ -151,6 +195,7 @@ class EvalService(QObject):
 
     def quick_search_answer_done(self, text, generation, evidence, sources):
         aurora.AuroraService.quick_search_answer_done(self, text, generation, evidence, sources)
+        self._finish()
 
     def speak_in_selected_language(self, text, generation=None):
         # Evaluation captures spoken text but never starts an audio device.
@@ -184,6 +229,8 @@ class EvalService(QObject):
         self._finish()
 
     def quick_search_error(self, query, message, generation=None):
+        if self.trace is not None:
+            self.trace.errors.append({"kind": "search", "query": query, "message": str(message)})
         aurora.AuroraService.quick_search_error(self, query, message, generation)
         self._finish()
 
@@ -195,12 +242,12 @@ class EvalService(QObject):
         aurora.AuroraService.weather_error(self, message, generation)
         self._finish()
 
-    def answer_done(self, text):
-        aurora.AuroraService.answer_done(self, text)
+    def answer_done(self, text, generation=None):
+        aurora.AuroraService.answer_done(self, text, generation)
         self._finish()
 
-    def answer_error(self, text):
-        aurora.AuroraService.answer_error(self, text)
+    def answer_error(self, text, generation=None):
+        aurora.AuroraService.answer_error(self, text, generation)
         self._finish()
 
     def remember_exchange(self, user_text, assistant_text):
@@ -547,11 +594,11 @@ def install_trace(trace):
         finally:
             request_context.current_request = None
 
-    def traced_search(query, freshness=None, news_only=None):
+    def traced_search(query, freshness=None, news_only=None, progress=None):
         trace.append("search_calls", {"query": query, "freshness": freshness, "news_only": news_only})
         trace.current_query = query
         request_start = len(trace.network_requests)
-        result = original_search(query, freshness, news_only)
+        result = original_search(query, freshness, news_only, progress=progress)
         trace.raw_result_text = result
         returned_urls = {
             canonical_result_url(row[3], "") for row in parse_provider_result_lines(result)
@@ -682,6 +729,8 @@ def evaluate(line_number, question, cfg, timeout_seconds, history=None, context_
         ))
     else:
         lines.append("- **Consulta(s) passada(s) ao caminho de busca:** nenhuma.")
+    for error in trace.errors:
+        lines.append(f"- **Falha interna capturada:** {error['kind']}: `{error['message']}`.")
     if trace.fx_api_json:
         lines.append("- **JSON cru da API (campos usados):**")
         lines.extend(f"  - `{item['url']}` — `{json.dumps(item['fields'], ensure_ascii=False)}`; {item['elapsed_ms']} ms" for item in trace.fx_api_json)

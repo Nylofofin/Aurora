@@ -2,6 +2,10 @@
 
 ## Em desenvolvimento
 
+- Calcula expressões aritméticas numéricas simples localmente, sem enviar a pergunta à web ou gerar fontes com o modelo.
+- Completa o harness headless da avaliação com os contratos de cartão, fala, progresso e callback da busca usados pelo roteador real.
+- Alinha o teste de áudio de wake móvel ao ciclo de vida real do `QThread`, evitando thread de teste sem integração com Qt.
+- Desativa por padrão o servidor LAN do Companion arquivado e documenta o escopo da GPL e os direitos ainda não confirmados dos sons.
 - Redesenha a esfera com luz interna azul-violeta mais econômica por frame, respostas de movimento suavizadas ao microfone e à fala, e pulso de conclusão.
 - Reorganiza o cartão contextual em superfícies tonais Material You adaptadas ao tema Qt, melhora o espaço para fontes e anima entrada/saída.
 - Exibe o conteúdo dinâmico como texto simples e limita o resumo em fronteiras de frase ou palavra.

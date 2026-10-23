@@ -1,4 +1,5 @@
-from scripts.eval_search import EvalService, Trace, install_trace, restore_trace
+# SPDX-License-Identifier: GPL-3.0-only
+from scripts.eval_search import EvalService, ResearchCardStub, Trace, install_trace, restore_trace
 import aurora_core.web.pipeline as web_pipeline
 import aurora_core.web.requests as web_requests
 
@@ -9,6 +10,7 @@ def test_eval_service_starts_with_one_shot_request_active():
     assert service.voice.request_active.is_set()
     assert not service.voice.interrupt_active.is_set()
     assert service.response_language == "Português brasileiro"
+    assert service._mobile_audio_owned() is False
 
 
 def test_eval_service_captures_speech_without_audio_output():
@@ -19,15 +21,35 @@ def test_eval_service_captures_speech_without_audio_output():
     assert service.speaker.parts == ["Resposta de teste"]
 
 
-def test_eval_trace_patches_search_request_module_and_restores_it():
-    original = web_requests.search_public_web
+def test_eval_service_accepts_streamed_sentence_and_completion_generation():
+    service = EvalService({})
+    service.request_generation = 1
+    service.queue_sentence("Início de frase", 1)
+    service.answer_done("Resposta final", 1)
+
+    assert service.response_summary == "Resposta final"
+    assert service.done
+
+
+def test_eval_research_card_stub_records_progress_without_gui():
+    card = ResearchCardStub()
+    card.begin(7, "consulta")
+    card.update_progress(7, {"stage": "searching"})
+    card.finish(7, "resumo")
+
+    assert [event["stage"] for event in card.events] == ["searching", "finished"]
+
+
+def test_eval_trace_patches_search_request_module_and_restores_it(monkeypatch):
+    monkeypatch.setattr(web_pipeline, "search_public_web", lambda *_args, **_kwargs: "fixture result")
     originals = install_trace(Trace())
     try:
         assert web_requests.search_public_web is web_pipeline.search_public_web
+        assert web_requests.search_public_web("query", progress=lambda _event: None) == "fixture result"
     finally:
         restore_trace(originals)
 
-    assert web_requests.search_public_web is original
+    assert web_requests.search_public_web is web_pipeline.search_public_web
 
 
 def test_eval_record_has_machine_readable_freshness_sources_and_latency():

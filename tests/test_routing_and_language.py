@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only
 import threading
 
 import aurora
@@ -73,6 +74,16 @@ def test_small_talk_and_personal_advice_do_not_trigger_web_search():
         "Qual sua opinião sobre isso?",
         "Preciso desabafar um pouco.",
         "O que eu faço agora?",
+    ):
+        assert not aurora.factual_web_intent(prompt), prompt
+
+
+def test_arithmetic_questions_do_not_trigger_web_search():
+    for prompt in (
+        "Quanto é 15 vezes 12?",
+        "Quanto dá 10,5 dividido por 2?",
+        "Calcule 7 + 8",
+        "Qual é 15% de 200?",
     ):
         assert not aurora.factual_web_intent(prompt), prompt
 
