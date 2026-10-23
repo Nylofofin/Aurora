@@ -1,6 +1,6 @@
 # Aurora Android Companion — descontinuado
 
-**Anúncio — 23 de outubro de 2026:** o cliente Android foi descontinuado. Não haverá novas builds, suporte ou releases Android. O desenvolvimento ativo da Aurora volta a se concentrar no cliente desktop Linux. O código e os tags de origem ficam no repositório como arquivo histórico; as releases e os APKs foram removidos do GitHub.
+**Anúncio — 23 de outubro de 2026:** o cliente Android foi descontinuado. Não haverá novas builds, suporte ou releases Android. O desenvolvimento ativo da Aurora volta a se concentrar no cliente desktop Linux. Os commits do período ficam preservados como registro histórico; as tags de release e os APKs Android foram removidos.
 
 ## Motivo
 
