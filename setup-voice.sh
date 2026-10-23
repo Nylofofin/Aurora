@@ -4,7 +4,7 @@ APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 VENV="${AURORA_VENV:-$APP_DIR/.venv}"
 MODEL_DIR="$APP_DIR/assets/vosk-model"
 "$APP_DIR/run.sh" --setup-only
-"$VENV/bin/pip" install -r "$APP_DIR/requirements-voice.txt"
+"$VENV/bin/python" -m pip install -r "$APP_DIR/requirements-voice.txt"
 mkdir -p "$(dirname "$MODEL_DIR")"
 if [ -e "$MODEL_DIR" ] || [ -L "$MODEL_DIR" ]; then
   if [ ! -d "$MODEL_DIR" ] || [ -L "$MODEL_DIR" ]; then

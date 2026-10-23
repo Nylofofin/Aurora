@@ -61,6 +61,9 @@ class AuroraOrb(QObject):
         self.cfg['bubble_position']=[self.view.x(),self.view.y()]; settings_save(self.cfg)
     def set_mode(self,mode):
         self.mode=mode; self.root.setProperty('mode',mode)
+        if mode!='listening': self.root.setProperty('inputLevel',0.0)
+    def set_input_level(self,level):
+        if self.mode=='listening': self.root.setProperty('inputLevel',max(0.0,min(1.0,float(level))))
     def reveal(self,mode='listening'):
         self.visibility_generation+=1; generation=self.visibility_generation; self.visibility_attempts=0
         self.hiding=False
@@ -72,13 +75,11 @@ class AuroraOrb(QObject):
         self.view.move(area.right()-153,area.bottom()-153)
         self._keep_on_screen()
         self.root.setProperty('motionEnabled',True)
-        self.root.setProperty('entranceActive',False)
         if not self.view.isVisible():
             # Never depend on the compositor's window-opacity animation to
             # make the orb visible; spring scale and ripple supply the entrance.
             self.view.setGeometry(self.anchor); self.root.setProperty('revealScale',.68); self.view.setWindowOpacity(1.0)
             self.view.show(); self.view.raise_()
-            self.root.setProperty('entranceActive',True)
             self.scale_anim.setStartValue(.68); self.scale_anim.setEndValue(1.0); self.scale_anim.start()
         else:
             self.root.setProperty('revealScale',1.0); self.view.setWindowOpacity(1.0); self.view.setGeometry(self.anchor); self.view.raise_()
@@ -99,7 +100,6 @@ class AuroraOrb(QObject):
     def dismiss(self):
         if not self.view.isVisible(): return
         self.hiding=True
-        self.root.setProperty('entranceActive',False)
         self.scale_anim.stop(); self.opacity_anim.stop()
         start=float(self.root.property('revealScale'))
         self.scale_anim.setStartValue(start); self.scale_anim.setEndValue(.70); self.scale_anim.setDuration(280); self.scale_anim.setEasingCurve(QEasingCurve.Type.InBack); self.scale_anim.start()
@@ -111,7 +111,7 @@ class AuroraOrb(QObject):
             self.hidden.emit()
     def frameGeometry(self): return self.view.frameGeometry()
     def isVisible(self): return self.view.isVisible()
-    def hide(self): self.hiding=True; self.view.hide(); self.root.setProperty('motionEnabled',False)
+    def hide(self): self.hiding=True; self.view.hide(); self.root.setProperty('motionEnabled',False); self.root.setProperty('inputLevel',0.0)
     def show(self): self.hiding=False; self.view.show(); self.view.raise_()
     def raise_(self): self.view.raise_()
     def move(self,x,y):

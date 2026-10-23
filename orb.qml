@@ -9,15 +9,29 @@ Item {
 
     property string mode: "idle"
     property bool motionEnabled: false
-    property bool entranceActive: false
     property real revealScale: 1.0
-    property bool dragging: false
+    property real inputLevel: 0.0
+    property real speechPulse: 0.18
     property real pressX: 0
     property real pressY: 0
     property real windowStartX: 0
     property real windowStartY: 0
     property int windowX: 0
     property int windowY: 0
+    property bool dragging: false
+
+    readonly property color stateColor: ({
+        listening: "#8deaff", thinking: "#b89aff", searching: "#77d9ff",
+        weather: "#8bdcff", preparing: "#c2a5ff", speaking: "#e2c5ff",
+        approval: "#ffe0a1", controlling: "#b9a1ff", error: "#ff9dbb", idle: "#bba7ff"
+    })[mode] || "#bba7ff"
+    property color animatedStateColor: stateColor
+    property real tintStrength: mode === "listening" ? 0.29
+        : mode === "speaking" ? 0.34
+        : mode === "searching" ? 0.32
+        : mode === "thinking" || mode === "preparing" || mode === "weather" ? 0.25 : 0.14
+    readonly property real voiceEnergy: mode === "listening" ? inputLevel : 0.0
+    readonly property real outputEnergy: mode === "speaking" ? speechPulse : 0.0
 
     signal startVoice()
     signal hideRequested()
@@ -27,216 +41,139 @@ Item {
 
     scale: revealScale
 
-    Rectangle {
-        id: arrivalRipple
-        x: 16; y: 2; width: 104; height: 104; radius: 52
-        color: "transparent"; border.width: 1.5; border.color: "#b7a0ff"
-        opacity: 0; visible: root.entranceActive
-        ParallelAnimation {
-            running: root.entranceActive
-            NumberAnimation { target: arrivalRipple; property: "scale"; from: 0.76; to: 1.48; duration: 520; easing.type: Easing.OutCubic }
-            NumberAnimation { target: arrivalRipple; property: "opacity"; from: 0.72; to: 0; duration: 520; easing.type: Easing.OutCubic }
-            onFinished: root.entranceActive = false
-        }
-    }
+    Behavior on tintStrength { NumberAnimation { duration: 420; easing.type: Easing.InOutCubic } }
+    Behavior on animatedStateColor { ColorAnimation { duration: 460; easing.type: Easing.InOutCubic } }
+    Behavior on inputLevel { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
 
-    readonly property string statusText: ({
-        listening: "OUVINDO", thinking: "PENSANDO", searching: "BUSCANDO",
-        weather: "CLIMA", preparing: "PREPARANDO", speaking: "FALANDO",
-        approval: "AUTORIZAR", controlling: "CONTROLANDO", error: "ERRO", idle: "PRONTA"
-    })[mode] || "PRONTA"
-    readonly property color accent: ({
-        listening: "#d9b8ff", thinking: "#b77cff", searching: "#d3a4ff",
-        weather: "#c9a0ff", preparing: "#c79aff", speaking: "#edc9ff",
-        approval: "#ffd28a", controlling: "#f0c8ff", error: "#ff9fba", idle: "#c1a0ff"
-    })[mode] || "#c1a0ff"
-
-    Shape {
-        id: halo
-        x: 13; y: -2; width: 110; height: 112
-        ShapePath {
-            strokeColor: "transparent"; strokeWidth: 0
-            fillGradient: RadialGradient {
-                centerX: 55; centerY: 56; centerRadius: 56; focalX: 55; focalY: 56; focalRadius: 0
-                GradientStop { position: 0.00; color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.23) }
-                GradientStop { position: 0.80; color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.16) }
-                GradientStop { position: 1.00; color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0) }
-            }
-            PathAngleArc { centerX: 55; centerY: 56; radiusX: 55; radiusY: 56; startAngle: 0; sweepAngle: 360 }
-        }
-        SequentialAnimation on scale {
-            running: root.motionEnabled
-            loops: Animation.Infinite
-            ScaleAnimator { from: 0.94; to: 1.04; duration: 3000; easing.type: Easing.InOutSine }
-            ScaleAnimator { from: 1.04; to: 0.94; duration: 3000; easing.type: Easing.InOutSine }
-        }
-    }
-
+    // A single glass sphere. All motion and state cues stay on its surface.
     Item {
         id: sphere
-        x: 16; y: 2; width: 104; height: 104
+        x: 11; y: 11; width: 114; height: 114
         transformOrigin: Item.Center
+        property real breathing: 0.0
+        property real sheenTravel: 0.0
 
-        // A slow, independent breath keeps the orb alive while the inner light
-        // drifts. The small range avoids making the desktop widget feel busy.
+        SequentialAnimation on breathing {
+            running: root.motionEnabled
+            loops: Animation.Infinite
+            NumberAnimation { from: 0; to: 1; duration: root.mode === "searching" ? 1900 : 3900; easing.type: Easing.InOutSine }
+            NumberAnimation { from: 1; to: 0; duration: root.mode === "searching" ? 2100 : 4500; easing.type: Easing.InOutSine }
+        }
         SequentialAnimation on scale {
             running: root.motionEnabled
             loops: Animation.Infinite
-            ScaleAnimator { from: 0.985; to: 1.025; duration: 3600; easing.type: Easing.InOutSine }
-            ScaleAnimator { from: 1.025; to: 0.985; duration: 4200; easing.type: Easing.InOutSine }
+            NumberAnimation {
+                from: root.mode === "speaking" ? 0.99 : 0.982
+                to: root.mode === "speaking" ? 1.045 : 1.018
+                duration: root.mode === "speaking" ? 360 : root.mode === "searching" ? 1250 : 3900
+                easing.type: Easing.InOutSine
+            }
+            NumberAnimation {
+                from: root.mode === "speaking" ? 1.045 : 1.018
+                to: root.mode === "speaking" ? 0.99 : 0.982
+                duration: root.mode === "speaking" ? 440 : root.mode === "searching" ? 1450 : 4500
+                easing.type: Easing.InOutSine
+            }
+        }
+        SequentialAnimation on sheenTravel {
+            running: root.motionEnabled
+            loops: Animation.Infinite
+            NumberAnimation { from: -1; to: 1; duration: root.mode === "searching" ? 1500 : root.mode === "thinking" ? 2800 : 6200; easing.type: Easing.InOutSine }
+            NumberAnimation { from: 1; to: -1; duration: root.mode === "searching" ? 1800 : root.mode === "thinking" ? 3200 : 6900; easing.type: Easing.InOutSine }
         }
 
         Shape {
             anchors.fill: parent
             ShapePath {
-                strokeColor: "#58ffffff"
-                strokeWidth: 1
+                strokeColor: "#baffffff"; strokeWidth: 1.0
                 fillGradient: LinearGradient {
-                    x1: 14; y1: 0; x2: 88; y2: 104
-                    GradientStop { position: 0.00; color: "#fffdfd" }
-                    GradientStop { position: 0.18; color: "#e8f9ff" }
-                    GradientStop { position: 0.38; color: "#bcecff" }
-                    GradientStop { position: 0.58; color: "#62c4ff" }
-                    GradientStop { position: 0.72; color: "#168bff" }
-                    GradientStop { position: 0.86; color: "#405ce9" }
-                    GradientStop { position: 1.00; color: "#762bd8" }
+                    x1: 16; y1: 5; x2: 101; y2: 108
+                    GradientStop { position: 0.00; color: "#fffefe" }
+                    GradientStop { position: 0.16; color: "#ecfaff" }
+                    GradientStop { position: 0.33; color: "#c9efff" }
+                    GradientStop { position: 0.51; color: "#87d5ff" }
+                    GradientStop { position: 0.69; color: "#587ffa" }
+                    GradientStop { position: 0.85; color: "#725fe9" }
+                    GradientStop { position: 1.00; color: "#5138b5" }
                 }
-                PathAngleArc { centerX: 52; centerY: 52; radiusX: 52; radiusY: 52; startAngle: 0; sweepAngle: 360 }
+                PathAngleArc { centerX: 57; centerY: 57; radiusX: 56; radiusY: 56; startAngle: 0; sweepAngle: 360 }
             }
         }
 
-        Item {
-            id: bloomClip
+        // Soft state color and depth are blended into the sphere itself.
+        Shape {
             anchors.fill: parent
-            clip: true
-            Shape {
-                id: pearlBloom
-                x: 8; y: 8; width: 88; height: 88
-                ShapePath {
-                    strokeColor: "transparent"; strokeWidth: 0
-                    fillGradient: RadialGradient {
-                        centerX: 44; centerY: 44; centerRadius: 44
-                        focalX: 35; focalY: 32; focalRadius: 0
-                        GradientStop { position: 0.00; color: "#c5ffffff" }
-                        GradientStop { position: 0.42; color: "#75f6ebff" }
-                        GradientStop { position: 0.78; color: "#30f3e6ff" }
-                        GradientStop { position: 1.00; color: "#00f3e6ff" }
-                    }
-                    PathAngleArc { centerX: 44; centerY: 44; radiusX: 44; radiusY: 44; startAngle: 0; sweepAngle: 360 }
+            opacity: root.tintStrength
+            ShapePath {
+                strokeColor: "transparent"; strokeWidth: 0
+                fillGradient: RadialGradient {
+                    centerX: 57 + sphere.sheenTravel * 11; centerY: 60; centerRadius: 64
+                    focalX: 35 + sphere.sheenTravel * 9; focalY: 24; focalRadius: 0
+                    GradientStop { position: 0.0; color: Qt.rgba(root.animatedStateColor.r, root.animatedStateColor.g, root.animatedStateColor.b, 0.68) }
+                    GradientStop { position: 0.56; color: Qt.rgba(root.animatedStateColor.r, root.animatedStateColor.g, root.animatedStateColor.b, 0.32) }
+                    GradientStop { position: 1.0; color: "#00000000" }
                 }
-                SequentialAnimation {
-                    running: root.motionEnabled
-                    loops: Animation.Infinite
-                    ParallelAnimation {
-                        XAnimator { target: pearlBloom; from: 4; to: 12; duration: 4600; easing.type: Easing.InOutSine }
-                        YAnimator { target: pearlBloom; from: 4; to: 12; duration: 5700; easing.type: Easing.InOutSine }
-                    }
-                    ParallelAnimation {
-                        XAnimator { target: pearlBloom; from: 12; to: 4; duration: 4600; easing.type: Easing.InOutSine }
-                        YAnimator { target: pearlBloom; from: 12; to: 4; duration: 5700; easing.type: Easing.InOutSine }
-                    }
-                }
+                PathAngleArc { centerX: 57; centerY: 57; radiusX: 56; radiusY: 56; startAngle: 0; sweepAngle: 360 }
             }
-            Shape {
-                id: violetBloom
-                x: 8; y: 8; width: 88; height: 88
-                ShapePath {
-                    strokeColor: "transparent"; strokeWidth: 0
-                    fillGradient: RadialGradient {
-                        centerX: 44; centerY: 44; centerRadius: 44
-                        focalX: 55; focalY: 56; focalRadius: 0
-                        GradientStop { position: 0.00; color: "#815f14bd" }
-                        GradientStop { position: 0.48; color: "#604808b7" }
-                        GradientStop { position: 0.82; color: "#259425ed" }
-                        GradientStop { position: 1.00; color: "#009425ed" }
-                    }
-                    PathAngleArc { centerX: 44; centerY: 44; radiusX: 44; radiusY: 44; startAngle: 0; sweepAngle: 360 }
+        }
+        Shape {
+            anchors.fill: parent
+            ShapePath {
+                strokeColor: "transparent"; strokeWidth: 0
+                fillGradient: RadialGradient {
+                    centerX: 59; centerY: 76; centerRadius: 57; focalX: 57; focalY: 67; focalRadius: 1
+                    GradientStop { position: 0.0; color: "#586ac0ff" }
+                    GradientStop { position: 0.48; color: "#3f657cff" }
+                    GradientStop { position: 0.84; color: "#176454ff" }
+                    GradientStop { position: 1.0; color: "#006454ff" }
                 }
-                SequentialAnimation {
-                    running: root.motionEnabled
-                    loops: Animation.Infinite
-                    ParallelAnimation {
-                        XAnimator { target: violetBloom; from: 14; to: 22; duration: 6200; easing.type: Easing.InOutSine }
-                        YAnimator { target: violetBloom; from: 12; to: 20; duration: 5100; easing.type: Easing.InOutSine }
-                    }
-                    ParallelAnimation {
-                        XAnimator { target: violetBloom; from: 22; to: 14; duration: 6200; easing.type: Easing.InOutSine }
-                        YAnimator { target: violetBloom; from: 20; to: 12; duration: 5100; easing.type: Easing.InOutSine }
-                    }
-                }
+                PathAngleArc { centerX: 57; centerY: 57; radiusX: 56; radiusY: 56; startAngle: 0; sweepAngle: 360 }
             }
         }
 
-        Item {
-            id: voiceBars
-            anchors.centerIn: parent
-            width: 48; height: 30
-            visible: root.mode === "listening" || root.mode === "speaking"
-            Repeater {
-                model: 5
-                delegate: Rectangle {
-                    id: bar
-                    x: index * 10 + 2; y: 15 - height / 2
-                    width: 3.2; height: 8 + ((index * 7) % 10); radius: 2
-                    color: "#fffaff"; opacity: 0.92
-                    SequentialAnimation on scale {
-                        running: root.motionEnabled && voiceBars.visible
-                        loops: Animation.Infinite
-                        ScaleAnimator { from: 0.66; to: 1.24; duration: 240 + index * 37; easing.type: Easing.InOutSine }
-                        ScaleAnimator { from: 1.24; to: 0.66; duration: 250 + index * 31; easing.type: Easing.InOutSine }
-                    }
+        // Pearl reflection sweeps over the orb; its response tracks voice
+        // input/output without adding glyphs, dots, or detached indicators.
+        Shape {
+            x: 12 + sphere.sheenTravel * 3 + root.voiceEnergy * 2
+            y: 4 + sphere.breathing * 2
+            width: 88; height: 69
+            opacity: 0.72 + root.voiceEnergy * 0.24 + root.outputEnergy * 0.18
+            ShapePath {
+                strokeColor: "transparent"; strokeWidth: 0
+                fillGradient: RadialGradient {
+                    centerX: 43; centerY: 28; centerRadius: 43
+                    focalX: 34 + sphere.sheenTravel * 2; focalY: 19; focalRadius: 0
+                    GradientStop { position: 0.00; color: "#f0ffffff" }
+                    GradientStop { position: 0.34; color: "#b5ffffff" }
+                    GradientStop { position: 0.72; color: "#45ffffff" }
+                    GradientStop { position: 1.00; color: "#00ffffff" }
                 }
+                PathAngleArc { centerX: 44; centerY: 34; radiusX: 43; radiusY: 33; startAngle: 0; sweepAngle: 360 }
             }
         }
-
-        Item {
-            id: thoughtGlint
-            width: 13; height: 13
-            visible: root.mode === "thinking" || root.mode === "preparing" || root.mode === "searching" || root.mode === "weather"
-            Rectangle { anchors.centerIn: parent; width: 16; height: 16; radius: 8; color: "#f7ecff"; opacity: 0.30 }
-            Rectangle { anchors.centerIn: parent; width: 6; height: 6; radius: 3; color: "#ffffff" }
-            SequentialAnimation {
-                running: root.motionEnabled && thoughtGlint.visible
-                loops: Animation.Infinite
-                ParallelAnimation {
-                    XAnimator { target: thoughtGlint; from: 45; to: 75; duration: 1050; easing.type: Easing.InOutSine }
-                    YAnimator { target: thoughtGlint; from: 15; to: 45; duration: 1050; easing.type: Easing.InOutSine }
-                }
-                ParallelAnimation {
-                    XAnimator { target: thoughtGlint; from: 75; to: 45; duration: 1050; easing.type: Easing.InOutSine }
-                    YAnimator { target: thoughtGlint; from: 45; to: 75; duration: 1050; easing.type: Easing.InOutSine }
-                }
-                ParallelAnimation {
-                    XAnimator { target: thoughtGlint; from: 45; to: 15; duration: 1050; easing.type: Easing.InOutSine }
-                    YAnimator { target: thoughtGlint; from: 75; to: 45; duration: 1050; easing.type: Easing.InOutSine }
-                }
-                ParallelAnimation {
-                    XAnimator { target: thoughtGlint; from: 15; to: 45; duration: 1050; easing.type: Easing.InOutSine }
-                    YAnimator { target: thoughtGlint; from: 45; to: 15; duration: 1050; easing.type: Easing.InOutSine }
-                }
+        Rectangle {
+            x: 19 + (sphere.sheenTravel + 1) * 14
+            y: 17 + sphere.breathing * 1.5
+            width: 58; height: 13; radius: 7; rotation: -20
+            opacity: 0.45 + root.voiceEnergy * 0.28 + root.outputEnergy * 0.22
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.00; color: "#00ffffff" }
+                GradientStop { position: 0.30; color: "#afffffff" }
+                GradientStop { position: 0.62; color: "#76ffffff" }
+                GradientStop { position: 1.00; color: "#00ffffff" }
             }
         }
-    }
-
-    Rectangle {
-        id: statusBadge
-        x: 15; y: 111; width: 106; height: 22; radius: 11
-        color: "#ed211431"
-        border.width: 1; border.color: "#70ead9ff"
-        Rectangle { x: 10; anchors.verticalCenter: parent.verticalCenter; width: 6; height: 6; radius: 3; color: root.accent }
-        Text {
-            anchors.left: parent.left; anchors.leftMargin: 23
-            anchors.right: parent.right; anchors.rightMargin: 6
-            anchors.verticalCenter: parent.verticalCenter
-            text: root.statusText
-            color: "#fffaff"
-            font.family: "Sans Serif"; font.pixelSize: 9; font.weight: Font.DemiBold
-            minimumPixelSize: 7; fontSizeMode: Text.Fit
+        Shape {
+            anchors.fill: parent
+            ShapePath {
+                strokeColor: "#75ffffff"; strokeWidth: 1.1; fillColor: "transparent"
+                PathAngleArc { centerX: 57; centerY: 57; radiusX: 54.5; radiusY: 54.5; startAngle: 205; sweepAngle: 128 }
+            }
         }
     }
 
     MouseArea {
-        id: pointer
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         hoverEnabled: true

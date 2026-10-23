@@ -21,7 +21,7 @@
 
 ## 1.0.0 — Polaris-Edge, Geração 1 (2026-10-22)
 
-Primeira release oficial da Aurora para uso pessoal e privado.
+Primeira release oficial da Aurora para uso pessoal; o código-fonte está publicado no GitHub.
 
 - Bolha flutuante persistente, chamada por wake word local, com voz e animação de estados.
 - Conversa local com Gemma via Ollama e execução de ações locais com confirmações para operações sensíveis.

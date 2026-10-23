@@ -20,6 +20,24 @@ def test_wake_word_requires_a_completed_exact_phrase():
     assert not match("oi, aurora", True)
 
 
+def test_wake_word_is_removed_before_command_routing():
+    from aurora_core.system.text import strip_wake_word
+
+    assert strip_wake_word("Olá Aurora, abre o navegador") == "abre o navegador"
+    assert strip_wake_word("Ei Aurora: abre o navegador") == "abre o navegador"
+
+
+def test_microphone_energy_is_normalized_for_voice_reactive_orb():
+    from array import array
+
+    quiet = array("h", [0] * 32).tobytes()
+    medium = array("h", [4000] * 32).tobytes()
+    loud = array("h", [16000] * 32).tobytes()
+    assert LocalVoice.normalized_audio_level(quiet) == 0.0
+    assert 0.4 < LocalVoice.normalized_audio_level(medium) < 0.6
+    assert LocalVoice.normalized_audio_level(loud) == 1.0
+
+
 def test_wake_session_is_a_single_request_gate():
     voice = aurora.LocalVoice({})
     assert not voice.request_active.is_set()
@@ -163,14 +181,19 @@ def test_right_click_is_wired_to_stop_the_current_request():
     assert "self.orb.hide_requested.connect(self.stop_conversation)" in service
 
 
-def test_orb_uses_round_silhouette_and_separate_entrance_ripple():
+def test_orb_is_only_a_clean_animated_sphere():
     from pathlib import Path
 
     root = Path(aurora.__file__).parent
     source = (root / "orb.qml").read_text()
     orb = (root / "aurora_core" / "ui" / "orb.py").read_text()
-    assert "PathAngleArc { centerX: 52; centerY: 52; radiusX: 52; radiusY: 52" in source
-    assert "arrivalRipple" in source and "entranceActive" in source
+    assert "PathAngleArc { centerX: 57; centerY: 57; radiusX: 56; radiusY: 56" in source
+    assert "property real sheenTravel" in source and "entranceActive" not in source and "exitActive" not in source
     assert "PathCubic" not in source and "morphPhase" not in source
+    assert "RadialGradient" in source and "LinearGradient" in source
+    assert "inputLevel" in source and "voiceEnergy" in source
+    assert "statusText" not in source and "statusBadge" not in source
+    assert "voiceGlyph" not in source and "thoughtCore" not in source and "orbit" not in source
+    assert "Text {" not in source and "Repeater {" not in source
     assert "self.scale_anim.setStartValue(.68)" in orb
     assert "QEasingCurve.Type.OutBack" in orb and "QEasingCurve.Type.InBack" in orb

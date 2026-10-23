@@ -9,7 +9,7 @@ from ..system.files import normalize_words
 from ..system.text import strip_wake_word
 
 class LocalVoice(QThread):
-    transcript=Signal(str); status=Signal(str); unavailable=Signal(str); wake=Signal(); cancel_control=Signal()
+    transcript=Signal(str); status=Signal(str); unavailable=Signal(str); wake=Signal(); cancel_control=Signal(); audio_level=Signal(float)
     def __init__(self,cfg):
         super().__init__(); self.cfg=cfg; self.running=True; self.one_shot=threading.Event(); self.request_active=threading.Event(); self.interrupt_active=threading.Event(); self.cancel_control_active=threading.Event(); self.speaking=False; self.recognizer=None
     def request_once(self): self.one_shot.set()
@@ -26,6 +26,10 @@ class LocalVoice(QThread):
         if sys.byteorder!='little': samples.byteswap()
         if not samples: return 0.0
         return math.sqrt(sum(sample*sample for sample in samples)/len(samples))
+    @classmethod
+    def normalized_audio_level(cls,block):
+        """Map 16-bit microphone RMS to a quiet-safe 0..1 orb signal."""
+        return min(1.0,max(0.0,(cls.pcm_level(block)-180.0)/7600.0))
     @staticmethod
     def strip_wake_word(text):
         return strip_wake_word(text)
@@ -92,6 +96,7 @@ class LocalVoice(QThread):
                     else:
                         buffer.append(block)
                         if len(buffer)>120: buffer=buffer[-120:]
+                        self.audio_level.emit(self.normalized_audio_level(block))
                     active_rec=rec if active else wake_rec
                     finalized=active_rec.AcceptWaveform(block)
                     if not finalized:
@@ -101,6 +106,7 @@ class LocalVoice(QThread):
                     text=json.loads(active_rec.Result()).get('text','').strip()
                     if active:
                         if text:
+                            self.audio_level.emit(0.0)
                             pcm=b''.join(buffer[-40:]); active=False; buffer=[]; wake_audio=[]; started=time.monotonic(); self.speaking=True; self.status.emit('thinking')
                             command=self.cloud_transcribe(sr,pcm,text)
                             if command and self.request_active.is_set(): self.transcript.emit(command)

@@ -143,6 +143,7 @@ class AuroraService(QObject):
         # because LocalVoice emits from its audio-capture thread.
         self.voice.transcript.connect(self.ask,Qt.ConnectionType.QueuedConnection)
         self.voice.status.connect(self.voice_state,Qt.ConnectionType.QueuedConnection)
+        self.voice.audio_level.connect(self.orb.set_input_level,Qt.ConnectionType.QueuedConnection)
         self.voice.unavailable.connect(self.voice_error,Qt.ConnectionType.QueuedConnection)
         self.voice.wake.connect(self.wake,Qt.ConnectionType.QueuedConnection)
         self.voice.cancel_control.connect(self.stop_conversation,Qt.ConnectionType.QueuedConnection)
