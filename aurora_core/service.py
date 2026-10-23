@@ -128,6 +128,12 @@ class AuroraService(QObject):
         self.app=app; self.cfg=settings_load(); self.hw=hardware_profile(); self.pending=None; self.inf=None; self.inferences=[]; self.action_workers=[]; self.obs_details={}; self.action_cancel_event=threading.Event()
         self.response_summary=''; self.response_finished=False; self.response_language='Português brasileiro'; self.activity_generation=0; self.request_generation=0; self.last_wake=0.0; self.background_requests=[]; self.context_history=[]; self.current_prompt=''; self.active_search_context=''
         self.orb=AuroraOrb(self.cfg); self.orb.start_voice.connect(self.listen_once); self.orb.hide_requested.connect(self.stop_conversation); self.orb.quit_requested.connect(app.quit)
+        # A worker's finished/result signal can be lost during portal/Qt
+        # shutdown races. Reconcile the visual state independently so the orb
+        # cannot remain in "controlling" after every action worker has exited.
+        self.mode_watchdog=QTimer(self); self.mode_watchdog.setInterval(750)
+        self.mode_watchdog.timeout.connect(self._settle_stale_controlling_mode)
+        self.mode_watchdog.start()
         self.feedback=QSoundEffect(); self.feedback.setSource(QUrl.fromLocalFile(str(APP_DIR/'assets'/'audio'/'entrada.wav'))); self.feedback.setVolume(.34)
         self.exit_feedback=QSoundEffect(); self.exit_feedback.setSource(QUrl.fromLocalFile(str(APP_DIR/'assets'/'audio'/'saida.wav'))); self.exit_feedback.setVolume(.30)
         self.orb.hidden.connect(self.play_exit_feedback)

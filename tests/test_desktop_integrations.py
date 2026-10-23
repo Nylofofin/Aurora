@@ -116,6 +116,7 @@ def test_screenshot_is_saved_if_portal_completed_before_cancel_arrived(monkeypat
             def connect(self, _callback): pass
         def __init__(self): self.timeout = self.Timeout()
         def setSingleShot(self, _value): pass
+        def setInterval(self, _value): pass
         def start(self, *_args): pass
         def stop(self): pass
 
@@ -151,6 +152,61 @@ def test_screenshot_is_saved_if_portal_completed_before_cancel_arrived(monkeypat
     assert saved.is_file()
     assert saved.read_bytes() == b"completed capture"
     assert bus.calls[0].arguments[0] == "x11:abcd"
+
+
+def test_screenshot_recovers_gnome_file_during_portal_wait(monkeypatch, tmp_path):
+    from PySide6 import QtCore, QtDBus
+    holder = {"timers": [], "quit": False}
+    expected = tmp_path / "Aurora" / "capture.png"
+
+    class Loop:
+        def quit(self): holder["quit"] = True
+        def exec(self):
+            recovery = next(timer for timer in holder["timers"] if timer.interval == 250)
+            recovery.callback()
+            recovery.callback()
+            assert holder["quit"]
+
+    class Timer:
+        def __init__(self):
+            self.interval = 0
+            self.callback = lambda: None
+            self.timeout = self
+            holder["timers"].append(self)
+        def connect(self, callback): self.callback = callback
+        def setSingleShot(self, _value): pass
+        def setInterval(self, value): self.interval = value
+        def start(self, *_args): pass
+        def stop(self): pass
+
+    class Message:
+        class MessageType:
+            ErrorMessage = object()
+        @staticmethod
+        def createMethodCall(*_args): return Message()
+        def setArguments(self, _args): pass
+        def type(self): return object()
+        def errorMessage(self): return ""
+
+    class Bus:
+        def isConnected(self): return True
+        def baseService(self): return ":1.42"
+        def connect(self, *_args): return True
+        def disconnect(self, *_args): pass
+        def call(self, *_args): return Message()
+
+    monkeypatch.setattr(QtCore, "QEventLoop", Loop)
+    monkeypatch.setattr(QtCore, "QTimer", Timer)
+    monkeypatch.setattr(QtDBus, "QDBusMessage", Message)
+    monkeypatch.setattr(QtDBus.QDBusConnection, "sessionBus", lambda: Bus())
+    monkeypatch.setattr(integrations, "_gnome_saved_screenshot_signature",
+                        lambda *_args: ("Screenshot.png", 100, 123))
+    monkeypatch.setattr(integrations, "_recover_gnome_saved_screenshot",
+                        lambda *_args: expected)
+
+    saved = integrations.capture_screenshot(tmp_path / "Pictures")
+
+    assert saved == expected
 
 
 

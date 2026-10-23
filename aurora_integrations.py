@@ -191,6 +191,26 @@ def _recover_gnome_saved_screenshot(pictures_dir: str | Path, request_started_at
         return None
 
 
+def _gnome_saved_screenshot_signature(pictures_dir: str | Path, request_started_at: float):
+    """Return metadata for the only new GNOME screenshot, if unambiguous."""
+    root = Path(pictures_dir).expanduser()
+    try:
+        candidates = [
+            path for path in root.iterdir()
+            if path.is_file() and path.name.casefold().startswith("screenshot")
+            and path.suffix.casefold() in {".png", ".jpg", ".jpeg", ".webp"}
+            and path.stat().st_size > 0
+            and path.stat().st_mtime >= request_started_at - 1.0
+        ]
+        if len(candidates) != 1:
+            return None
+        path = candidates[0]
+        stat = path.stat()
+        return (str(path), stat.st_size, stat.st_mtime_ns)
+    except OSError:
+        return None
+
+
 def screenshot_parent_identifier(window_id: int | str | None, platform: str = "xcb") -> str:
     """Format an X11 window ID for XDG portals, or return no parent."""
     if str(platform).casefold() != "xcb":
@@ -254,6 +274,28 @@ def capture_screenshot(pictures_dir: str | Path, timeout: int = 45,
     timer = QTimer()
     timer.setSingleShot(True)
     timer.timeout.connect(loop.quit)
+    # GNOME may save its screenshot successfully but never deliver the portal
+    # Response signal. Watch for the resulting file while the request is
+    # pending, rather than waiting for the full 45-second timeout to recover it.
+    recovery_timer = QTimer()
+    recovery_timer.setInterval(250)
+    recovery_state = {"signature": None, "stable": 0}
+    def recover_when_file_is_ready():
+        signature = _gnome_saved_screenshot_signature(pictures_dir, request_started_at)
+        if signature is None:
+            recovery_state.update(signature=None, stable=0)
+            return
+        if signature == recovery_state["signature"]:
+            recovery_state["stable"] += 1
+        else:
+            recovery_state.update(signature=signature, stable=1)
+        if recovery_state["stable"] < 2:
+            return
+        recovered = _recover_gnome_saved_screenshot(pictures_dir, request_started_at)
+        if recovered:
+            result["recovered"] = recovered
+            loop.quit()
+    recovery_timer.timeout.connect(recover_when_file_is_ready)
     cancelled = {"value": False}
     cancel_timer = QTimer()
     def cancel_if_requested():
@@ -269,14 +311,18 @@ def capture_screenshot(pictures_dir: str | Path, timeout: int = 45,
             loop.quit()
     cancel_timer.timeout.connect(cancel_if_requested)
     cancel_timer.start(50)
+    recovery_timer.start()
     timer.start(max(1, int(timeout)) * 1000)
     cancel_if_requested()
     if "code" not in result and not (cancel_event and cancel_event.is_set()):
         loop.exec()
     timer.stop()
     cancel_timer.stop()
+    recovery_timer.stop()
     bus.disconnect("org.freedesktop.portal.Desktop", request_path,
                    "org.freedesktop.portal.Request", "Response", receiver, slot)
+    if result.get("recovered"):
+        return result["recovered"]
     if "code" not in result:
         recovered = _recover_gnome_saved_screenshot(pictures_dir, request_started_at)
         if recovered:
