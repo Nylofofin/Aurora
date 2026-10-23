@@ -3,13 +3,20 @@ package app.aurora.companion
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.util.Log
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.sqrt
 
 /**
- * Captura inteligente de voz em PCM mono (16 kHz, 16 bits).
- * Inclui detecção de fala e auto-finalização por silêncio após o início da fala (VAD simples).
+ * Captura inteligente e estável de voz em PCM mono (16 kHz, 16 bits).
+ *
+ * Melhorias v0.8.2:
+ *  - Descarta ruído de inicialização (eco do som de toque/beep de entrada)
+ *  - VAD robusto: exige fala contínua (>200ms) para ativar deteção de voz
+ *  - Timeout de espera sem fala (6s) sem estourar exceção agressiva (retorna vazio)
+ *  - Silêncio de 1.8s após início de fala encerra o comando naturalmente
+ *  - Liberação limpa e síncrona do AudioRecord
  */
 class PcmVoiceCapture {
     private val stopped = AtomicBoolean(false)
@@ -24,12 +31,29 @@ class PcmVoiceCapture {
         val minBuffer = AudioRecord.getMinBufferSize(
             sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
         )
-        require(minBuffer > 0) { "O microfone não está disponível neste aparelho." }
-        val audio = AudioRecord(
-            MediaRecorder.AudioSource.MIC, sampleRate, AudioFormat.CHANNEL_IN_MONO,
-            AudioFormat.ENCODING_PCM_16BIT, maxOf(minBuffer * 2, 6_400),
-        )
-        require(audio.state == AudioRecord.STATE_INITIALIZED) { "Não consegui iniciar o microfone." }
+        if (minBuffer <= 0) {
+            Log.e(TAG, "AudioRecord minBufferSize inválido: $minBuffer")
+            return ByteArray(0)
+        }
+
+        val bufferSize = maxOf(minBuffer * 2, 6_400)
+        var audio: AudioRecord? = null
+        try {
+            audio = AudioRecord(
+                MediaRecorder.AudioSource.MIC, sampleRate, AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT, bufferSize,
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Erro ao instanciar AudioRecord", e)
+            return ByteArray(0)
+        }
+
+        if (audio.state != AudioRecord.STATE_INITIALIZED) {
+            Log.e(TAG, "AudioRecord não inicializado (recurso ocupado)")
+            runCatching { audio.release() }
+            return ByteArray(0)
+        }
+
         recorder = audio
         val pcm = ByteArrayOutputStream()
         val buffer = ShortArray(1_600) // 100ms chunks a 16kHz
@@ -37,15 +61,27 @@ class PcmVoiceCapture {
         val startedAt = System.nanoTime()
 
         var hasSpoken = false
+        var speechChunks = 0
         var consecutiveSilenceChunks = 0
-        val silenceThresholdRms = 450.0 // Nível de corte para silêncio ambiente
-        val requiredSilenceChunksForStop = 15 // 1.5s de silêncio contínuo após falar = fim do comando
+        var totalChunks = 0
+
+        val silenceThresholdRms = 480.0 // Nível de corte para ruído ambiente
+        val minSpeechChunksToConfirm = 2 // 200ms de voz contínua para confirmar que não é apenas estalo
+        val requiredSilenceChunksForStop = 18 // 1.8s de silêncio contínuo após falar = fim do comando
+        val maxWaitingChunksWithoutSpeech = 60 // 6.0s sem fala alguma = desiste pacificamente
 
         try {
             audio.startRecording()
             while (!stopped.get() && (System.nanoTime() - startedAt) < 45_000_000_000L) {
                 val readShorts = audio.read(buffer, 0, buffer.size)
                 if (readShorts > 0) {
+                    totalChunks++
+
+                    // Descarta os primeiros 2 chunks (200ms) para ignorar clique/beep inicial
+                    if (totalChunks <= 2) {
+                        continue
+                    }
+
                     var sumSquares = 0.0
                     for (i in 0 until readShorts) {
                         val s = buffer[i]
@@ -57,24 +93,55 @@ class PcmVoiceCapture {
 
                     val rms = sqrt(sumSquares / readShorts)
                     if (rms > silenceThresholdRms) {
-                        hasSpoken = true
+                        speechChunks++
                         consecutiveSilenceChunks = 0
-                    } else if (hasSpoken) {
-                        consecutiveSilenceChunks++
-                        if (consecutiveSilenceChunks >= requiredSilenceChunksForStop) {
-                            // Usuário terminou de falar a frase/comando
-                            break
+                        if (speechChunks >= minSpeechChunksToConfirm) {
+                            hasSpoken = true
+                        }
+                    } else {
+                        speechChunks = 0
+                        if (hasSpoken) {
+                            consecutiveSilenceChunks++
+                            if (consecutiveSilenceChunks >= requiredSilenceChunksForStop) {
+                                // Usuário concluiu o comando falado
+                                break
+                            }
+                        } else {
+                            // Usuário ainda não falou
+                            if (totalChunks >= maxWaitingChunksWithoutSpeech) {
+                                // Tempo esgotado sem fala
+                                Log.d(TAG, "Timeout de espera sem fala do usuário")
+                                break
+                            }
                         }
                     }
                 }
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Exceção durante leitura do microfone", e)
         } finally {
-            try { if (audio.recordingState == AudioRecord.RECORDSTATE_RECORDING) audio.stop() } catch (_: Exception) { }
-            audio.release()
+            try {
+                if (audio.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                    audio.stop()
+                }
+            } catch (_: Exception) { }
+            try {
+                audio.release()
+            } catch (_: Exception) { }
             recorder = null
         }
+
+        if (!hasSpoken) {
+            // Nenhuma fala válida detectada
+            return ByteArray(0)
+        }
+
         val bytes = pcm.toByteArray()
-        require(bytes.size >= sampleRate * 2 / 2) { "Fale por pelo menos meio segundo antes de enviar." }
+        if (bytes.size < sampleRate * 2 / 2) {
+            // Menos de meio segundo de áudio gravado
+            return ByteArray(0)
+        }
+
         return wavHeader(bytes.size, sampleRate) + bytes
     }
 
@@ -87,5 +154,9 @@ class PcmVoiceCapture {
         ascii("fmt "); u32(16); u16(1); u16(1); u32(sampleRate); u32(sampleRate * 2); u16(2); u16(16)
         ascii("data"); u32(dataSize)
         return header.toByteArray()
+    }
+
+    companion object {
+        private const val TAG = "PcmVoiceCapture"
     }
 }

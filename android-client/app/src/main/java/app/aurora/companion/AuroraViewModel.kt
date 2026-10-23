@@ -254,6 +254,7 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
                 }
             } catch (error: Exception) {
                 notice = "Falha na conversa por voz: ${error.message ?: "verifique a conexão"}."
+                resumeAlwaysOnWake()
             } finally {
                 busy = false
             }
@@ -365,11 +366,13 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
                     remoteState = "ready"
                     updateBubbleActivity("ready")
                     if (!success) notice = "MP3 da Thalita chegou (${bytes.size} bytes), mas o Android falhou ao reproduzir."
+                    resumeAlwaysOnWake()
                 }
             } catch (error: Exception) {
                 remoteState = "ready"
                 updateBubbleActivity("ready")
                 notice = "Texto recebido; voz do PC falhou: ${error.message ?: "erro de áudio"}."
+                resumeAlwaysOnWake()
             }
         }
     }
@@ -391,10 +394,12 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
         liveMode = false
         hideFloatingBubble()
         if (playExitSound) playPcSound("saida.wav")
+        resumeAlwaysOnWake()
     }
 
     fun startVoiceInteraction() {
         if (connected && !busy) {
+            pauseAlwaysOnWake()
             voiceStartRequest += 1
         }
     }
@@ -454,9 +459,28 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun stopAlwaysOnWake() {
-        appContext.stopService(Intent(appContext, AlwaysOnWakeService::class.java).setAction(AlwaysOnWakeService.ACTION_STOP))
+        val intent = Intent(appContext, AlwaysOnWakeService::class.java).apply {
+            action = AlwaysOnWakeService.ACTION_STOP
+        }
+        runCatching { appContext.startService(intent) }
         alwaysOnWakeActive = false
         notice = "Escuta permanente desativada."
+    }
+
+    fun pauseAlwaysOnWake() {
+        if (!alwaysOnWakeActive) return
+        val intent = Intent(appContext, AlwaysOnWakeService::class.java).apply {
+            action = AlwaysOnWakeService.ACTION_PAUSE_LISTENING
+        }
+        runCatching { appContext.startService(intent) }
+    }
+
+    fun resumeAlwaysOnWake() {
+        if (!alwaysOnWakeActive) return
+        val intent = Intent(appContext, AlwaysOnWakeService::class.java).apply {
+            action = AlwaysOnWakeService.ACTION_RESUME_LISTENING
+        }
+        runCatching { appContext.startService(intent) }
     }
 
     fun toggleAlwaysOnWake() {

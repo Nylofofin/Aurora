@@ -27,7 +27,7 @@ def web_fetch(url):
 
 def read_public_page(url): return web_fetch(url)
 
-def _search_page_excerpt(url,query,timeout=2.0):
+def _search_page_excerpt(url,query,timeout=4.0):
     """Fetch a small slice of a public result page to ground the answer in its own text."""
     public_http_url(url)
     req=urllib.request.Request(url,headers={'User-Agent':'Aurora-Local/0.5 (public factual search)','Accept':'text/html,application/xhtml+xml','Accept-Encoding':'gzip, deflate','Cache-Control':'no-cache, no-store, max-age=0'})

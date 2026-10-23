@@ -18,6 +18,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -243,10 +244,15 @@ private fun AuroraShell(viewModel: AuroraViewModel) {
                         viewModel.notice = "A escuta por voz foi interrompida: $msg"
                     }
                     AlwaysOnWakeService.ACTION_DETECTED -> {
-                        playPhoneClick(rootView)
-                        viewModel.enterLiveMode()
-                        viewModel.startVoiceInteraction()
-                        viewModel.notice = "Ouvi você! Pode falar seu comando diretamente."
+                        if (viewModel.connected && !viewModel.busy) {
+                            playPhoneClick(rootView)
+                            viewModel.enterLiveMode()
+                            viewModel.startVoiceInteraction()
+                            viewModel.notice = "Ouvi Aurora! Pode falar seu comando diretamente."
+                        } else {
+                            viewModel.notice = "Ouvi Aurora! Conecte-se ao seu PC para poder conversar."
+                            viewModel.resumeAlwaysOnWake()
+                        }
                     }
                     AlwaysOnWakeService.ACTION_ERROR -> {
                         val msg = intent.getStringExtra(AlwaysOnWakeService.EXTRA_MESSAGE).orEmpty()
@@ -484,7 +490,10 @@ private fun AuroraShell(viewModel: AuroraViewModel) {
                         onExit = { viewModel.leaveLiveMode(playExitSound = true) },
                         onRecording = { viewModel.live = it },
                         onVoice = viewModel::sendVoiceAudio,
-                        onVoiceError = { viewModel.notice = it },
+                        onVoiceError = {
+                            viewModel.notice = it
+                            viewModel.resumeAlwaysOnWake()
+                        },
                     )
                 }
                 AnimatedVisibility(
@@ -759,6 +768,7 @@ private fun VoiceCaptureButton(
     var active by remember { mutableStateOf(false) }
     var stopping by remember { mutableStateOf(false) }
     val currentCapture = remember { arrayOfNulls<PcmVoiceCapture>(1) }
+
     val startCapture: () -> Unit = {
         val serviceIntent = Intent(appContext, MicCaptureService::class.java).setAction(MicCaptureService.ACTION_START)
         val foregroundStarted = try {
@@ -776,13 +786,19 @@ private fun VoiceCaptureButton(
             onRecording(true)
             scope.launch {
                 try {
+                    // Delay para aguardar clique na tela ou som de entrada silenciar
+                    delay(350)
                     val wav = withContext(Dispatchers.IO) { capture.captureWav() }
                     if (currentCapture[0] === capture) {
                         currentCapture[0] = null
                         active = false
                         stopping = false
                         onRecording(false)
-                        onCaptured(wav)
+                        if (wav.isNotEmpty()) {
+                            onCaptured(wav)
+                        } else {
+                            onError("Não ouvi seu comando. Diga \"Aurora\" ou toque para tentar.")
+                        }
                     }
                 } catch (error: Exception) {
                     if (currentCapture[0] === capture) {
@@ -793,16 +809,18 @@ private fun VoiceCaptureButton(
                         onError(error.message ?: "Falha ao capturar o microfone.")
                     }
                 } finally {
-                    appContext.stopService(Intent(appContext, MicCaptureService::class.java))
+                    runCatching { appContext.stopService(Intent(appContext, MicCaptureService::class.java)) }
                 }
             }
         }
     }
+
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
         if (grants[Manifest.permission.RECORD_AUDIO] == true) {
             if (enabled) startCapture()
         } else onError("Permita o microfone para usar a conversa por voz.")
     }
+
     val requestPermission: () -> Unit = {
         val requested = buildList {
             add(Manifest.permission.RECORD_AUDIO)
@@ -810,13 +828,26 @@ private fun VoiceCaptureButton(
         }
         permission.launch(requested.toTypedArray())
     }
+
+    val checkAndStartCapture: () -> Unit = {
+        val hasMic = ContextCompat.checkSelfPermission(appContext, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        if (hasMic) {
+            startCapture()
+        } else {
+            requestPermission()
+        }
+    }
+
     var handledStartRequest by remember { mutableStateOf(startRequest) }
     LaunchedEffect(startRequest) {
         if (startRequest != handledStartRequest) {
             handledStartRequest = startRequest
-            if (enabled && !active && !stopping) requestPermission()
+            if (enabled && !active && !stopping) {
+                checkAndStartCapture()
+            }
         }
     }
+
     LaunchedEffect(stopRequest) {
         if (stopRequest > 0 && active) {
             active = false
@@ -827,7 +858,9 @@ private fun VoiceCaptureButton(
             onRecording(false)
         }
     }
+
     DisposableEffect(Unit) { onDispose { currentCapture[0]?.stop() } }
+
     Button(
         onClick = {
             if (active) {
@@ -835,7 +868,9 @@ private fun VoiceCaptureButton(
                 active = false
                 onRecording(false)
                 currentCapture[0]?.stop()
-            } else requestPermission()
+            } else {
+                checkAndStartCapture()
+            }
         },
         enabled = (enabled || active) && !stopping,
         modifier = Modifier.heightIn(min = 48.dp),
