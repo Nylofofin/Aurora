@@ -1,6 +1,6 @@
 plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.plugin.compose")
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.compose)
 }
 
 android {
@@ -15,17 +15,60 @@ android {
         versionName = "0.7.3-beta-demo"
     }
 
+    // ── Signing ────────────────────────────────────────────────────────────────
+    // Reads env-vars injected by CI. Falls back to debug signing for local dev.
+    val envKeystoreFile = System.getenv("AURORA_KEYSTORE_FILE")
+    val envKeystorePassword = System.getenv("AURORA_KEYSTORE_PASSWORD")
+    val envKeyAlias = System.getenv("AURORA_KEY_ALIAS")
+    val envKeyPassword = System.getenv("AURORA_KEY_PASSWORD")
+
+    val hasSigningConfig = !envKeystoreFile.isNullOrBlank() &&
+        !envKeystorePassword.isNullOrBlank() &&
+        !envKeyAlias.isNullOrBlank() &&
+        !envKeyPassword.isNullOrBlank()
+
+    if (hasSigningConfig) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(envKeystoreFile!!)
+                storePassword = envKeystorePassword
+                keyAlias = envKeyAlias
+                keyPassword = envKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            signingConfig = if (hasSigningConfig) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
+        }
+        debug {
+            // No changes — keep default debug signing and no minification
+        }
+    }
+
     buildFeatures { compose = true }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
 }
 
 dependencies {
-    implementation(platform("androidx.compose:compose-bom:2026.09.00"))
-    implementation("androidx.activity:activity-compose:1.13.0")
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-graphics")
-    implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.11.0")
-    debugImplementation("androidx.compose.ui:ui-tooling")
+    implementation(platform(libs.compose.bom))
+    implementation(libs.activity.compose)
+    implementation(libs.compose.ui)
+    implementation(libs.compose.ui.graphics)
+    implementation(libs.compose.ui.tooling.preview)
+    implementation(libs.compose.material3)
+    implementation(libs.lifecycle.runtime.ktx)
+    implementation(libs.lifecycle.viewmodel.compose)
+    debugImplementation(libs.compose.ui.tooling)
 }

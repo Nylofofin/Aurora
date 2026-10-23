@@ -2,6 +2,8 @@ package app.aurora.companion
 
 import android.media.MediaPlayer
 import android.media.AudioAttributes
+import android.os.Handler
+import android.os.Looper
 import java.io.File
 import java.io.FileOutputStream
 
@@ -9,6 +11,7 @@ import java.io.FileOutputStream
 class RemoteAudioPlayer(private val cacheDirectory: File) {
     private var player: MediaPlayer? = null
     private var playingFile: File? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     @Synchronized
     fun play(bytes: ByteArray, fileExtension: String = ".mp3", onStarted: () -> Unit = {}, onFinished: (Boolean) -> Unit = {}) {
@@ -35,7 +38,7 @@ class RemoteAudioPlayer(private val cacheDirectory: File) {
             next.setVolume(1f, 1f)
             next.setDataSource(audioFile.absolutePath)
             next.setOnPreparedListener { media ->
-                runCatching { media.start(); onStarted() }.onFailure {
+                runCatching { media.start(); mainHandler.post { onStarted() } }.onFailure {
                     finish(media, audioFile, onFinished, false)
                 }
             }
@@ -50,7 +53,7 @@ class RemoteAudioPlayer(private val cacheDirectory: File) {
             player = null
             playingFile = null
             file?.delete()
-            onFinished(false)
+            mainHandler.post { onFinished(false) }
         }
     }
 
@@ -76,6 +79,6 @@ class RemoteAudioPlayer(private val cacheDirectory: File) {
         player = null
         if (playingFile == file) playingFile = null
         file.delete()
-        onFinished(success)
+        mainHandler.post { onFinished(success) }
     }
 }

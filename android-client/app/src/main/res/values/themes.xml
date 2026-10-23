@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base application theme using native Android platform Material styles -->
+    <style name="Theme.AuroraCompanion" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/aurora_icon_background</item>
+        <item name="android:statusBarColor">#F7F5FA</item>
+        <item name="android:navigationBarColor">#F7F5FA</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+</resources>

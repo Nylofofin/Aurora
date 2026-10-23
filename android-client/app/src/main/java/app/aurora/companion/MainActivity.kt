@@ -5,18 +5,20 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.view.SoundEffectConstants
-import android.view.View
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.SystemClock
-import android.util.Log
-import android.graphics.BitmapFactory
+import android.provider.Settings
+import android.view.SoundEffectConstants
+import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -24,16 +26,16 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -60,9 +62,8 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Divider
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
@@ -75,8 +76,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -86,29 +85,26 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.lifecycle.Lifecycle
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -122,106 +118,73 @@ private val SoftLilac = Color(0xFFEAE3F5)
 private val SoftBlue = Color(0xFFE0F0F7)
 
 private fun playPhoneClick(view: View) {
-    // Local Android feedback only; companion sounds and speech still arrive from the PC.
     view.playSoundEffect(SoundEffectConstants.CLICK)
 }
 
 data class ChatLine(val fromUser: Boolean, val text: String)
 
 class MainActivity : ComponentActivity() {
+
+    private val viewModel: AuroraViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = android.graphics.Color.rgb(247, 245, 250)
-        window.navigationBarColor = android.graphics.Color.rgb(247, 245, 250)
-        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
-        setContent { AuroraShell() }
+        setContent {
+            AuroraShell(viewModel = viewModel)
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        if (viewModel.liveMode) {
+            viewModel.showFloatingBubble()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        viewModel.hideFloatingBubble()
     }
 }
 
 @Composable
-private fun AuroraShell() {
+private fun AuroraShell(viewModel: AuroraViewModel) {
     val appContext = LocalContext.current
-    val hostActivity = appContext as? MainActivity
-    val rootView = androidx.compose.ui.platform.LocalView.current
-    val vault = remember { CredentialVault(appContext) }
-    val saved = remember { vault.load() }
+    val rootView = LocalView.current
     val scope = rememberCoroutineScope()
-    val discovery = remember { LanDiscovery(appContext) }
-    val audioPlayer = remember { RemoteAudioPlayer(appContext.cacheDir) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
-    val soundCache = remember { mutableStateMapOf<String, ByteArray>() }
-    var remoteState by remember { mutableStateOf("idle") }
-    DisposableEffect(audioPlayer) { onDispose { audioPlayer.release() } }
+
     var showConnect by remember { mutableStateOf(false) }
-    var connected by remember { mutableStateOf(false) }
-    var endpoint by remember { mutableStateOf(saved?.first.orEmpty()) }
-    var pairingCode by remember { mutableStateOf("") }
-    var fingerprint by remember { mutableStateOf(saved?.second.orEmpty()) }
-    var token by remember { mutableStateOf(saved?.third.orEmpty()) }
+    var showOverlayPermissionDialog by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf("") }
-    var voiceStartRequest by remember { mutableStateOf(0) }
-    var voiceStopRequest by remember { mutableStateOf(0) }
-    var live by remember { mutableStateOf(false) }
-    var liveMode by remember { mutableStateOf(false) }
-    var wakeListening by remember { mutableStateOf(false) }
-    var wakeDetectedEvents by remember { mutableStateOf(0) }
-    var wakeFailure by remember { mutableStateOf("") }
-    var showScreen by remember { mutableStateOf(false) }
-    var screenBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
-    var liveSessionId by remember { mutableStateOf(0) }
-    var busy by remember { mutableStateOf(false) }
-    var loadingConversations by remember { mutableStateOf(false) }
-    var discovering by remember { mutableStateOf(false) }
-    var notice by remember { mutableStateOf("") }
-    var conversationId by remember { mutableStateOf(CompanionClient.newConversationId()) }
-    var conversations by remember { mutableStateOf<List<PcConversation>>(emptyList()) }
-    val lines = remember { mutableStateListOf<ChatLine>() }
     val composerFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
 
-    fun startWakeListener() {
-        if (!connected) { showConnect = true; return }
-        val intent = Intent(appContext, WakeCaptureService::class.java).apply {
-            action = WakeCaptureService.ACTION_START
-            putExtra(WakeCaptureService.EXTRA_ENDPOINT, endpoint)
-            putExtra(WakeCaptureService.EXTRA_FINGERPRINT, fingerprint)
-            putExtra(WakeCaptureService.EXTRA_TOKEN, token)
+    val overlayPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(appContext)) {
+            viewModel.notice = "Permissão de bolha flutuante concedida."
         }
-        runCatching { appContext.startForegroundService(intent) }
-            .onSuccess { wakeListening = true; notice = "Ativação por voz ligada. O áudio vai ao PC para detecção local." }
-            .onFailure { notice = "Não consegui ativar a escuta: ${it.message ?: "verifique a permissão de microfone"}." }
     }
 
-    val wakePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) startWakeListener() else notice = "A ativação por voz precisa da permissão de microfone."
-    }
-
-    fun toggleWakeListener() {
-        playPhoneClick(rootView)
-        if (wakeListening) {
-            appContext.stopService(Intent(appContext, WakeCaptureService::class.java).setAction(WakeCaptureService.ACTION_STOP))
-            wakeListening = false
-            notice = "Ativação por voz desligada."
-        } else if (!connected) showConnect = true
-        else if (appContext.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED) startWakeListener()
-        else wakePermission.launch(Manifest.permission.RECORD_AUDIO)
-    }
-
-    fun toggleScreenView() {
-        playPhoneClick(rootView)
-        if (!connected) { showConnect = true; return }
-        if (showScreen) {
-            showScreen = false
-            screenBitmap = null
-            scope.launch(Dispatchers.IO) { runCatching { CompanionClient(endpoint, fingerprint, token).stopScreenStream() } }
-            return
+    val micPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            viewModel.startWakeListener()
+        } else {
+            viewModel.notice = "A ativação por voz precisa da permissão de microfone."
         }
-        showScreen = true
-        screenBitmap = null
-        notice = "Solicitando a tela do PC. Confirme o compartilhamento na janela do computador."
-        scope.launch {
-            runCatching { withContext(Dispatchers.IO) { CompanionClient(endpoint, fingerprint, token).startScreenStream() } }
-                .onFailure { notice = "Não consegui iniciar a tela do PC: ${it.message ?: "verifique o desktop"}."; showScreen = false }
+    }
+
+    val alwaysOnWakePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        if (grants[Manifest.permission.RECORD_AUDIO] == true) {
+            viewModel.startAlwaysOnWake()
+        } else {
+            viewModel.notice = "A escuta permanente precisa de permissão de microfone."
         }
     }
 
@@ -229,374 +192,80 @@ private fun AuroraShell() {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 when (intent?.action) {
-                    WakeCaptureService.ACTION_DETECTED -> wakeDetectedEvents += 1
-                    WakeCaptureService.ACTION_ERROR -> wakeFailure = intent.getStringExtra(WakeCaptureService.EXTRA_MESSAGE).orEmpty()
+                    WakeCaptureService.ACTION_DETECTED -> {
+                        viewModel.stopWakeListener()
+                        if (viewModel.connected && !viewModel.busy) {
+                            playPhoneClick(rootView)
+                            viewModel.enterLiveMode()
+                            viewModel.startVoiceInteraction()
+                            viewModel.notice = "Ouvi Aurora. Pode falar; a detecção aconteceu localmente no PC."
+                        } else {
+                            viewModel.notice = "Ouvi Aurora. Abra o app e toque em Falar para continuar."
+                        }
+                    }
+                    WakeCaptureService.ACTION_ERROR -> {
+                        val msg = intent.getStringExtra(WakeCaptureService.EXTRA_MESSAGE).orEmpty()
+                        viewModel.wakeFailure = msg
+                        viewModel.wakeListening = false
+                        viewModel.notice = "A escuta por voz foi interrompida: $msg"
+                    }
+                    AlwaysOnWakeService.ACTION_DETECTED -> {
+                        playPhoneClick(rootView)
+                        viewModel.enterLiveMode()
+                        viewModel.startVoiceInteraction()
+                        viewModel.notice = "Ouvi Aurora via escuta constante. Pode falar."
+                    }
+                    AlwaysOnWakeService.ACTION_ERROR -> {
+                        val msg = intent.getStringExtra(AlwaysOnWakeService.EXTRA_MESSAGE).orEmpty()
+                        viewModel.alwaysOnWakeActive = false
+                        viewModel.notice = "Escuta permanente: $msg"
+                    }
+                    FloatingBubbleService.ACTION_BUBBLE_DISMISSED -> {
+                        viewModel.leaveLiveMode(playExitSound = true)
+                    }
                 }
             }
         }
         val filter = IntentFilter().apply {
             addAction(WakeCaptureService.ACTION_DETECTED)
             addAction(WakeCaptureService.ACTION_ERROR)
+            addAction(AlwaysOnWakeService.ACTION_DETECTED)
+            addAction(AlwaysOnWakeService.ACTION_ERROR)
+            addAction(FloatingBubbleService.ACTION_BUBBLE_DISMISSED)
         }
-        if (Build.VERSION.SDK_INT >= 33) appContext.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        else @Suppress("DEPRECATION") appContext.registerReceiver(receiver, filter)
+        if (Build.VERSION.SDK_INT >= 33) {
+            appContext.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            appContext.registerReceiver(receiver, filter)
+        }
         onDispose { appContext.unregisterReceiver(receiver) }
     }
 
-    LaunchedEffect(wakeDetectedEvents) {
-        if (wakeDetectedEvents > 0) {
-            wakeListening = false
-            appContext.stopService(Intent(appContext, WakeCaptureService::class.java))
-            val foreground = hostActivity?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.RESUMED) == true
-            if (connected && !busy && foreground) {
-                playPhoneClick(rootView)
-                liveMode = true
-                voiceStartRequest += 1
-                notice = "Ouvi Aurora. Pode falar; a detecção aconteceu localmente no PC."
-            } else notice = "Ouvi Aurora. Abra o app e toque em Falar para continuar."
-        }
+    BackHandler(enabled = viewModel.liveMode) {
+        viewModel.leaveLiveMode()
     }
 
-    LaunchedEffect(wakeFailure) {
-        if (wakeFailure.isNotBlank()) {
-            wakeListening = false
-            notice = "A escuta por voz foi interrompida: $wakeFailure"
-            wakeFailure = ""
-        }
-    }
-
-    LaunchedEffect(showScreen, connected, endpoint, fingerprint, token) {
-        if (!showScreen || !connected) return@LaunchedEffect
-        var lastFrame = 0
-        while (showScreen && connected) {
-            try {
-                val next = withContext(Dispatchers.IO) {
-                    CompanionClient(endpoint, fingerprint, token).screenFrame(lastFrame)
-                }
-                if (next != null) {
-                    lastFrame = next.number
-                    val decoded = withContext(Dispatchers.Default) {
-                        BitmapFactory.decodeByteArray(next.jpeg, 0, next.jpeg.size)?.asImageBitmap()
-                    }
-                    if (decoded != null) screenBitmap = decoded
-                } else delay(200)
-            } catch (error: Exception) {
-                notice = "A transmissão da tela parou: ${error.message ?: "verifique a conexão"}."
-                showScreen = false
-                screenBitmap = null
-                break
-            }
-        }
-    }
-
-    suspend fun loadBundledSound(name: String): ByteArray? {
-        soundCache[name]?.let { return it }
-        val resource = when (name) {
-            "entrada.wav" -> R.raw.aurora_entrada
-            "saida.wav" -> R.raw.aurora_saida
-            else -> return null
-        }
-        return runCatching {
-            withContext(Dispatchers.IO) { appContext.resources.openRawResource(resource).use { it.readBytes() } }
-        }.getOrNull()?.also { soundCache[name] = it }
-    }
-
-    fun warmLiveSounds() {
-        scope.launch {
-            listOf("entrada.wav", "saida.wav").forEach { loadBundledSound(it) }
-        }
-    }
-
-    fun playPcSound(name: String) {
-        if (!connected) return
-        scope.launch {
-            val bytes = loadBundledSound(name)
-            if (bytes != null) audioPlayer.play(bytes, fileExtension = ".wav", onFinished = { success ->
-                if (!success && connected) notice = "O som $name está no app, mas o celular não conseguiu reproduzi-lo."
-            })
-            else if (connected) notice = "O som $name embutido no app não pôde ser carregado."
-        }
-    }
-
-    fun playPcSpeech(text: String, liveSession: Int? = null) {
-        if (!connected) return
-        remoteState = "preparing"
-        scope.launch {
-            val requestStartedAt = SystemClock.elapsedRealtime()
-            try {
-                val bytes = withContext(Dispatchers.IO) {
-                    CompanionClient(endpoint, fingerprint, token).speech(text)
-                }
-                val audioReceivedAt = SystemClock.elapsedRealtime()
-                if (!connected || (liveSession != null && (!liveMode || liveSessionId != liveSession))) {
-                    if (connected && remoteState == "preparing") remoteState = "ready"
-                    return@launch
-                }
-                audioPlayer.play(bytes, fileExtension = ".mp3", onStarted = {
-                    Log.i("AuroraCompanion", "Voz pronta: total=${SystemClock.elapsedRealtime() - requestStartedAt}ms; reprodução=${SystemClock.elapsedRealtime() - audioReceivedAt}ms; áudio=${bytes.size} bytes")
-                    remoteState = "speaking"
-                }) { success ->
-                    remoteState = "ready"
-                    if (!success) notice = "MP3 da Thalita chegou (${bytes.size} bytes), mas o Android falhou ao reproduzir."
-                }
-            } catch (error: Exception) {
-                remoteState = "ready"
-                notice = "Texto recebido; voz do PC falhou: ${error.message ?: "erro de áudio"}."
-            }
-        }
-    }
-
-    fun enterLiveMode() {
-        playPhoneClick(rootView)
-        if (!connected) {
+    fun handleEnterLiveMode() {
+        if (!viewModel.connected) {
             showConnect = true
             return
         }
-        if (liveMode) return
-        audioPlayer.stop()
-        liveSessionId += 1
-        liveMode = true
-        playPcSound("entrada.wav")
-    }
-
-    fun leaveLiveMode(playExitSound: Boolean = true) {
-        playPhoneClick(rootView)
-        if (!liveMode) return
-        audioPlayer.stop()
-        if (live) voiceStopRequest += 1
-        liveSessionId += 1
-        liveMode = false
-        if (playExitSound) playPcSound("saida.wav")
-    }
-
-    BackHandler(enabled = liveMode) { leaveLiveMode() }
-
-    fun startVoiceInteraction() {
-        playPhoneClick(rootView)
-        if (!connected) {
-            showConnect = true
-        } else if (!busy) {
-            voiceStartRequest += 1
-        }
-    }
-
-    fun rememberConversation(id: String, firstMessage: String) {
-        val existing = conversations.firstOrNull { it.id == id }
-        val title = existing?.title?.takeIf { it.isNotBlank() } ?: firstMessage.take(72)
-        conversations = listOf(PcConversation(id, title, emptyList())) + conversations.filterNot { it.id == id }
-    }
-
-    LaunchedEffect(saved) {
-        if (saved != null) {
-            val client = CompanionClient(saved.first, saved.second, saved.third)
-            var controlAcquired = false
-            try {
-                withContext(Dispatchers.IO) { client.acquireControl() }
-                controlAcquired = true
-                conversations = withContext(Dispatchers.IO) { client.conversations() }
-                connected = true
-                notice = "PC conectado; controle e áudio transferidos para o celular."
-                warmLiveSounds()
-            } catch (_: Exception) {
-                if (controlAcquired) withContext(Dispatchers.IO) { runCatching { client.releaseControl() } }
-                // Keep the pairing credentials for temporary Wi-Fi/server outages.
-                connected = false
-                notice = "PC indisponível. Confira a mesma rede Wi-Fi e tente conectar novamente."
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(appContext)) {
+            val prefs = appContext.getSharedPreferences("aurora_ui_prefs", Context.MODE_PRIVATE)
+            val alreadyAsked = prefs.getBoolean("overlay_asked", false)
+            if (!alreadyAsked) {
+                prefs.edit().putBoolean("overlay_asked", true).apply()
+                showOverlayPermissionDialog = true
             }
         }
-    }
-
-    DisposableEffect(discovery) { onDispose { discovery.stop() } }
-    LaunchedEffect(discovering) {
-        if (discovering) {
-            delay(12_000)
-            if (discovering) {
-                discovery.stop()
-                discovering = false
-                notice = "Nenhum PC Aurora encontrado nesta rede. Confira o Wi-Fi e o serviço do PC."
-            }
-        }
-    }
-    LaunchedEffect(connected, endpoint, fingerprint, token) {
-        while (connected && token.isNotBlank()) {
-            delay(15_000)
-            try {
-                val serverState = withContext(Dispatchers.IO) { CompanionClient(endpoint, fingerprint, token).heartbeatControl() }
-                // Keep the phone's animation aligned with local playback; server heartbeats
-                // only report that synthesis finished, not whether Android is still playing.
-                if (remoteState != "preparing" && remoteState != "speaking") remoteState = serverState
-            } catch (_: Exception) {
-                appContext.stopService(Intent(appContext, WakeCaptureService::class.java))
-                wakeListening = false
-                if (live) voiceStopRequest += 1
-                live = false
-                liveMode = false
-                liveSessionId += 1
-                audioPlayer.stop()
-                soundCache.clear()
-                remoteState = "idle"
-                connected = false
-                notice = "Conexão com o PC perdida; o controle local será liberado automaticamente."
-            }
-        }
-    }
-
-    fun connectToPc() {
-        playPhoneClick(rootView)
-        busy = true
-        notice = "Validando certificado e pareando com o PC…"
-        scope.launch {
-            try {
-                val cleanFingerprint = fingerprint.filter { it.isLetterOrDigit() }.lowercase()
-                val newToken = if (token.isNotBlank()) token else withContext(Dispatchers.IO) {
-                    CompanionClient(endpoint, cleanFingerprint).pair(pairingCode)
-                }
-                token = newToken
-                fingerprint = cleanFingerprint
-                if (token.isNotBlank()) vault.save(endpoint, cleanFingerprint, newToken)
-                val client = CompanionClient(endpoint, cleanFingerprint, newToken)
-                withContext(Dispatchers.IO) { client.acquireControl() }
-                conversations = withContext(Dispatchers.IO) { client.conversations() }
-                warmLiveSounds()
-                token = newToken
-                fingerprint = cleanFingerprint
-                connected = true
-                conversationId = CompanionClient.newConversationId()
-                lines.clear()
-                notice = "Controle transferido para o celular. A Aurora do PC dormiu."
-                showConnect = false
-            } catch (error: Exception) {
-                notice = error.message ?: "Não consegui conectar ao Aurora no PC."
-            } finally {
-                busy = false
-            }
-        }
-    }
-
-    fun disconnectFromPc() {
-        playPhoneClick(rootView)
-        if (!connected || busy) return
-        appContext.stopService(Intent(appContext, WakeCaptureService::class.java))
-        wakeListening = false
-        val wasLive = liveMode
-        if (wasLive) leaveLiveMode(playExitSound = false)
-        audioPlayer.stop()
-        busy = true
-        scope.launch {
-            try {
-                // Fetch the PC's exit cue while this phone still owns the lease.
-                val exitSound = if (wasLive) loadBundledSound("saida.wav") else null
-                withContext(Dispatchers.IO) { CompanionClient(endpoint, fingerprint, token).releaseControl() }
-                connected = false
-                remoteState = "idle"
-                soundCache.clear()
-                exitSound?.let { audioPlayer.play(it, fileExtension = ".wav") }
-                notice = "Celular desconectado. A Aurora do PC voltou a escutar."
-            } catch (error: Exception) {
-                notice = "Não confirmei a desconexão: ${error.message ?: "verifique o PC"}."
-            } finally { busy = false }
-        }
-    }
-
-    fun findPc() {
-        playPhoneClick(rootView)
-        discovering = true
-        notice = "Procurando Aurora PCs nesta rede…"
-        discovery.start(
-            onFound = { found -> endpoint = found; discovering = false; notice = "Aurora PC encontrado. Confira o pin do certificado e pareie." },
-            onError = { message -> discovering = false; notice = message },
-        )
-    }
-
-    fun sendCurrentMessage() {
-        playPhoneClick(rootView)
-        val message = draft.trim()
-        if (message.isEmpty() || !connected || busy) return
-        val selectedConversation = conversationId
-        lines += ChatLine(true, message)
-        draft = ""
-        busy = true
-        notice = "Aurora está respondendo pelo computador…"
-        scope.launch {
-            try {
-                val reply = withContext(Dispatchers.IO) {
-                    CompanionClient(endpoint, fingerprint, token).sendMessage(selectedConversation, message)
-                }
-                lines += ChatLine(false, reply.answer)
-                rememberConversation(selectedConversation, message)
-                notice = "Conversa sincronizada com o PC."
-                playPcSpeech(reply.answer)
-            } catch (error: Exception) {
-                lines += ChatLine(false, "Não consegui falar com o PC: ${error.message ?: "verifique a conexão"}.")
-                notice = "A conexão com o PC falhou."
-            } finally {
-                busy = false
-            }
-        }
-    }
-
-    fun sendVoiceAudio(wav: ByteArray) {
-        if (!connected || busy) return
-        val selectedConversation = conversationId
-        val requestLiveSession = liveSessionId
-        busy = true
-        notice = "Transcrevendo no PC e consultando a Aurora…"
-        scope.launch {
-            try {
-                val result = withContext(Dispatchers.IO) {
-                    CompanionClient(endpoint, fingerprint, token).sendVoice(selectedConversation, wav)
-                }
-                lines += ChatLine(true, result.transcript)
-                lines += ChatLine(false, result.answer)
-                rememberConversation(selectedConversation, result.transcript)
-                notice = "Resposta da Thalita recebida do PC."
-                if (liveMode && liveSessionId == requestLiveSession) playPcSpeech(result.answer, requestLiveSession)
-            } catch (error: Exception) {
-                notice = "Falha na conversa por voz: ${error.message ?: "verifique a conexão"}."
-            } finally {
-                busy = false
-            }
-        }
-    }
-
-    fun refreshConversations() {
-        if (!connected || loadingConversations) return
-        loadingConversations = true
-        scope.launch {
-            try {
-                conversations = withContext(Dispatchers.IO) { CompanionClient(endpoint, fingerprint, token).conversations() }
-                notice = if (conversations.isEmpty()) "Ainda não há conversas salvas no PC." else "Histórico carregado do PC."
-            } catch (error: Exception) {
-                notice = error.message ?: "Não consegui carregar o histórico."
-            } finally {
-                loadingConversations = false
-            }
-        }
-    }
-
-    fun openConversation(id: String) {
-        if (!connected || busy) return
-        busy = true
-        scope.launch {
-            try {
-                val selected = withContext(Dispatchers.IO) { CompanionClient(endpoint, fingerprint, token).conversation(id) }
-                conversationId = selected.id
-                lines.clear()
-                lines.addAll(selected.messages)
-                draft = ""
-                notice = "Conversa aberta do histórico do PC."
-            } catch (error: Exception) {
-                notice = error.message ?: "Não consegui abrir essa conversa."
-            } finally {
-                busy = false
-            }
-        }
+        viewModel.enterLiveMode()
     }
 
     MaterialTheme {
         ModalNavigationDrawer(
             drawerState = drawerState,
-            gesturesEnabled = connected && !liveMode,
+            gesturesEnabled = viewModel.connected && !viewModel.liveMode,
             drawerContent = {
                 ModalDrawerSheet(drawerContainerColor = Panel, drawerContentColor = Pearl) {
                     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 20.dp)) {
@@ -604,15 +273,10 @@ private fun AuroraShell() {
                         Text("Conversas no seu PC", color = Muted, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp, bottom = 18.dp))
                         Button(
                             onClick = {
-                                if (!busy) {
-                                    conversationId = CompanionClient.newConversationId()
-                                    lines.clear()
-                                    draft = ""
-                                    notice = "Nova conversa. Pode falar ou escrever."
-                                    scope.launch { drawerState.close() }
-                                }
+                                viewModel.newConversation()
+                                scope.launch { drawerState.close() }
                             },
-                            enabled = connected && !busy,
+                            enabled = viewModel.connected && !viewModel.busy,
                             modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Violet, contentColor = Pearl),
                             shape = RoundedCornerShape(16.dp),
@@ -623,22 +287,22 @@ private fun AuroraShell() {
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Text("Recentes", color = Muted, fontSize = 13.sp)
-                            TextButton(onClick = ::refreshConversations, enabled = connected && !busy) {
+                            TextButton(onClick = viewModel::refreshConversations, enabled = viewModel.connected && !viewModel.busy) {
                                 Text("Atualizar", color = Blue)
                             }
                         }
-                        if (conversations.isEmpty()) {
+                        if (viewModel.conversations.isEmpty()) {
                             Text("Suas conversas aparecerão aqui.", color = Muted, fontSize = 13.sp, modifier = Modifier.padding(vertical = 12.dp))
                         }
                         LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
-                            items(conversations, key = { it.id }) { item ->
+                            items(viewModel.conversations, key = { it.id }) { item ->
                                 NavigationDrawerItem(
                                     label = {
                                         Text(item.title.ifBlank { "Conversa" }, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                     },
-                                    selected = item.id == conversationId,
+                                    selected = item.id == viewModel.conversationId,
                                     onClick = {
-                                        openConversation(item.id)
+                                        viewModel.openConversation(item.id)
                                         scope.launch { drawerState.close() }
                                     },
                                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
@@ -657,104 +321,151 @@ private fun AuroraShell() {
                 }
             },
         ) {
-          Box(Modifier.fillMaxSize()) {
-            Surface(color = Ink, modifier = Modifier.fillMaxSize()) {
-              Column(
-                modifier = Modifier.fillMaxSize().padding(WindowInsets.statusBars.asPaddingValues())
-                    .padding(WindowInsets.navigationBars.asPaddingValues()).imePadding()
-              ) {
-                TopBar(
-                    connected,
-                    remoteState,
-                    onHistory = {
-                        if (connected) {
-                            refreshConversations()
-                            scope.launch { drawerState.open() }
-                        } else showConnect = true
-                    },
-                    onConnect = { showConnect = true },
-                    onDisconnect = ::disconnectFromPc,
-                    onOrbClick = { if (connected) enterLiveMode() else showConnect = true },
-                )
-                if (lines.isEmpty()) {
-                    Welcome(
-                        modifier = Modifier.weight(1f),
-                        live = live,
-                        working = busy,
-                        connected = connected,
-                        activity = if (live) "listening" else remoteState,
-                        onStartVoice = ::enterLiveMode,
-                        onWrite = {
-                            if (connected) {
-                                composerFocusRequester.requestFocus()
-                                keyboardController?.show()
-                            } else showConnect = true
-                        },
-                        onConnect = { showConnect = true },
-                    )
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 20.dp),
-                        verticalArrangement = Arrangement.spacedBy(18.dp),
-                        reverseLayout = false
+            Box(Modifier.fillMaxSize()) {
+                Surface(color = Ink, modifier = Modifier.fillMaxSize()) {
+                    Column(
+                        modifier = Modifier.fillMaxSize().padding(WindowInsets.statusBars.asPaddingValues())
+                            .padding(WindowInsets.navigationBars.asPaddingValues()).imePadding()
                     ) {
-                        items(lines) { line -> MessageBubble(line) }
-                    }
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.Center) {
-                        OrbButton(live || busy, Modifier.size(54.dp), activity = if (live) "listening" else remoteState, onClick = ::enterLiveMode)
+                        TopBar(
+                            connected = viewModel.connected,
+                            remoteState = viewModel.remoteState,
+                            alwaysOnActive = viewModel.alwaysOnWakeActive,
+                            onHistory = {
+                                if (viewModel.connected) {
+                                    viewModel.refreshConversations()
+                                    scope.launch { drawerState.open() }
+                                } else showConnect = true
+                            },
+                            onConnect = { showConnect = true },
+                            onDisconnect = viewModel::disconnectFromPc,
+                            onOrbClick = { if (viewModel.connected) handleEnterLiveMode() else showConnect = true },
+                            onToggleAlwaysOn = {
+                                if (viewModel.alwaysOnWakeActive) {
+                                    viewModel.stopAlwaysOnWake()
+                                } else if (appContext.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                    viewModel.startAlwaysOnWake()
+                                } else {
+                                    val req = buildList {
+                                        add(Manifest.permission.RECORD_AUDIO)
+                                        if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
+                                    }
+                                    alwaysOnWakePermissionLauncher.launch(req.toTypedArray())
+                                }
+                            }
+                        )
+                        if (viewModel.lines.isEmpty()) {
+                            Welcome(
+                                modifier = Modifier.weight(1f),
+                                live = viewModel.live,
+                                working = viewModel.busy,
+                                connected = viewModel.connected,
+                                activity = if (viewModel.live) "listening" else viewModel.remoteState,
+                                onStartVoice = ::handleEnterLiveMode,
+                                onWrite = {
+                                    if (viewModel.connected) {
+                                        composerFocusRequester.requestFocus()
+                                        keyboardController?.show()
+                                    } else showConnect = true
+                                },
+                                onConnect = { showConnect = true },
+                            )
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 20.dp),
+                                verticalArrangement = Arrangement.spacedBy(18.dp),
+                                reverseLayout = false
+                            ) {
+                                items(viewModel.lines) { line -> MessageBubble(line) }
+                            }
+                            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.Center) {
+                                OrbButton(
+                                    viewModel.live || viewModel.busy,
+                                    Modifier.size(54.dp),
+                                    activity = if (viewModel.live) "listening" else viewModel.remoteState,
+                                    onClick = ::handleEnterLiveMode
+                                )
+                            }
+                        }
+                        Composer(
+                            text = draft,
+                            connected = viewModel.connected,
+                            busy = viewModel.busy,
+                            liveMode = viewModel.liveMode,
+                            wakeListening = viewModel.wakeListening,
+                            screenActive = viewModel.showScreen,
+                            onText = { draft = it },
+                            onSend = {
+                                val msg = draft
+                                draft = ""
+                                viewModel.sendCurrentMessage(msg)
+                            },
+                            onNew = viewModel::newConversation,
+                            onToggleLive = {
+                                if (viewModel.liveMode) viewModel.leaveLiveMode() else handleEnterLiveMode()
+                            },
+                            onToggleWake = {
+                                playPhoneClick(rootView)
+                                if (viewModel.wakeListening) {
+                                    viewModel.stopWakeListener()
+                                } else if (!viewModel.connected) {
+                                    showConnect = true
+                                } else if (appContext.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                    viewModel.startWakeListener()
+                                } else {
+                                    micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                }
+                            },
+                            onToggleScreen = {
+                                playPhoneClick(rootView)
+                                viewModel.toggleScreenView()
+                            },
+                            focusRequester = composerFocusRequester,
+                        )
+                        if (viewModel.notice.isNotBlank()) {
+                            Text(
+                                viewModel.notice,
+                                color = Muted,
+                                fontSize = 11.sp,
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
                 }
-                Composer(
-                    text = draft,
-                    connected = connected,
-                    busy = busy,
-                    liveMode = liveMode,
-                    wakeListening = wakeListening,
-                    screenActive = showScreen,
-                    onText = { draft = it },
-                    onSend = ::sendCurrentMessage,
-                    onNew = { if (!busy) { conversationId = CompanionClient.newConversationId(); lines.clear(); notice = "Nova conversa no PC." } },
-                    onToggleLive = { if (liveMode) leaveLiveMode() else enterLiveMode() },
-                    onToggleWake = ::toggleWakeListener,
-                    onToggleScreen = ::toggleScreenView,
-                    focusRequester = composerFocusRequester,
-                )
-                if (notice.isNotBlank()) Text(notice, color = Muted, fontSize = 11.sp, modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp), textAlign = TextAlign.Center)
-              }
+                AnimatedVisibility(
+                    visible = viewModel.liveMode,
+                    modifier = Modifier.fillMaxSize(),
+                    enter = fadeIn(tween(180)) + scaleIn(initialScale = 0.78f, animationSpec = spring(dampingRatio = 0.72f, stiffness = 300f)),
+                    exit = fadeOut(tween(190)) + scaleOut(targetScale = 0.76f, animationSpec = spring(dampingRatio = 0.82f, stiffness = 330f)),
+                ) {
+                    LiveOverlay(
+                        modeActive = viewModel.liveMode,
+                        recording = viewModel.live,
+                        working = viewModel.busy,
+                        activity = viewModel.remoteState,
+                        startRequest = viewModel.voiceStartRequest,
+                        stopRequest = viewModel.voiceStopRequest,
+                        onOrbTap = { viewModel.startVoiceInteraction() },
+                        onExit = { viewModel.leaveLiveMode(playExitSound = true) },
+                        onRecording = { viewModel.live = it },
+                        onVoice = viewModel::sendVoiceAudio,
+                        onVoiceError = { viewModel.notice = it },
+                    )
+                }
+                AnimatedVisibility(
+                    visible = viewModel.showScreen,
+                    modifier = Modifier.fillMaxSize(),
+                    enter = fadeIn(tween(150)),
+                    exit = fadeOut(tween(120)),
+                ) {
+                    ScreenPreviewOverlay(
+                        frame = viewModel.screenBitmap,
+                        onClose = viewModel::toggleScreenView,
+                    )
+                }
             }
-            AnimatedVisibility(
-                visible = liveMode,
-                modifier = Modifier.fillMaxSize(),
-                enter = fadeIn(tween(180)) + scaleIn(initialScale = 0.78f, animationSpec = spring(dampingRatio = 0.72f, stiffness = 300f)),
-                exit = fadeOut(tween(190)) + scaleOut(targetScale = 0.76f, animationSpec = spring(dampingRatio = 0.82f, stiffness = 330f)),
-            ) {
-                LiveOverlay(
-                    modeActive = liveMode,
-                    recording = live,
-                    working = busy,
-                    activity = remoteState,
-                    startRequest = voiceStartRequest,
-                    stopRequest = voiceStopRequest,
-                    onOrbTap = { if (!live && !busy) startVoiceInteraction() },
-                    onExit = ::leaveLiveMode,
-                    onRecording = { live = it },
-                    onVoice = ::sendVoiceAudio,
-                    onVoiceError = { notice = it },
-                )
-            }
-            AnimatedVisibility(
-                visible = showScreen,
-                modifier = Modifier.fillMaxSize(),
-                enter = fadeIn(tween(150)),
-                exit = fadeOut(tween(120)),
-            ) {
-                ScreenPreviewOverlay(
-                    frame = screenBitmap,
-                    onClose = ::toggleScreenView,
-                )
-            }
-          }
         }
     }
 
@@ -766,35 +477,72 @@ private fun AuroraShell() {
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("O computador é quem executa a Aurora. Primeiro conecte os dois à mesma rede Wi-Fi.", color = Muted)
-                    Button(onClick = ::findPc, enabled = !discovering, colors = ButtonDefaults.buttonColors(containerColor = Panel)) {
-                        Text(if (discovering) "Procurando na rede…" else "Encontrar meu PC automaticamente", color = Pearl)
+                    Button(onClick = viewModel::findPc, enabled = !viewModel.discovering, colors = ButtonDefaults.buttonColors(containerColor = Panel)) {
+                        Text(if (viewModel.discovering) "Procurando na rede…" else "Encontrar meu PC automaticamente", color = Pearl)
                     }
-                    ConnectField(endpoint, { endpoint = it }, "Endereço do servidor (ex.: https://192.168.1.10:8765)")
-                    if (token.isBlank()) ConnectField(pairingCode, { pairingCode = it }, "Código de pareamento")
-                    ConnectField(fingerprint, { fingerprint = it }, "Impressão digital SHA-256 do certificado (64 caracteres)")
+                    ConnectField(viewModel.endpoint, { viewModel.endpoint = it }, "Endereço do servidor (ex.: https://192.168.1.10:8765)")
+                    if (viewModel.token.isBlank()) ConnectField(viewModel.pairingCode, { viewModel.pairingCode = it }, "Código de pareamento")
+                    ConnectField(viewModel.fingerprint, { viewModel.fingerprint = it }, "Impressão digital SHA-256 do certificado (64 caracteres)")
                     Text("No PC, obtenha o código e a impressão digital em ~/.config/aurora/companion/. O pareamento usa HTTPS com certificado fixado; não exponha a porta do PC à internet.", color = Muted, fontSize = 12.sp)
-                    if (notice.isNotBlank()) Text(notice, color = if (notice.startsWith("Não")) Color(0xFFFFA6AC) else Blue, fontSize = 12.sp)
+                    if (viewModel.notice.isNotBlank()) Text(viewModel.notice, color = if (viewModel.notice.startsWith("Não")) Color(0xFFFFA6AC) else Blue, fontSize = 12.sp)
                 }
             },
             confirmButton = {
-                Button(onClick = ::connectToPc, enabled = !busy, colors = ButtonDefaults.buttonColors(containerColor = Violet)) {
-                    Text(if (busy) "Conectando…" else "Parear com o PC")
+                Button(onClick = {
+                    viewModel.connectToPc()
+                    showConnect = false
+                }, enabled = !viewModel.busy, colors = ButtonDefaults.buttonColors(containerColor = Violet)) {
+                    Text(if (viewModel.busy) "Conectando…" else "Parear com o PC")
                 }
             },
             dismissButton = { TextButton(onClick = { showConnect = false }) { Text("Cancelar", color = Muted) } }
         )
     }
 
+    if (showOverlayPermissionDialog) {
+        AlertDialog(
+            onDismissRequest = { showOverlayPermissionDialog = false },
+            containerColor = Panel,
+            title = { Text("Bolha flutuante da Aurora", color = Pearl) },
+            text = {
+                Text(
+                    "Para continuar ativa como uma bolha flutuante quando você sair do app no modo Live, a Aurora precisa da permissão \"Exibir sobre outros apps\".",
+                    color = Muted,
+                    fontSize = 14.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showOverlayPermissionDialog = false
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            val intent = Intent(
+                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                Uri.parse("package:${appContext.packageName}")
+                            )
+                            overlayPermissionLauncher.launch(intent)
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Violet)
+                ) { Text("Permitir") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showOverlayPermissionDialog = false }) { Text("Agora não", color = Muted) }
+            }
+        )
+    }
 }
 
 @Composable
 private fun TopBar(
     connected: Boolean,
     remoteState: String,
+    alwaysOnActive: Boolean,
     onHistory: () -> Unit,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
     onOrbClick: () -> Unit,
+    onToggleAlwaysOn: () -> Unit,
 ) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
@@ -809,7 +557,19 @@ private fun TopBar(
                 Text(if (connected) "${remoteStateLabel(remoteState)} · PC em pausa" else "Aguardando seu PC", color = Muted, fontSize = 11.sp)
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Button(
+                onClick = onToggleAlwaysOn,
+                modifier = Modifier.heightIn(min = 40.dp),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (alwaysOnActive) Violet else SoftLilac,
+                    contentColor = if (alwaysOnActive) Color.White else Pearl,
+                ),
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Text(if (alwaysOnActive) "Sempre ativa" else "Ouvir", fontSize = 11.sp)
+            }
             SmallAction("Chats", onHistory)
             SmallAction(if (connected) "Desconectar" else "Conectar", if (connected) onDisconnect else onConnect)
         }
@@ -931,23 +691,23 @@ private fun OrbButton(live: Boolean, modifier: Modifier, activity: String = if (
         label = "orb-halo-alpha"
     )
     Box(modifier, contentAlignment = Alignment.Center) {
-    Box(Modifier.fillMaxSize().scale(halo).alpha(haloAlpha)
-        .border(1.dp, auraColor, CircleShape))
-    Box(Modifier.fillMaxSize().scale(breathe).clip(CircleShape).background(
-        Brush.linearGradient(
-            colors = listOf(Color(0xFFFFFFFF), Color(0xFFF0EAF8), Color(0xFFD7C8EF), Color(0xFFA9CFE4), Color(0xFF927BC9)),
-            start = androidx.compose.ui.geometry.Offset(0f, 0f),
-            end = androidx.compose.ui.geometry.Offset(380f * drift, 540f * (1f - drift))
-        )
-    ).border(1.dp, Color.White.copy(alpha = 0.42f), CircleShape)
-        .clickable(onClick = onClick), contentAlignment = Alignment.TopStart) {
-        Box(Modifier.fillMaxSize().background(
-            Brush.radialGradient(listOf(Color.White.copy(alpha = 0.72f), Color.White.copy(alpha = 0.08f), Color.Transparent), radius = 170f),
-            shape = CircleShape
-        ))
-        Box(Modifier.fillMaxWidth(0.62f).height(40.dp).padding(start = 20.dp, top = 13.dp)
-            .clip(CircleShape).alpha(0.7f).background(Brush.horizontalGradient(listOf(Color.White.copy(0.72f), Color.White.copy(0.02f)))))
-    }
+        Box(Modifier.fillMaxSize().scale(halo).alpha(haloAlpha)
+            .border(1.dp, auraColor, CircleShape))
+        Box(Modifier.fillMaxSize().scale(breathe).clip(CircleShape).background(
+            Brush.linearGradient(
+                colors = listOf(Color(0xFFFFFFFF), Color(0xFFF0EAF8), Color(0xFFD7C8EF), Color(0xFFA9CFE4), Color(0xFF927BC9)),
+                start = Offset(0f, 0f),
+                end = Offset(380f * drift, 540f * (1f - drift))
+            )
+        ).border(1.dp, Color.White.copy(alpha = 0.42f), CircleShape)
+            .clickable(onClick = onClick), contentAlignment = Alignment.TopStart) {
+            Box(Modifier.fillMaxSize().background(
+                Brush.radialGradient(listOf(Color.White.copy(alpha = 0.72f), Color.White.copy(alpha = 0.08f), Color.Transparent), radius = 170f),
+                shape = CircleShape
+            ))
+            Box(Modifier.fillMaxWidth(0.62f).height(40.dp).padding(start = 20.dp, top = 13.dp)
+                .clip(CircleShape).alpha(0.7f).background(Brush.horizontalGradient(listOf(Color.White.copy(0.72f), Color.White.copy(0.02f)))))
+        }
     }
 }
 
@@ -1348,4 +1108,3 @@ private fun SmallAction(label: String, onClick: () -> Unit) {
         shape = RoundedCornerShape(18.dp),
     ) { Text(label, fontSize = 12.sp) }
 }
-

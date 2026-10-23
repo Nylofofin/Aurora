@@ -54,14 +54,14 @@ class CompanionClient(
         check(active) { "O PC está ocupado ou não conseguiu transferir o controle." }
     }
 
-    fun heartbeatControl(): String = request("POST", "/v1/control", JSONObject().put("operation", "heartbeat")).optString("state", "ready")
+    fun heartbeatControl(): String = requestWithRetry("POST", "/v1/control", JSONObject().put("operation", "heartbeat")).optString("state", "ready")
 
     fun releaseControl() {
         request("POST", "/v1/control", JSONObject().put("operation", "release"))
     }
 
     fun conversations(): List<PcConversation> {
-        val array = request("GET", "/v1/conversations").optJSONArray("conversations") ?: JSONArray()
+        val array = requestWithRetry("GET", "/v1/conversations").optJSONArray("conversations") ?: JSONArray()
         return (0 until array.length()).mapNotNull { index ->
             val item = array.optJSONObject(index) ?: return@mapNotNull null
             PcConversation(item.optString("id"), item.optString("title"), emptyList())
@@ -69,7 +69,7 @@ class CompanionClient(
     }
 
     fun conversation(id: String): PcConversation {
-        val item = request("GET", "/v1/conversations/${encodePathSegment(id)}")
+        val item = requestWithRetry("GET", "/v1/conversations/${encodePathSegment(id)}")
         val messages = item.optJSONArray("display_messages") ?: item.optJSONArray("messages") ?: JSONArray()
         val lines = (0 until messages.length()).mapNotNull { index ->
             val message = messages.optJSONObject(index) ?: return@mapNotNull null
@@ -100,8 +100,8 @@ class CompanionClient(
         require(!token.isNullOrBlank()) { "Este celular ainda não está pareado com o PC." }
         require(text.isNotBlank() && text.length <= 1800) { "Texto para voz inválido." }
         val connection = (URL(baseUrl + "/v1/speech").openConnection() as HttpsURLConnection).apply {
-            connectTimeout = 5_000
-            readTimeout = 25_000
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = VOICE_READ_TIMEOUT_MS
             requestMethod = "POST"
             sslSocketFactory = pinnedSslContext(expectedFingerprint).socketFactory
             hostnameVerifier = HostnameVerifier { _, _ -> true }
@@ -179,8 +179,8 @@ class CompanionClient(
         require(!token.isNullOrBlank()) { "Este celular ainda não está pareado com o PC." }
         val url = URL(baseUrl + "/v1/screen/frame?after=" + after.coerceAtLeast(0))
         val connection = (url.openConnection() as HttpsURLConnection).apply {
-            connectTimeout = 4_000
-            readTimeout = 3_500
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = SCREEN_READ_TIMEOUT_MS
             sslSocketFactory = pinnedSslContext(expectedFingerprint).socketFactory
             hostnameVerifier = HostnameVerifier { _, _ -> true }
             setRequestProperty("Accept", "image/jpeg, application/json")
@@ -207,8 +207,8 @@ class CompanionClient(
 
     private fun requestAudio(path: String, conversationId: String, wav: ByteArray): JSONObject {
         val connection = (URL(baseUrl + path).openConnection() as HttpsURLConnection).apply {
-            connectTimeout = 8_000
-            readTimeout = 185_000
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = VOICE_READ_TIMEOUT_MS
             requestMethod = "POST"
             sslSocketFactory = pinnedSslContext(expectedFingerprint).socketFactory
             hostnameVerifier = HostnameVerifier { _, _ -> true }
@@ -259,11 +259,29 @@ class CompanionClient(
         }
     }
 
+    private fun requestWithRetry(method: String, path: String, body: JSONObject? = null): JSONObject {
+        val delays = listOf(500L, 1500L)
+        var lastError: Exception? = null
+        for (attempt in 0..delays.size) {
+            try {
+                return request(method, path, body)
+            } catch (e: java.io.IOException) {
+                lastError = e
+            } catch (e: java.net.SocketTimeoutException) {
+                lastError = e
+            } catch (e: Exception) {
+                throw e  // HTTP 4xx/5xx or non-IO errors — do not retry
+            }
+            if (attempt < delays.size) Thread.sleep(delays[attempt])
+        }
+        throw lastError!!
+    }
+
     private fun request(method: String, path: String, body: JSONObject? = null): JSONObject {
         val url = URL(baseUrl + path)
         val connection = (url.openConnection() as HttpsURLConnection).apply {
-            connectTimeout = 5_000
-            readTimeout = if (path == "/v1/chat") 185_000 else 8_000
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = if (path == "/v1/chat") 185_000 else READ_TIMEOUT_MS
             requestMethod = method
             sslSocketFactory = pinnedSslContext(expectedFingerprint).socketFactory
             hostnameVerifier = HostnameVerifier { _, _ -> true }
@@ -293,10 +311,18 @@ class CompanionClient(
     companion object {
         fun newConversationId(): String = UUID.randomUUID().toString()
 
+        private const val CONNECT_TIMEOUT_MS = 5_000
+        private const val READ_TIMEOUT_MS = 30_000
+        private const val VOICE_READ_TIMEOUT_MS = 60_000
+        private const val SCREEN_READ_TIMEOUT_MS = 8_000
+
         private fun normalizeEndpoint(raw: String): String {
             val uri = URI(raw.trim())
             require(uri.scheme == "https" && !uri.host.isNullOrBlank() && uri.userInfo == null) {
                 "Informe o endereço HTTPS do Aurora no computador."
+            }
+            require(uri.host != "localhost" && uri.host != "127.0.0.1") {
+                "O servidor companion deve ser um IP de rede local (192.168.x.x), não localhost."
             }
             require(uri.path.isNullOrEmpty() || uri.path == "/") { "Informe somente o endereço e a porta do servidor." }
             require(uri.rawQuery == null && uri.rawFragment == null) { "O endereço não pode conter query ou fragmento." }

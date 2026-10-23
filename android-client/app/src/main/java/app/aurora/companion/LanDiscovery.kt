@@ -1,11 +1,12 @@
 package app.aurora.companion
 
 import android.content.Context
-import android.os.Build
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
+import android.os.Build
 import java.net.Inet4Address
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** Finds the optional PC DNS-SD advertisement; TLS pinning remains a separate trust step. */
@@ -15,6 +16,7 @@ class LanDiscovery(context: Context) {
     private var listener: NsdManager.DiscoveryListener? = null
     private var multicastLock: WifiManager.MulticastLock? = null
     private val resolving = AtomicBoolean(false)
+    private var serviceInfoCallbackRegistered = false
 
     @Suppress("DEPRECATION")
     fun start(onFound: (String) -> Unit, onError: (String) -> Unit) {
@@ -32,19 +34,42 @@ class LanDiscovery(context: Context) {
             override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) = stop()
             override fun onServiceFound(serviceInfo: NsdServiceInfo) {
                 if (!serviceInfo.serviceName.startsWith("Aurora Companion") || !resolving.compareAndSet(false, true)) return
-                manager.resolveService(serviceInfo, object : NsdManager.ResolveListener {
-                    override fun onResolveFailed(info: NsdServiceInfo, errorCode: Int) {
-                        resolving.set(false)
+                if (Build.VERSION.SDK_INT >= 31) {
+                    val callback = object : NsdManager.ServiceInfoCallback {
+                        override fun onServiceInfoCallbackRegistrationFailed(errorCode: Int) {
+                            resolving.set(false)
+                        }
+                        override fun onServiceUpdated(info: NsdServiceInfo) {
+                            val address = (if (Build.VERSION.SDK_INT >= 33) info.hostAddresses.firstOrNull { it is Inet4Address } else null)?.hostAddress
+                                ?: info.host?.takeIf { it is Inet4Address }?.hostAddress
+                            if (address != null && info.port in 1..65535) {
+                                onFound("https://$address:${info.port}")
+                                stop()
+                            } else resolving.set(false)
+                        }
+                        override fun onServiceLost() {
+                            resolving.set(false)
+                        }
+                        override fun onServiceInfoCallbackUnregistered() = Unit
                     }
-                    override fun onServiceResolved(info: NsdServiceInfo) {
-                        val address = (if (Build.VERSION.SDK_INT >= 33) info.hostAddresses.firstOrNull { it is Inet4Address } else null)?.hostAddress
-                            ?: info.host?.takeIf { it is Inet4Address }?.hostAddress
-                        if (address != null && info.port in 1..65535) {
-                            onFound("https://$address:${info.port}")
-                            stop()
-                        } else resolving.set(false)
-                    }
-                })
+                    serviceInfoCallbackRegistered = true
+                    manager.registerServiceInfoCallback(serviceInfo, Executors.newSingleThreadExecutor(), callback)
+                } else {
+                    @Suppress("DEPRECATION")
+                    manager.resolveService(serviceInfo, object : NsdManager.ResolveListener {
+                        override fun onResolveFailed(info: NsdServiceInfo, errorCode: Int) {
+                            resolving.set(false)
+                        }
+                        override fun onServiceResolved(info: NsdServiceInfo) {
+                            val address = (if (Build.VERSION.SDK_INT >= 33) info.hostAddresses.firstOrNull { it is Inet4Address } else null)?.hostAddress
+                                ?: info.host?.takeIf { it is Inet4Address }?.hostAddress
+                            if (address != null && info.port in 1..65535) {
+                                onFound("https://$address:${info.port}")
+                                stop()
+                            } else resolving.set(false)
+                        }
+                    })
+                }
             }
         }
         listener = active

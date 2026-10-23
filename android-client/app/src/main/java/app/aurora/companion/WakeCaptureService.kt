@@ -64,6 +64,7 @@ class WakeCaptureService : Service() {
             recorder.startRecording()
             val client = CompanionClient(endpoint, fingerprint, token)
             val frame = ByteArray(FRAME_BYTES)
+            var consecutiveErrors = 0
             while (running.get()) {
                 var offset = 0
                 while (running.get() && offset < frame.size) {
@@ -71,9 +72,19 @@ class WakeCaptureService : Service() {
                     if (count <= 0) throw IllegalStateException("A leitura do microfone falhou.")
                     offset += count
                 }
-                if (running.get() && client.detectWake(frame.copyOf())) {
-                    wakeDetected = true
-                    running.set(false)
+                if (!running.get()) break
+                try {
+                    if (client.detectWake(frame.copyOf())) {
+                        wakeDetected = true
+                        running.set(false)
+                    }
+                    consecutiveErrors = 0
+                } catch (netError: java.io.IOException) {
+                    consecutiveErrors++
+                    if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+                        throw IllegalStateException("Conexão com o PC perdida após $MAX_CONSECUTIVE_ERRORS tentativas: ${netError.message}")
+                    }
+                    Thread.sleep(RECONNECT_DELAY_MS)
                 }
             }
         } catch (error: Exception) {
@@ -155,6 +166,8 @@ class WakeCaptureService : Service() {
         private const val NOTIFICATION_ID = 0xA071
         private const val WAKE_NOTIFICATION_ID = 0xA072
         private const val SAMPLE_RATE = 16_000
-        private const val FRAME_BYTES = SAMPLE_RATE * 2
+        private const val FRAME_BYTES = SAMPLE_RATE * 2 / 5  // 6400 bytes = 200ms
+        private const val MAX_CONSECUTIVE_ERRORS = 10
+        private const val RECONNECT_DELAY_MS = 3_000L
     }
 }
