@@ -240,18 +240,19 @@ def test_flatpak_application_id_is_only_taken_from_exported_desktop_entries(tmp_
     assert apps_module._flatpak_app_id({"file": native}) is None
 
 
-def test_flatpak_application_launches_through_exported_desktop_entry(monkeypatch, tmp_path):
+def test_flatpak_application_launches_by_app_id_and_returns_without_waiting(monkeypatch, tmp_path):
     desktop_file = tmp_path / "flatpak/exports/share/applications/com.obsproject.Studio.desktop"
     app = {"file": desktop_file, "name": "OBS Studio", "exec": "flatpak run com.obsproject.Studio",
            "class": "obs"}
     calls = []
     monkeypatch.setattr(apps_module, "find_desktop_app", lambda _name: app)
-    monkeypatch.setattr(apps_module.shutil, "which", lambda name: "/usr/bin/gio" if name == "gio" else None)
-    monkeypatch.setattr(apps_module.subprocess, "run", lambda command, **_kwargs: (
-        calls.append(command) or type("Result", (), {"returncode": 0, "stderr": ""})()
-    ))
-    assert apps_module.launch_application("OBS Studio") == "Solicitei a abertura de OBS Studio; o sistema aceitou o pedido."
-    assert calls == [["/usr/bin/gio", "launch", str(desktop_file)]]
+    monkeypatch.setattr(apps_module.shutil, "which", lambda name: "/usr/bin/flatpak" if name == "flatpak" else None)
+    monkeypatch.setattr(apps_module.subprocess, "Popen", lambda command, **kwargs: calls.append((command, kwargs)))
+    assert apps_module.launch_application("OBS Studio") == (
+        "Solicitei a abertura de OBS Studio; vou verificar quando o serviço estiver pronto."
+    )
+    assert calls[0][0] == ["/usr/bin/flatpak", "run", "com.obsproject.Studio"]
+    assert calls[0][1]["start_new_session"] is True
 
 
 def test_roblox_app_request_resolves_to_installed_sober_flatpak(monkeypatch, tmp_path):
@@ -259,18 +260,18 @@ def test_roblox_app_request_resolves_to_installed_sober_flatpak(monkeypatch, tmp
     app = {"file": desktop_file, "name": "Sober", "exec": "flatpak run org.vinegarhq.Sober",
            "class": "org.vinegarhq.Sober"}
     monkeypatch.setattr(apps_module, "desktop_app_entries", lambda: iter([app]))
-    monkeypatch.setattr(apps_module.shutil, "which", lambda name: "/usr/bin/gio" if name == "gio" else None)
+    monkeypatch.setattr(apps_module.shutil, "which", lambda name: "/usr/bin/flatpak" if name == "flatpak" else None)
     calls = []
-    monkeypatch.setattr(apps_module.subprocess, "run", lambda command, **_kwargs: (
-        calls.append(command) or type("Result", (), {"returncode": 0, "stderr": ""})()
-    ))
+    monkeypatch.setattr(apps_module.subprocess, "Popen", lambda command, **_kwargs: calls.append(command))
 
     assert aurora.parse_local_command("abre Roblox") == (
         "open_application", {"command": "roblox"}
     )
     assert apps_module.find_desktop_app("Roblox") == app
-    assert apps_module.launch_application("Roblox") == "Solicitei a abertura de Sober; o sistema aceitou o pedido."
-    assert calls == [["/usr/bin/gio", "launch", str(desktop_file)]]
+    assert apps_module.launch_application("Roblox") == (
+        "Solicitei a abertura de Sober; vou verificar quando o serviço estiver pronto."
+    )
+    assert calls == [["/usr/bin/flatpak", "run", "org.vinegarhq.Sober"]]
 
 
 def test_polite_app_commands_are_routed_without_llm_fallback(monkeypatch):
@@ -282,35 +283,19 @@ def test_polite_app_commands_are_routed_without_llm_fallback(monkeypatch):
         "close_application", {"application": "sober"})
 
 
-def test_flatpak_application_launch_failure_is_not_reported_as_success(monkeypatch, tmp_path):
+def test_flatpak_application_process_start_failure_is_not_reported_as_success(monkeypatch, tmp_path):
     desktop_file = tmp_path / "flatpak/exports/share/applications/com.obsproject.Studio.desktop"
     app = {"file": desktop_file, "name": "OBS Studio", "exec": "flatpak run com.obsproject.Studio",
            "class": "obs"}
     monkeypatch.setattr(apps_module, "find_desktop_app", lambda _name: app)
-    monkeypatch.setattr(apps_module.shutil, "which", lambda name: "/usr/bin/gio" if name == "gio" else None)
-    monkeypatch.setattr(apps_module.subprocess, "run", lambda *_args, **_kwargs: (
-        type("Result", (), {"returncode": 1, "stderr": "Application launch failed"})()
+    monkeypatch.setattr(apps_module.shutil, "which", lambda name: "/usr/bin/flatpak" if name == "flatpak" else None)
+    monkeypatch.setattr(apps_module.subprocess, "Popen", lambda *_args, **_kwargs: (
+        (_ for _ in ()).throw(OSError("Flatpak unavailable"))
     ))
 
     result = apps_module.launch_application("OBS Studio")
 
-    assert "Não consegui abrir OBS Studio" in result
-    assert "Abri OBS Studio" not in result
-
-
-def test_flatpak_application_launch_timeout_does_not_claim_success(monkeypatch, tmp_path):
-    desktop_file = tmp_path / "flatpak/exports/share/applications/com.obsproject.Studio.desktop"
-    app = {"file": desktop_file, "name": "OBS Studio", "exec": "flatpak run com.obsproject.Studio",
-           "class": "obs"}
-    monkeypatch.setattr(apps_module, "find_desktop_app", lambda _name: app)
-    monkeypatch.setattr(apps_module.shutil, "which", lambda name: "/usr/bin/gio" if name == "gio" else None)
-    monkeypatch.setattr(apps_module.subprocess, "run", lambda *_args, **_kwargs: (
-        (_ for _ in ()).throw(apps_module.subprocess.TimeoutExpired("gio launch", 4))
-    ))
-
-    result = apps_module.launch_application("OBS Studio")
-
-    assert "não confirmei se o aplicativo abriu" in result
+    assert "Não consegui iniciar OBS Studio pelo Flatpak." in result
     assert "Abri OBS Studio" not in result
 
 

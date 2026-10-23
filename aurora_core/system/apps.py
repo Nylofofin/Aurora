@@ -86,6 +86,19 @@ def launch_application(name):
     query=' '.join(str(name or '').split()).strip()
     if not query: return 'Diga qual aplicativo deseja abrir.'
     app=find_desktop_app(query)
+    app_id=_flatpak_app_id(app) if app else None
+    flatpak=shutil.which('flatpak')
+    if app_id and flatpak:
+        # gio launch can return success when the desktop request was accepted
+        # even though the Flatpak never starts. Launch the app ID directly;
+        # callers that need readiness must still verify their own endpoint.
+        try:
+            subprocess.Popen([flatpak,'run',app_id],start_new_session=True,
+                             stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+        except OSError:
+            return f'Não consegui iniciar {app["name"]} pelo Flatpak.'
+        return f'Solicitei a abertura de {app["name"]}; vou verificar quando o serviço estiver pronto.'
     gio=shutil.which('gio')
     if app and gio:
         try:

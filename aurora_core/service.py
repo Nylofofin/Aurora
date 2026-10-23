@@ -482,7 +482,7 @@ class AuroraService(QObject):
         worker.completed.connect(self._obs_action_result)
         worker.finished.connect(self._action_worker_finished)
         worker.start()
-        self._schedule_action_watchdog(worker,detail,38,
+        self._schedule_action_watchdog(worker,detail,22,
             'O OBS não respondeu dentro do limite de tempo; não confirmei a gravação.')
 
     def _start_screenshot_action(self,detail):
