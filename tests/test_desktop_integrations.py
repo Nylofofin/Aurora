@@ -9,28 +9,31 @@ import pytest
 
 import aurora
 import aurora_integrations as integrations
+import aurora_core.system.obs as obs
+import aurora_core.system.screenshot as screenshot
+import aurora_core.system.spotify as spotify
 import aurora_core.service as service_module
 import aurora_core.system.actions as system_actions
 import aurora_core.system.apps as apps_module
 
 
 def test_screenshot_portal_request_path_preserves_sender_prefix():
-    assert integrations._portal_request_object_path(":1.42", "aurora_token") == (
+    assert screenshot._portal_request_object_path(":1.42", "aurora_token") == (
         "/org/freedesktop/portal/desktop/request/_1_42/aurora_token"
     )
 
 
 def test_screenshot_parent_identifier_uses_x11_hex_window_id():
-    assert integrations.screenshot_parent_identifier(0x12AB) == "x11:12ab"
-    assert integrations.screenshot_parent_identifier(0) == ""
-    assert integrations.screenshot_parent_identifier(None) == ""
-    assert integrations.screenshot_parent_identifier(0x12AB, "wayland") == ""
+    assert screenshot.screenshot_parent_identifier(0x12AB) == "x11:12ab"
+    assert screenshot.screenshot_parent_identifier(0) == ""
+    assert screenshot.screenshot_parent_identifier(None) == ""
+    assert screenshot.screenshot_parent_identifier(0x12AB, "wayland") == ""
 
 
 def test_gnome_saved_screenshot_is_recovered_after_lost_portal_reply(tmp_path):
     source = tmp_path / "Screenshot-5.png"
     source.write_bytes(b"portal-created-image")
-    recovered = integrations._recover_gnome_saved_screenshot(
+    recovered = screenshot._recover_gnome_saved_screenshot(
         tmp_path, time.time() - 2)
 
     assert recovered is not None
@@ -43,7 +46,7 @@ def test_gnome_screenshot_recovery_does_not_guess_between_multiple_files(tmp_pat
     (tmp_path / "Screenshot-5.png").write_bytes(b"one")
     (tmp_path / "Screenshot-6.png").write_bytes(b"two")
 
-    assert integrations._recover_gnome_saved_screenshot(
+    assert screenshot._recover_gnome_saved_screenshot(
         tmp_path, time.time() - 2) is None
 
 
@@ -51,11 +54,11 @@ def test_screenshot_portal_uses_qt_encoded_slot_signature():
     from PySide6.QtCore import QObject, Slot
 
     class Response(QObject):
-        @Slot(integrations._portal_response_code_type(), "QVariantMap")
+        @Slot(screenshot._portal_response_code_type(), "QVariantMap")
         def receive(self, _code, _data):
             pass
 
-    assert integrations._portal_response_slot().startswith("1receive(")
+    assert screenshot._portal_response_slot().startswith("1receive(")
     assert Response.staticMetaObject.indexOfSlot("receive(uint,QVariantMap)") >= 0
 
 
@@ -90,7 +93,7 @@ def test_cancelled_screenshot_closes_portal_request_without_saving(monkeypatch, 
     monkeypatch.setattr(QtDBus, "QDBusMessage", Message)
     monkeypatch.setattr(QtDBus.QDBusConnection, "sessionBus", lambda: Bus())
     try:
-        integrations.capture_screenshot(tmp_path, cancel_event=cancelled)
+        screenshot.capture_screenshot(tmp_path, cancel_event=cancelled)
     except RuntimeError as exc:
         assert "cancelada" in str(exc)
     else:
@@ -147,7 +150,7 @@ def test_screenshot_is_saved_if_portal_completed_before_cancel_arrived(monkeypat
     monkeypatch.setattr(QtCore, "QTimer", Timer)
     monkeypatch.setattr(QtDBus, "QDBusMessage", Message)
     monkeypatch.setattr(QtDBus.QDBusConnection, "sessionBus", lambda: bus)
-    saved = integrations.capture_screenshot(tmp_path / "Pictures", cancel_event=cancelled,
+    saved = screenshot.capture_screenshot(tmp_path / "Pictures", cancel_event=cancelled,
                                             parent_window="x11:abcd")
 
     assert saved.is_file()
@@ -200,12 +203,12 @@ def test_screenshot_recovers_gnome_file_during_portal_wait(monkeypatch, tmp_path
     monkeypatch.setattr(QtCore, "QTimer", Timer)
     monkeypatch.setattr(QtDBus, "QDBusMessage", Message)
     monkeypatch.setattr(QtDBus.QDBusConnection, "sessionBus", lambda: Bus())
-    monkeypatch.setattr(integrations, "_gnome_saved_screenshot_signature",
+    monkeypatch.setattr(screenshot, "_gnome_saved_screenshot_signature",
                         lambda *_args: ("Screenshot.png", 100, 123))
-    monkeypatch.setattr(integrations, "_recover_gnome_saved_screenshot",
+    monkeypatch.setattr(screenshot, "_recover_gnome_saved_screenshot",
                         lambda *_args: expected)
 
-    saved = integrations.capture_screenshot(tmp_path / "Pictures")
+    saved = screenshot.capture_screenshot(tmp_path / "Pictures")
 
     assert saved == expected
 
@@ -459,8 +462,8 @@ def test_screenshot_saves_unique_timestamped_files_without_overwriting(tmp_path)
     moment = datetime(2026, 10, 22, 10, 11, 12, 123456)
     source = tmp_path / "portal-shot.png"
     source.write_bytes(b"png-data")
-    first = integrations.save_screenshot_uri(source.as_uri(), tmp_path / "Pictures", moment)
-    second = integrations.save_screenshot_uri(source.as_uri(), tmp_path / "Pictures", moment)
+    first = screenshot.save_screenshot_uri(source.as_uri(), tmp_path / "Pictures", moment)
+    second = screenshot.save_screenshot_uri(source.as_uri(), tmp_path / "Pictures", moment)
     assert first.name == "Aurora_2026-10-22_10-11-12-123456.png"
     assert second.name == "Aurora_2026-10-22_10-11-12-123456_1.png"
     assert first.read_bytes() == second.read_bytes() == b"png-data"
@@ -472,15 +475,15 @@ def test_screenshot_saves_unique_timestamped_files_without_overwriting(tmp_path)
 def test_obs_cancelled_before_start_does_not_connect_or_launch(monkeypatch):
     cancelled = threading.Event()
     cancelled.set()
-    monkeypatch.setattr(integrations.socket, "create_connection",
+    monkeypatch.setattr(obs.socket, "create_connection",
                         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("must not connect")))
 
-    assert "cancelada antes" in integrations.obs_record("start", cancel_event=cancelled)
+    assert "cancelada antes" in obs.obs_record("start", cancel_event=cancelled)
 
 
 def test_screenshot_uri_must_be_local_file(tmp_path):
     try:
-        integrations.save_screenshot_uri("https://example.com/screen.png", tmp_path)
+        screenshot.save_screenshot_uri("https://example.com/screen.png", tmp_path)
     except ValueError as exc:
         assert "arquivo local" in str(exc)
     else:
@@ -494,9 +497,9 @@ def test_screenshot_collision_never_deletes_existing_file(monkeypatch, tmp_path)
     existing_dir.mkdir(parents=True)
     existing = existing_dir / "Aurora_2026-10-22_10-11-12-123456.png"
     existing.write_bytes(b"keep me")
-    monkeypatch.setattr(integrations, "unique_screenshot_path", lambda *_args: existing)
+    monkeypatch.setattr(screenshot, "unique_screenshot_path", lambda *_args: existing)
     try:
-        integrations.save_screenshot_uri(source.as_uri(), tmp_path / "Pictures")
+        screenshot.save_screenshot_uri(source.as_uri(), tmp_path / "Pictures")
     except FileExistsError:
         pass
     else:
@@ -507,65 +510,65 @@ def test_screenshot_collision_never_deletes_existing_file(monkeypatch, tmp_path)
 def test_action_log_permissions_are_private(monkeypatch, tmp_path):
     import stat
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
-    integrations._append_action_log("test_action", "returned")
+    obs._append_action_log("test_action", "returned")
     root = tmp_path / "aurora"
     assert stat.S_IMODE(root.stat().st_mode) == 0o700
     assert stat.S_IMODE((root / "actions.jsonl").stat().st_mode) == 0o600
 
 
 def test_spotify_pkce_challenge_is_url_safe():
-    challenge = integrations.spotify_code_challenge("A" * 64)
+    challenge = spotify.spotify_code_challenge("A" * 64)
     assert len(challenge) == 43
     assert "+" not in challenge and "/" not in challenge and "=" not in challenge
 
 
 def test_spotify_reports_missing_local_configuration_without_network(monkeypatch):
-    monkeypatch.setattr(integrations, "_append_action_log", lambda *_args, **_kwargs: None)
-    assert "spotify_client_id" in integrations.start_spotify_authorization("", lambda _url: True)
-    assert "não conectado" in integrations.play_spotify_track("Faixa", "").casefold()
+    monkeypatch.setattr(spotify, "_append_action_log", lambda *_args, **_kwargs: None)
+    assert "spotify_client_id" in spotify.start_spotify_authorization("", lambda _url: True)
+    assert "não conectado" in spotify.play_spotify_track("Faixa", "").casefold()
 
 
 def test_obs_is_loopback_only_and_never_claims_unconfirmed_success(monkeypatch):
-    monkeypatch.setattr(integrations, "_append_action_log", lambda *_args, **_kwargs: None)
-    assert "próprio computador" in integrations.obs_record("start", host="192.0.2.4")
-    unavailable = integrations.obs_record("start", host="127.0.0.1", port=1).casefold()
+    monkeypatch.setattr(obs, "_append_action_log", lambda *_args, **_kwargs: None)
+    assert "próprio computador" in obs.obs_record("start", host="192.0.2.4")
+    unavailable = obs.obs_record("start", host="127.0.0.1", port=1).casefold()
     assert "obs não respondeu" in unavailable
     assert "não enviei o comando" in unavailable
 
 
 def test_obs_flatpak_disabled_server_gets_specific_setup_message(monkeypatch):
-    monkeypatch.setattr(integrations, "_append_action_log", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(integrations, "_flatpak_obs_settings", lambda: {
+    monkeypatch.setattr(obs, "_append_action_log", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(obs, "_flatpak_obs_settings", lambda: {
         "server_enabled": False, "auth_required": True,
         "server_port": 4455, "server_password": "unused-secret",
     })
-    monkeypatch.setattr(integrations.socket, "create_connection",
+    monkeypatch.setattr(obs.socket, "create_connection",
                         lambda *_args, **_kwargs: (_ for _ in ()).throw(ConnectionRefusedError()))
-    response = integrations.obs_record("start")
+    response = obs.obs_record("start")
     assert "WebSocket do OBS Studio Flatpak está desativado" in response
     assert "unused-secret" not in response
 
 
 def test_obs_start_launches_flatpak_after_approved_websocket_connection_fails(monkeypatch):
     log = []
-    monkeypatch.setattr(integrations, "_append_action_log",
+    monkeypatch.setattr(obs, "_append_action_log",
                         lambda *args, **kwargs: log.append((args, kwargs)))
-    monkeypatch.setattr(integrations, "_flatpak_obs_settings", lambda: {
+    monkeypatch.setattr(obs, "_flatpak_obs_settings", lambda: {
         "server_enabled": True, "auth_required": True,
         "server_port": 4455, "server_password": "",
     })
-    monkeypatch.setattr(integrations, "OBS_STARTUP_TIMEOUT", 0.01)
-    monkeypatch.setattr(integrations.time, "sleep", lambda _seconds: None)
-    monkeypatch.setattr(integrations, "_obs_latest_log_is_safe_mode", lambda: False)
+    monkeypatch.setattr(obs, "OBS_STARTUP_TIMEOUT", 0.01)
+    monkeypatch.setattr(obs.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(obs, "_obs_latest_log_is_safe_mode", lambda: False)
     launches = []
     monkeypatch.setattr(
         "aurora_core.system.apps.launch_application",
         lambda name, **kwargs: launches.append((name, kwargs)) or "Solicitei a abertura de OBS Studio; o sistema aceitou o pedido.",
     )
-    monkeypatch.setattr(integrations.socket, "create_connection",
+    monkeypatch.setattr(obs.socket, "create_connection",
                         lambda *_args, **_kwargs: (_ for _ in ()).throw(ConnectionRefusedError()))
 
-    result = integrations.obs_record("start")
+    result = obs.obs_record("start")
 
     assert launches == [("OBS Studio", {"background": True})]
     assert "não iniciei a gravação" in result.casefold()
@@ -576,20 +579,20 @@ def test_obs_start_launches_flatpak_after_approved_websocket_connection_fails(mo
 
 def test_obs_safe_mode_timeout_never_claims_or_starts_recording(monkeypatch):
     log = []
-    monkeypatch.setattr(integrations, "_append_action_log",
+    monkeypatch.setattr(obs, "_append_action_log",
                         lambda *args, **kwargs: log.append((args, kwargs)))
-    monkeypatch.setattr(integrations, "_flatpak_obs_settings", lambda: {
+    monkeypatch.setattr(obs, "_flatpak_obs_settings", lambda: {
         "server_enabled": True, "server_port": 4455,
     })
-    monkeypatch.setattr(integrations, "OBS_STARTUP_TIMEOUT", 0.01)
-    monkeypatch.setattr(integrations.time, "sleep", lambda _seconds: None)
-    monkeypatch.setattr(integrations, "_obs_latest_log_is_safe_mode", lambda: True)
+    monkeypatch.setattr(obs, "OBS_STARTUP_TIMEOUT", 0.01)
+    monkeypatch.setattr(obs.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(obs, "_obs_latest_log_is_safe_mode", lambda: True)
     monkeypatch.setattr("aurora_core.system.apps.launch_application",
                         lambda *_args, **_kwargs: "Solicitei a abertura de OBS Studio.")
-    monkeypatch.setattr(integrations.socket, "create_connection",
+    monkeypatch.setattr(obs.socket, "create_connection",
                         lambda *_args, **_kwargs: (_ for _ in ()).throw(ConnectionRefusedError()))
 
-    result = integrations.obs_record("start")
+    result = obs.obs_record("start")
 
     assert "modo de segurança" in result.casefold()
     assert "não confirmei nem iniciei" in result.casefold()
@@ -597,23 +600,23 @@ def test_obs_safe_mode_timeout_never_claims_or_starts_recording(monkeypatch):
 
 
 def test_obs_stop_never_launches_obs_when_websocket_is_down(monkeypatch):
-    monkeypatch.setattr(integrations, "_append_action_log", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(integrations, "_flatpak_obs_settings", lambda: {
+    monkeypatch.setattr(obs, "_append_action_log", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(obs, "_flatpak_obs_settings", lambda: {
         "server_enabled": True, "server_port": 4455,
     })
     monkeypatch.setattr("aurora_core.system.apps.launch_application",
                         lambda _name: (_ for _ in ()).throw(AssertionError("must not launch")))
-    monkeypatch.setattr(integrations.socket, "create_connection",
+    monkeypatch.setattr(obs.socket, "create_connection",
                         lambda *_args, **_kwargs: (_ for _ in ()).throw(ConnectionRefusedError()))
 
-    result = integrations.obs_record("stop")
+    result = obs.obs_record("stop")
 
     assert "não enviei o comando" in result.casefold()
 
 
 def test_obs_websocket_eof_during_handshake_returns_instead_of_spinning(monkeypatch):
-    monkeypatch.setattr(integrations, "_append_action_log", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(integrations, "_flatpak_obs_settings", lambda: {})
+    monkeypatch.setattr(obs, "_append_action_log", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(obs, "_flatpak_obs_settings", lambda: {})
 
     class ClosedSocket:
         def __enter__(self): return self
@@ -622,15 +625,15 @@ def test_obs_websocket_eof_during_handshake_returns_instead_of_spinning(monkeypa
         def sendall(self, _data): pass
         def recv(self, _count): return b""
 
-    monkeypatch.setattr(integrations.socket, "create_connection", lambda *_args, **_kwargs: ClosedSocket())
-    outcome = integrations.obs_record("start")
+    monkeypatch.setattr(obs.socket, "create_connection", lambda *_args, **_kwargs: ClosedSocket())
+    outcome = obs.obs_record("start")
     assert "não enviei o comando" in outcome.casefold()
 
 
 def test_obs_lost_reply_after_request_warns_to_check_state_before_retry(monkeypatch):
-    monkeypatch.setattr(integrations, "_flatpak_obs_settings", lambda: {})
+    monkeypatch.setattr(obs, "_flatpak_obs_settings", lambda: {})
     actions = []
-    monkeypatch.setattr(integrations, "_append_action_log",
+    monkeypatch.setattr(obs, "_append_action_log",
                         lambda _name, outcome, details=None: actions.append((outcome, details)))
     sent = []
 
@@ -642,16 +645,16 @@ def test_obs_lost_reply_after_request_warns_to_check_state_before_retry(monkeypa
         def recv(self, _count):
             return (b"HTTP/1.1 101 Switching Protocols\r\nSec-WebSocket-Accept: valid\r\n\r\n")
 
-    monkeypatch.setattr(integrations.socket, "create_connection", lambda *_args, **_kwargs: QuietSocket())
-    monkeypatch.setattr(integrations.secrets, "compare_digest", lambda *_args: True)
+    monkeypatch.setattr(obs.socket, "create_connection", lambda *_args, **_kwargs: QuietSocket())
+    monkeypatch.setattr(obs.secrets, "compare_digest", lambda *_args: True)
     received = iter(({"op": 0, "d": {"rpcVersion": 1}}, {"op": 2, "d": {"negotiatedRpcVersion": 1}}))
 
     def receive(*_args, **_kwargs):
         try: return next(received)
         except StopIteration: raise ConnectionError("reply lost")
 
-    monkeypatch.setattr(integrations, "_ws_receive", receive)
-    outcome = integrations.obs_record("start")
+    monkeypatch.setattr(obs, "_ws_receive", receive)
+    outcome = obs.obs_record("start")
 
     assert "perdi a confirmação" in outcome.casefold()
     assert "antes de tentar de novo" in outcome.casefold()
@@ -661,9 +664,9 @@ def test_obs_lost_reply_after_request_warns_to_check_state_before_retry(monkeypa
 
 
 def test_obs_partial_rpc_send_is_reported_as_unknown_not_never_sent(monkeypatch):
-    monkeypatch.setattr(integrations, "_flatpak_obs_settings", lambda: {})
+    monkeypatch.setattr(obs, "_flatpak_obs_settings", lambda: {})
     actions = []
-    monkeypatch.setattr(integrations, "_append_action_log",
+    monkeypatch.setattr(obs, "_append_action_log",
                         lambda _name, outcome, details=None: actions.append((outcome, details)))
 
     class BrokenSocket:
@@ -677,12 +680,12 @@ def test_obs_partial_rpc_send_is_reported_as_unknown_not_never_sent(monkeypatch)
         def recv(self, _count):
             return b"HTTP/1.1 101 Switching Protocols\r\nSec-WebSocket-Accept: valid\r\n\r\n"
 
-    monkeypatch.setattr(integrations.socket, "create_connection", lambda *_args, **_kwargs: BrokenSocket())
-    monkeypatch.setattr(integrations.secrets, "compare_digest", lambda *_args: True)
+    monkeypatch.setattr(obs.socket, "create_connection", lambda *_args, **_kwargs: BrokenSocket())
+    monkeypatch.setattr(obs.secrets, "compare_digest", lambda *_args: True)
     received = iter(({"op": 0, "d": {"rpcVersion": 1}}, {"op": 2, "d": {"negotiatedRpcVersion": 1}}))
-    monkeypatch.setattr(integrations, "_ws_receive", lambda *_a, **_k: next(received))
+    monkeypatch.setattr(obs, "_ws_receive", lambda *_a, **_k: next(received))
 
-    outcome = integrations.obs_record("start")
+    outcome = obs.obs_record("start")
 
     assert "perdi a confirmação" in outcome.casefold()
     assert "não enviei o comando" not in outcome.casefold()
@@ -700,7 +703,7 @@ def test_obs_websocket_frame_read_stops_at_total_deadline():
 
     stream = UnreadSocket()
     try:
-        integrations._ws_receive(stream, integrations.time.monotonic() - 1)
+        obs._ws_receive(stream, obs.time.monotonic() - 1)
     except TimeoutError:
         pass
     else:
@@ -711,14 +714,14 @@ def test_obs_websocket_frame_read_stops_at_total_deadline():
 def test_obs_flatpak_settings_with_non_object_json_are_ignored(monkeypatch, tmp_path):
     config = tmp_path / "config.json"
     config.write_text("[]", encoding="utf-8")
-    monkeypatch.setattr(integrations, "_flatpak_obs_config_path", lambda: config)
-    assert integrations._flatpak_obs_settings() == {}
+    monkeypatch.setattr(obs, "_flatpak_obs_config_path", lambda: config)
+    assert obs._flatpak_obs_settings() == {}
 
 
 @pytest.mark.parametrize("active_after_start", [True, False])
 def test_obs_websocket_authenticates_and_verifies_record_state(monkeypatch, active_after_start):
-    monkeypatch.setattr(integrations, "_append_action_log", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(integrations, "_flatpak_obs_settings", lambda: {
+    monkeypatch.setattr(obs, "_append_action_log", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(obs, "_flatpak_obs_settings", lambda: {
         "server_enabled": True, "auth_required": True,
         "server_port": 4455, "server_password": "secret",
     })
@@ -755,19 +758,19 @@ def test_obs_websocket_authenticates_and_verifies_record_state(monkeypatch, acti
                 salt, challenge, password = "salt", "challenge", "secret"
                 send_frame(connection, {"op": 0, "d": {"rpcVersion": 1,
                     "authentication": {"salt": salt, "challenge": challenge}}})
-                identify = integrations._ws_receive(connection)
+                identify = obs._ws_receive(connection)
                 secret = base64.b64encode(hashlib.sha256((password + salt).encode()).digest()).decode()
                 expected = base64.b64encode(hashlib.sha256((secret + challenge).encode()).digest()).decode()
                 assert identify["op"] == 1
                 assert identify["d"]["authentication"] == expected
                 send_frame(connection, {"op": 2, "d": {"negotiatedRpcVersion": 1}})
                 stage[0] = "request"
-                request = integrations._ws_receive(connection)
+                request = obs._ws_receive(connection)
                 requests.append(request)
                 send_frame(connection, {"op": 7, "d": {"requestType": "StartRecord",
                     "requestId": request["d"]["requestId"],
                     "requestStatus": {"result": True, "code": 100}}})
-                status = integrations._ws_receive(connection)
+                status = obs._ws_receive(connection)
                 requests.append(status)
                 send_frame(connection, {"op": 7, "d": {"requestType": "GetRecordStatus",
                     "requestId": status["d"]["requestId"],
@@ -780,7 +783,7 @@ def test_obs_websocket_authenticates_and_verifies_record_state(monkeypatch, acti
 
     thread = threading.Thread(target=server, daemon=True)
     thread.start()
-    outcome = integrations.obs_record("start", port=port)
+    outcome = obs.obs_record("start", port=port)
     thread.join(timeout=3)
     assert not thread.is_alive()
     if active_after_start:
