@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only
 from aurora_core.system.audit import audit_action, classify_action_result
 
 

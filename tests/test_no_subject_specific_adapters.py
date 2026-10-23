@@ -7,6 +7,7 @@ Allowed system exceptions, deliberately not banned here:
 - Local computer commands: app/window/volume/hardware/file operations are
   the assistant's operating-system tools, not web-search topics.
 """
+# SPDX-License-Identifier: GPL-3.0-only
 from pathlib import Path
 import re
 

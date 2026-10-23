@@ -1,4 +1,5 @@
 """Consent-gated desktop stream and touch input through XDG portals/PipeWire."""
+# SPDX-License-Identifier: GPL-3.0-only
 from __future__ import annotations
 
 import shutil

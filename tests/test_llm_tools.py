@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only
 from aurora_core.llm.inference import Inference
 import aurora_core.llm.tools as tools_module
 from aurora_core.llm.tools import TOOLS

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Compatibility entry point for the modular Aurora application."""
+# SPDX-License-Identifier: GPL-3.0-only
 from __future__ import annotations
 import aurora_fx
 import aurora_integrations

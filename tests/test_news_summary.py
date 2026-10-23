@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only
 from datetime import datetime
 
 from aurora_core.web.news_summary import format_news_digest

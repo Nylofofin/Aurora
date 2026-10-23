@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only
 import pytest
 
 from aurora_core.system.remote_input import validate_remote_event

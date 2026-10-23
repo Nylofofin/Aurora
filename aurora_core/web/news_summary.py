@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only
 from __future__ import annotations
 
 from .freshness import _independent_recent_source_count, _publication_within_window

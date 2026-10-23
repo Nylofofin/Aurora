@@ -1,4 +1,5 @@
 """Structured FX reference lookup using local ISO 4217 labels and public APIs."""
+# SPDX-License-Identifier: GPL-3.0-only
 from __future__ import annotations
 
 import gettext

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only
 from aurora_core.web.orchestra import (
     local_parallel_tool_calls, local_worker_limit, plan_research_subagents,
     resource_worker_limit,

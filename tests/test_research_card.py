@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QLabel
 

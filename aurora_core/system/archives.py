@@ -1,4 +1,5 @@
 """Safe extraction helpers for downloaded model archives."""
+# SPDX-License-Identifier: GPL-3.0-only
 
 from __future__ import annotations
 

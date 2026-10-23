@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only
 import aurora_core.ui.orb as orb_module
 from aurora_core.voice.tts import Speaker
 

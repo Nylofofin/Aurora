@@ -1,4 +1,5 @@
 """Read-only experimental diagnostics for the local Aurora installation."""
+# SPDX-License-Identifier: GPL-3.0-only
 
 from __future__ import annotations
 

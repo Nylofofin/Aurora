@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QObject, Signal, QTimer, QPoint, QRectF, QUrl, QPropertyAnimation, QEasingCurve

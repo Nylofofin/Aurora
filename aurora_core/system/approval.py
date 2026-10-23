@@ -1,4 +1,5 @@
 """Consistent confirmation policy for local desktop actions."""
+# SPDX-License-Identifier: GPL-3.0-only
 
 
 def requires_user_approval(name: str, args: dict | None = None,

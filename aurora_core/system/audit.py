@@ -1,4 +1,5 @@
 """Privacy-minimal audit records for local actions."""
+# SPDX-License-Identifier: GPL-3.0-only
 
 def classify_action_result(result: object) -> str:
     """Log whether an action completed, was merely dispatched, or failed.

@@ -1,4 +1,5 @@
 """Private local audit log shared by desktop integrations."""
+# SPDX-License-Identifier: GPL-3.0-only
 from __future__ import annotations
 
 import json

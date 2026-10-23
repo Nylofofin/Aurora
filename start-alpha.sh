@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-only
 set -euo pipefail
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"

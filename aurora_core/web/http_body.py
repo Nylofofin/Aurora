@@ -1,4 +1,5 @@
 """Bounded decoding for HTTP response bodies used by web search."""
+# SPDX-License-Identifier: GPL-3.0-only
 from __future__ import annotations
 
 import zlib

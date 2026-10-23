@@ -1,4 +1,5 @@
 """Small subprocess bridge to distro PyAT-SPI, isolated from the Qt venv."""
+# SPDX-License-Identifier: GPL-3.0-only
 from __future__ import annotations
 
 import json

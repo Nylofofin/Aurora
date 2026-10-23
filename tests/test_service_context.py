@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only
 import aurora_core.service as service_module
 import threading
 import time

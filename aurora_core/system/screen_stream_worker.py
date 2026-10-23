@@ -1,4 +1,5 @@
 """System-Python adapter for the XDG ScreenCast portal and PipeWire."""
+# SPDX-License-Identifier: GPL-3.0-only
 from __future__ import annotations
 
 import secrets

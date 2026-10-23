@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only
 from aurora_core.voice.telemetry import log_voice_timing
 
 
