@@ -23,6 +23,8 @@ import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
 
 data class PcConversation(val id: String, val title: String, val messages: List<ChatLine>)
+data class CompanionReply(val answer: String, val speechAudio: ByteArray?)
+data class CompanionVoiceReply(val transcript: String, val answer: String, val speechAudio: ByteArray?)
 
 class CompanionClient(
     endpoint: String,
@@ -77,18 +79,31 @@ class CompanionClient(
         return PcConversation(item.getString("id"), item.optString("title"), lines)
     }
 
-    fun sendMessage(conversationId: String, message: String): String {
+    fun sendMessage(conversationId: String, message: String): CompanionReply {
         require(!token.isNullOrBlank()) { "Este celular ainda não está pareado com o PC." }
-        return request(
+        val result = request(
             "POST", "/v1/chat",
             JSONObject().put("conversation_id", conversationId).put("message", message),
-        ).getString("answer")
+        )
+        return CompanionReply(result.getString("answer"), decodeSpeechAudio(result))
     }
 
-    fun sendVoice(conversationId: String, wav: ByteArray): Pair<String, String> {
+    fun sendVoice(conversationId: String, wav: ByteArray): CompanionVoiceReply {
         require(!token.isNullOrBlank()) { "Este celular ainda não está pareado com o PC." }
         val result = requestAudio("/v1/voice", conversationId, wav)
-        return result.getString("transcript") to result.getString("answer")
+        return CompanionVoiceReply(result.getString("transcript"), result.getString("answer"), decodeSpeechAudio(result))
+    }
+
+    fun sound(name: String): ByteArray {
+        require(name == "entrada.wav" || name == "saida.wav") { "Som de interface inválido." }
+        require(!token.isNullOrBlank()) { "Este celular ainda não está pareado com o PC." }
+        return requestBytes("/v1/sounds/$name")
+    }
+
+    private fun decodeSpeechAudio(result: JSONObject): ByteArray? {
+        val encoded = result.optString("speech_audio_base64")
+        if (encoded.isBlank()) return null
+        return runCatching { Base64.decode(encoded, Base64.DEFAULT) }.getOrNull()?.takeIf { it.isNotEmpty() }
     }
 
     private fun requestAudio(path: String, conversationId: String, wav: ByteArray): JSONObject {
@@ -114,6 +129,31 @@ class CompanionClient(
                 throw IllegalStateException(reason.ifBlank { "erro HTTP $code" })
             }
             return JSONObject(text)
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun requestBytes(path: String): ByteArray {
+        val connection = (URL(baseUrl + path).openConnection() as HttpsURLConnection).apply {
+            connectTimeout = 5_000
+            readTimeout = 8_000
+            requestMethod = "GET"
+            sslSocketFactory = pinnedSslContext(expectedFingerprint).socketFactory
+            hostnameVerifier = HostnameVerifier { _, _ -> true }
+            setRequestProperty("Accept", "audio/wav")
+            setRequestProperty("Cache-Control", "no-store")
+            setRequestProperty("Authorization", "Bearer $token")
+        }
+        try {
+            val code = connection.responseCode
+            if (code !in 200..299) {
+                val text = connection.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+                val reason = runCatching { JSONObject(text).optString("error") }.getOrNull()
+                throw IllegalStateException(reason?.takeIf { it.isNotBlank() } ?: "erro HTTP $code")
+            }
+            require(connection.contentLengthLong in 1..500_000) { "Som da Aurora inválido." }
+            return connection.inputStream.use { it.readBytes() }
         } finally {
             connection.disconnect()
         }

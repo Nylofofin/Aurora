@@ -4,8 +4,6 @@ import android.Manifest
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
-import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -15,9 +13,16 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -47,14 +52,21 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Divider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -64,22 +76,27 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.Locale
 
 private val Ink = Color(0xFF090A12)
 private val Panel = Color(0xFF151725)
@@ -106,25 +123,12 @@ private fun AuroraShell() {
     val saved = remember { vault.load() }
     val scope = rememberCoroutineScope()
     val discovery = remember { LanDiscovery(appContext) }
-    val speech = remember {
-        lateinit var engine: TextToSpeech
-        engine = TextToSpeech(appContext) { status ->
-            if (status == TextToSpeech.SUCCESS) engine.language = Locale("pt", "BR")
-        }
-        engine
-    }
+    val audioPlayer = remember { RemoteAudioPlayer(appContext.cacheDir) }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val soundCache = remember { mutableStateMapOf<String, ByteArray>() }
     var remoteState by remember { mutableStateOf("idle") }
-    DisposableEffect(speech) {
-        speech.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-            override fun onStart(utteranceId: String?) { }
-            override fun onDone(utteranceId: String?) { remoteState = "ready" }
-            @Deprecated("Deprecated by Android")
-            override fun onError(utteranceId: String?) { remoteState = "ready" }
-        })
-        onDispose { speech.stop(); speech.shutdown() }
-    }
+    DisposableEffect(audioPlayer) { onDispose { audioPlayer.release() } }
     var showConnect by remember { mutableStateOf(false) }
-    var showHistory by remember { mutableStateOf(false) }
     var connected by remember { mutableStateOf(false) }
     var endpoint by remember { mutableStateOf(saved?.first.orEmpty()) }
     var pairingCode by remember { mutableStateOf("") }
@@ -132,8 +136,12 @@ private fun AuroraShell() {
     var token by remember { mutableStateOf(saved?.third.orEmpty()) }
     var draft by remember { mutableStateOf("") }
     var voiceStartRequest by remember { mutableStateOf(0) }
+    var voiceStopRequest by remember { mutableStateOf(0) }
     var live by remember { mutableStateOf(false) }
+    var liveMode by remember { mutableStateOf(false) }
+    var liveSessionId by remember { mutableStateOf(0) }
     var busy by remember { mutableStateOf(false) }
+    var loadingConversations by remember { mutableStateOf(false) }
     var discovering by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf("") }
     var conversationId by remember { mutableStateOf(CompanionClient.newConversationId()) }
@@ -142,12 +150,72 @@ private fun AuroraShell() {
     val composerFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
 
+    fun warmLiveSounds(client: CompanionClient) {
+        scope.launch {
+            val sounds = withContext(Dispatchers.IO) {
+                listOf("entrada.wav", "saida.wav").mapNotNull { name ->
+                    runCatching { name to client.sound(name) }.getOrNull()
+                }
+            }
+            sounds.forEach { (name, bytes) -> soundCache[name] = bytes }
+        }
+    }
+
+    fun playPcSound(name: String) {
+        if (!connected) return
+        scope.launch {
+            val bytes = soundCache[name] ?: runCatching {
+                withContext(Dispatchers.IO) { CompanionClient(endpoint, fingerprint, token).sound(name) }
+            }.getOrNull()?.also { soundCache[name] = it }
+            if (bytes != null) audioPlayer.play(bytes)
+        }
+    }
+
+    fun playPcSpeech(bytes: ByteArray?) {
+        if (bytes == null || bytes.isEmpty()) {
+            remoteState = "ready"
+            notice = "A resposta chegou em texto, mas o PC não conseguiu gerar o áudio Edge TTS."
+            return
+        }
+        audioPlayer.play(bytes, onStarted = { remoteState = "speaking" }) { success ->
+            remoteState = "ready"
+            if (!success) notice = "Recebi a resposta, mas não consegui reproduzir o áudio enviado pelo PC."
+        }
+    }
+
+    fun enterLiveMode() {
+        if (!connected) {
+            showConnect = true
+            return
+        }
+        if (liveMode) return
+        audioPlayer.stop()
+        liveSessionId += 1
+        liveMode = true
+        playPcSound("entrada.wav")
+    }
+
+    fun leaveLiveMode() {
+        if (!liveMode) return
+        audioPlayer.stop()
+        if (live) voiceStopRequest += 1
+        liveSessionId += 1
+        liveMode = false
+        playPcSound("saida.wav")
+    }
+
     fun startVoiceInteraction() {
         if (!connected) {
             showConnect = true
         } else if (!busy) {
             voiceStartRequest += 1
         }
+    }
+
+    fun rememberConversation(id: String, firstMessage: String) {
+        val existing = conversations.firstOrNull { it.id == id }
+        val title = existing?.title?.takeIf { it.isNotBlank() } ?: firstMessage.take(72)
+        conversations = listOf(PcConversation(id, title, emptyList())) + conversations.filterNot { it.id == id }
     }
 
     LaunchedEffect(saved) {
@@ -160,6 +228,7 @@ private fun AuroraShell() {
                 conversations = withContext(Dispatchers.IO) { client.conversations() }
                 connected = true
                 notice = "PC conectado; controle e áudio transferidos para o celular."
+                warmLiveSounds(client)
             } catch (_: Exception) {
                 if (controlAcquired) withContext(Dispatchers.IO) { runCatching { client.releaseControl() } }
                 // Keep the pairing credentials for temporary Wi-Fi/server outages.
@@ -204,7 +273,10 @@ private fun AuroraShell() {
                 token = newToken
                 fingerprint = cleanFingerprint
                 if (token.isNotBlank()) vault.save(endpoint, cleanFingerprint, newToken)
-                withContext(Dispatchers.IO) { CompanionClient(endpoint, cleanFingerprint, newToken).acquireControl() }
+                val client = CompanionClient(endpoint, cleanFingerprint, newToken)
+                withContext(Dispatchers.IO) { client.acquireControl() }
+                conversations = withContext(Dispatchers.IO) { client.conversations() }
+                warmLiveSounds(client)
                 token = newToken
                 fingerprint = cleanFingerprint
                 connected = true
@@ -222,6 +294,7 @@ private fun AuroraShell() {
 
     fun disconnectFromPc() {
         if (!connected || busy) return
+        if (liveMode) leaveLiveMode()
         busy = true
         scope.launch {
             try {
@@ -253,11 +326,13 @@ private fun AuroraShell() {
         notice = "Aurora está respondendo pelo computador…"
         scope.launch {
             try {
-                val answer = withContext(Dispatchers.IO) {
+                val reply = withContext(Dispatchers.IO) {
                     CompanionClient(endpoint, fingerprint, token).sendMessage(selectedConversation, message)
                 }
-                lines += ChatLine(false, answer)
+                lines += ChatLine(false, reply.answer)
+                rememberConversation(selectedConversation, message)
                 notice = "Conversa sincronizada com o PC."
+                playPcSpeech(reply.speechAudio)
             } catch (error: Exception) {
                 lines += ChatLine(false, "Não consegui falar com o PC: ${error.message ?: "verifique a conexão"}.")
                 notice = "A conexão com o PC falhou."
@@ -270,6 +345,7 @@ private fun AuroraShell() {
     fun sendVoiceAudio(wav: ByteArray) {
         if (!connected || busy) return
         val selectedConversation = conversationId
+        val requestLiveSession = liveSessionId
         busy = true
         notice = "Transcrevendo no PC e consultando a Aurora…"
         scope.launch {
@@ -277,11 +353,11 @@ private fun AuroraShell() {
                 val result = withContext(Dispatchers.IO) {
                     CompanionClient(endpoint, fingerprint, token).sendVoice(selectedConversation, wav)
                 }
-                lines += ChatLine(true, result.first)
-                lines += ChatLine(false, result.second)
-                remoteState = "speaking"
-                speech.speak(result.second, TextToSpeech.QUEUE_FLUSH, null, "aurora-live-response")
-                notice = "Aurora respondeu por voz."
+                lines += ChatLine(true, result.transcript)
+                lines += ChatLine(false, result.answer)
+                rememberConversation(selectedConversation, result.transcript)
+                notice = "Resposta da Thalita recebida do PC."
+                if (liveMode && liveSessionId == requestLiveSession) playPcSpeech(result.speechAudio)
             } catch (error: Exception) {
                 notice = "Falha na conversa por voz: ${error.message ?: "verifique a conexão"}."
             } finally {
@@ -291,8 +367,8 @@ private fun AuroraShell() {
     }
 
     fun refreshConversations() {
-        if (!connected || busy) return
-        busy = true
+        if (!connected || loadingConversations) return
+        loadingConversations = true
         scope.launch {
             try {
                 conversations = withContext(Dispatchers.IO) { CompanionClient(endpoint, fingerprint, token).conversations() }
@@ -300,7 +376,7 @@ private fun AuroraShell() {
             } catch (error: Exception) {
                 notice = error.message ?: "Não consegui carregar o histórico."
             } finally {
-                busy = false
+                loadingConversations = false
             }
         }
     }
@@ -314,8 +390,8 @@ private fun AuroraShell() {
                 conversationId = selected.id
                 lines.clear()
                 lines.addAll(selected.messages)
+                draft = ""
                 notice = "Conversa aberta do histórico do PC."
-                showHistory = false
             } catch (error: Exception) {
                 notice = error.message ?: "Não consegui abrir essa conversa."
             } finally {
@@ -325,18 +401,87 @@ private fun AuroraShell() {
     }
 
     MaterialTheme {
-        Surface(color = Ink, modifier = Modifier.fillMaxSize()) {
-            Column(
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            gesturesEnabled = connected && !liveMode,
+            drawerContent = {
+                ModalDrawerSheet(drawerContainerColor = Panel, drawerContentColor = Pearl) {
+                    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 20.dp)) {
+                        Text("Aurora", color = Pearl, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Conversas no seu PC", color = Muted, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp, bottom = 18.dp))
+                        Button(
+                            onClick = {
+                                if (!busy) {
+                                    conversationId = CompanionClient.newConversationId()
+                                    lines.clear()
+                                    draft = ""
+                                    notice = "Nova conversa. Pode falar ou escrever."
+                                    scope.launch { drawerState.close() }
+                                }
+                            },
+                            enabled = connected && !busy,
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Violet, contentColor = Pearl),
+                            shape = RoundedCornerShape(16.dp),
+                        ) { Text("＋  Nova conversa", fontWeight = FontWeight.SemiBold) }
+                        Row(
+                            Modifier.fillMaxWidth().padding(top = 22.dp, bottom = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text("Recentes", color = Muted, fontSize = 13.sp)
+                            TextButton(onClick = ::refreshConversations, enabled = connected && !busy) {
+                                Text("Atualizar", color = Blue)
+                            }
+                        }
+                        if (conversations.isEmpty()) {
+                            Text("Suas conversas aparecerão aqui.", color = Muted, fontSize = 13.sp, modifier = Modifier.padding(vertical = 12.dp))
+                        }
+                        LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
+                            items(conversations, key = { it.id }) { item ->
+                                NavigationDrawerItem(
+                                    label = {
+                                        Text(item.title.ifBlank { "Conversa" }, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    },
+                                    selected = item.id == conversationId,
+                                    onClick = {
+                                        openConversation(item.id)
+                                        scope.launch { drawerState.close() }
+                                    },
+                                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
+                                    colors = NavigationDrawerItemDefaults.colors(
+                                        selectedContainerColor = Violet.copy(alpha = 0.22f),
+                                        selectedTextColor = Pearl,
+                                        unselectedTextColor = Muted,
+                                    ),
+                                )
+                            }
+                        }
+                        TextButton(onClick = { scope.launch { drawerState.close() } }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Fechar", color = Muted)
+                        }
+                    }
+                }
+            },
+        ) {
+          Box(Modifier.fillMaxSize()) {
+            Surface(color = Ink, modifier = Modifier.fillMaxSize()) {
+              Column(
                 modifier = Modifier.fillMaxSize().padding(WindowInsets.statusBars.asPaddingValues())
                     .padding(WindowInsets.navigationBars.asPaddingValues()).imePadding()
-            ) {
+              ) {
                 TopBar(
                     connected,
                     remoteState,
-                    onHistory = { showHistory = true; refreshConversations() },
+                    onHistory = {
+                        if (connected) {
+                            refreshConversations()
+                            scope.launch { drawerState.open() }
+                        } else showConnect = true
+                    },
                     onConnect = { showConnect = true },
                     onDisconnect = ::disconnectFromPc,
-                    onOrbClick = { if (connected) startVoiceInteraction() else showConnect = true },
+                    onOrbClick = { if (connected) enterLiveMode() else showConnect = true },
                 )
                 if (lines.isEmpty()) {
                     Welcome(
@@ -345,7 +490,7 @@ private fun AuroraShell() {
                         working = busy,
                         connected = connected,
                         activity = if (live) "listening" else remoteState,
-                        onStartVoice = ::startVoiceInteraction,
+                        onStartVoice = ::enterLiveMode,
                         onWrite = {
                             if (connected) {
                                 composerFocusRequester.requestFocus()
@@ -364,24 +509,44 @@ private fun AuroraShell() {
                     }
                     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
                         horizontalArrangement = Arrangement.Center) {
-                        OrbButton(live || busy, Modifier.size(54.dp), activity = if (live) "listening" else remoteState, onClick = ::startVoiceInteraction)
+                        OrbButton(live || busy, Modifier.size(54.dp), activity = if (live) "listening" else remoteState, onClick = ::enterLiveMode)
                     }
                 }
                 Composer(
                     text = draft,
                     connected = connected,
                     busy = busy,
+                    liveMode = liveMode,
                     onText = { draft = it },
                     onSend = ::sendCurrentMessage,
-                    onVoice = ::sendVoiceAudio,
-                    onRecording = { live = it },
-                    onVoiceError = { notice = it },
                     onNew = { if (!busy) { conversationId = CompanionClient.newConversationId(); lines.clear(); notice = "Nova conversa no PC." } },
-                    voiceStartRequest = voiceStartRequest,
+                    onToggleLive = { if (liveMode) leaveLiveMode() else enterLiveMode() },
                     focusRequester = composerFocusRequester,
                 )
                 if (notice.isNotBlank()) Text(notice, color = Muted, fontSize = 11.sp, modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp), textAlign = TextAlign.Center)
+              }
             }
+            AnimatedVisibility(
+                visible = liveMode,
+                modifier = Modifier.fillMaxSize(),
+                enter = fadeIn(tween(180)) + scaleIn(initialScale = 0.78f, animationSpec = spring(dampingRatio = 0.72f, stiffness = 300f)),
+                exit = fadeOut(tween(190)) + scaleOut(targetScale = 0.76f, animationSpec = spring(dampingRatio = 0.82f, stiffness = 330f)),
+            ) {
+                LiveOverlay(
+                    modeActive = liveMode,
+                    recording = live,
+                    working = busy,
+                    activity = remoteState,
+                    startRequest = voiceStartRequest,
+                    stopRequest = voiceStopRequest,
+                    onOrbTap = { if (!live && !busy) startVoiceInteraction() },
+                    onExit = ::leaveLiveMode,
+                    onRecording = { live = it },
+                    onVoice = ::sendVoiceAudio,
+                    onVoiceError = { notice = it },
+                )
+            }
+          }
         }
     }
 
@@ -412,23 +577,6 @@ private fun AuroraShell() {
         )
     }
 
-    if (showHistory) {
-        AlertDialog(
-            onDismissRequest = { showHistory = false },
-            containerColor = Panel,
-            title = { Text("Conversas", color = Pearl) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (conversations.isEmpty()) Text("Nenhuma conversa carregada. O histórico fica no PC.", color = Muted)
-                    conversations.take(12).forEach { item ->
-                        Text(item.title.ifBlank { "Conversa" }, color = Pearl, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Ink).clickable { openConversation(item.id) }.padding(10.dp))
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { refreshConversations() }) { Text(if (busy) "Carregando…" else "Atualizar", color = Blue) } },
-            dismissButton = { TextButton(onClick = { showHistory = false }) { Text("Fechar", color = Muted) } }
-        )
-    }
 }
 
 @Composable
@@ -454,7 +602,7 @@ private fun TopBar(
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SmallAction("Histórico", onHistory)
+            SmallAction("Chats", onHistory)
             SmallAction(if (connected) "Desconectar" else "Conectar", if (connected) onDisconnect else onConnect)
         }
     }
@@ -598,6 +746,8 @@ private fun OrbButton(live: Boolean, modifier: Modifier, activity: String = if (
 private fun VoiceCaptureButton(
     enabled: Boolean,
     startRequest: Int = 0,
+    stopRequest: Int = 0,
+    label: String = "Voz",
     onRecording: (Boolean) -> Unit,
     onCaptured: (ByteArray) -> Unit,
     onError: (String) -> Unit,
@@ -647,8 +797,9 @@ private fun VoiceCaptureButton(
         }
     }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
-        if (grants[Manifest.permission.RECORD_AUDIO] == true) startCapture()
-        else onError("Permita o microfone para usar a conversa por voz.")
+        if (grants[Manifest.permission.RECORD_AUDIO] == true) {
+            if (enabled) startCapture()
+        } else onError("Permita o microfone para usar a conversa por voz.")
     }
     val requestPermission: () -> Unit = {
         val requested = buildList {
@@ -657,8 +808,22 @@ private fun VoiceCaptureButton(
         }
         permission.launch(requested.toTypedArray())
     }
+    var handledStartRequest by remember { mutableStateOf(startRequest) }
     LaunchedEffect(startRequest) {
-        if (startRequest > 0 && enabled && !active && !stopping) requestPermission()
+        if (startRequest != handledStartRequest) {
+            handledStartRequest = startRequest
+            if (enabled && !active && !stopping) requestPermission()
+        }
+    }
+    LaunchedEffect(stopRequest) {
+        if (stopRequest > 0 && active) {
+            active = false
+            currentCapture[0]?.let { capture ->
+                currentCapture[0] = null
+                capture.stop()
+            }
+            onRecording(false)
+        }
     }
     DisposableEffect(Unit) { onDispose { currentCapture[0]?.stop() } }
     Button(
@@ -682,7 +847,7 @@ private fun VoiceCaptureButton(
         shape = RoundedCornerShape(16.dp),
     ) {
         Text(
-            when { active -> "Parar e enviar"; stopping -> "Enviando…"; else -> "Voz" },
+            when { active -> "Parar e enviar"; stopping -> "Enviando…"; else -> label },
             fontSize = 12.sp,
             fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
         )
@@ -694,13 +859,11 @@ private fun Composer(
     text: String,
     connected: Boolean,
     busy: Boolean,
+    liveMode: Boolean,
     onText: (String) -> Unit,
     onSend: () -> Unit,
-    onVoice: (ByteArray) -> Unit,
-    onRecording: (Boolean) -> Unit,
-    onVoiceError: (String) -> Unit,
     onNew: () -> Unit,
-    voiceStartRequest: Int,
+    onToggleLive: () -> Unit,
     focusRequester: FocusRequester,
 ) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
@@ -728,13 +891,7 @@ private fun Composer(
                     }
                 }
             )
-            VoiceCaptureButton(
-                enabled = connected && !busy,
-                startRequest = voiceStartRequest,
-                onRecording = onRecording,
-                onCaptured = onVoice,
-                onError = onVoiceError,
-            )
+            WaveformButton(liveMode, connected && !busy, onToggleLive)
             Button(
                 onClick = onSend,
                 enabled = connected && !busy && text.isNotBlank(),
@@ -746,6 +903,136 @@ private fun Composer(
         }
         Text("O processamento da Aurora acontece no computador pareado.", color = Muted.copy(alpha = 0.72f), fontSize = 10.sp,
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp), textAlign = TextAlign.Center)
+    }
+}
+
+@Composable
+private fun WaveformButton(liveMode: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        enabled = enabled || liveMode,
+        modifier = Modifier.size(48.dp).semantics {
+            contentDescription = if (liveMode) "Sair do modo Live" else "Entrar no modo Live"
+        },
+        contentPadding = PaddingValues(0.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = if (liveMode) Violet else Panel,
+            contentColor = Pearl,
+            disabledContainerColor = Panel,
+            disabledContentColor = Muted,
+        ),
+        shape = CircleShape,
+    ) {
+        if (liveMode) {
+            Text("×", fontSize = 26.sp, fontWeight = FontWeight.Light)
+        } else {
+            Canvas(Modifier.size(22.dp)) {
+                val heights = listOf(.28f, .52f, .82f, .48f, .94f, .56f, .3f)
+                val step = size.width / (heights.size * 1.7f)
+                val gap = step * .7f
+                heights.forEachIndexed { index, ratio ->
+                    val x = step / 2f + index * (step + gap)
+                    val half = size.height * ratio / 2f
+                    drawLine(
+                        color = if (enabled) Blue else Muted,
+                        start = Offset(x, size.height / 2f - half),
+                        end = Offset(x, size.height / 2f + half),
+                        strokeWidth = 2.4.dp.toPx(),
+                        cap = StrokeCap.Round,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LiveOverlay(
+    modeActive: Boolean,
+    recording: Boolean,
+    working: Boolean,
+    activity: String,
+    startRequest: Int,
+    stopRequest: Int,
+    onOrbTap: () -> Unit,
+    onExit: () -> Unit,
+    onRecording: (Boolean) -> Unit,
+    onVoice: (ByteArray) -> Unit,
+    onVoiceError: (String) -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    Box(
+        Modifier.fillMaxSize()
+            .background(
+                Brush.radialGradient(
+                    colors = listOf(Color(0xFF33245E), Color(0xFF17172A), Ink),
+                    radius = 980f,
+                )
+            )
+            .clickable(interactionSource = interactionSource, indication = null, onClick = {}),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            Modifier.fillMaxSize().padding(horizontal = 28.dp, vertical = 22.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("AURORA  /  LIVE", color = Blue, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text("CONECTADA AO PC", color = Muted, fontSize = 10.sp)
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                OrbButton(
+                    recording || working || activity == "speaking",
+                    Modifier.size(236.dp),
+                    activity = if (recording) "listening" else activity,
+                    onClick = onOrbTap,
+                )
+                Spacer(Modifier.height(30.dp))
+                Text(
+                    when {
+                        recording -> "Estou ouvindo você"
+                        working -> "A Aurora está pensando"
+                        activity == "speaking" -> "A Thalita está falando"
+                        else -> "Sua conversa, ao vivo"
+                    },
+                    color = Pearl,
+                    fontSize = 23.sp,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    when {
+                        recording -> "Fale com naturalidade. Toque em Parar e enviar quando terminar."
+                        working -> "Sua fala está sendo processada no computador."
+                        activity == "speaking" -> "Resposta gerada no PC com Edge TTS · Thalita"
+                        else -> "Toque na bolha ou em Falar para iniciar seu próximo turno."
+                    },
+                    color = Muted,
+                    fontSize = 14.sp,
+                    lineHeight = 21.sp,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.height(22.dp))
+                VoiceCaptureButton(
+                    enabled = modeActive && !working,
+                    startRequest = startRequest,
+                    stopRequest = stopRequest,
+                    label = "Falar",
+                    onRecording = onRecording,
+                    onCaptured = onVoice,
+                    onError = onVoiceError,
+                )
+            }
+            Button(
+                onClick = onExit,
+                modifier = Modifier.size(58.dp).semantics { contentDescription = "Encerrar modo Live" },
+                contentPadding = PaddingValues(0.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Pearl),
+                shape = CircleShape,
+            ) { Text("×", fontSize = 30.sp, fontWeight = FontWeight.Light) }
+        }
     }
 }
 

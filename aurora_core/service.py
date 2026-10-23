@@ -163,7 +163,11 @@ class AuroraService(QObject):
         if not self.cfg.get('companion_enabled',True): return
         try:
             address=discover_private_address()
-            self.companion_server=CompanionServer(APP_CONFIG.parent/'companion',address,self.cfg.get('companion_port',8765),self._companion_message,on_voice=self._companion_voice,on_control=self._companion_control)
+            self.companion_server=CompanionServer(
+                APP_CONFIG.parent/'companion',address,self.cfg.get('companion_port',8765),self._companion_message,
+                on_voice=self._companion_voice,on_control=self._companion_control,
+                on_speech=self._companion_speech,sound_directory=APP_DIR/'assets'/'audio',
+            )
             self.companion_server.start()
             print(f'[companion] HTTPS ativo em https://{address}:{self.cfg.get("companion_port",8765)}; fingerprint SHA-256 {self.companion_server.fingerprint}; código em {self.companion_server.auth.code_path}',file=sys.stderr,flush=True)
         except Exception as exc:
@@ -199,6 +203,26 @@ class AuroraService(QObject):
             return {'transcript':transcript,**completion}
         finally:
             if self.companion_server and self.companion_server.control_active(): self.companion_server.set_remote_state('ready')
+
+    def _companion_speech(self,text):
+        """Synthesize the mobile reply with the desktop's configured Edge TTS voice."""
+        import asyncio
+        import edge_tts
+        from .voice.tts import Speaker
+        clean_text=Speaker.clean(text)[:1800]
+        if not clean_text: return b''
+        voice=self.cfg.get('tts_voice','pt-BR-ThalitaMultilingualNeural')
+        async def collect_audio():
+            chunks=[]
+            async for packet in edge_tts.Communicate(clean_text,voice,rate='+8%').stream():
+                if packet.get('type')=='audio' and packet.get('data'):
+                    chunks.append(packet['data'])
+            return b''.join(chunks)
+        try:
+            return asyncio.run(asyncio.wait_for(collect_audio(),timeout=20.0))
+        except Exception as exc:
+            print(f'[companion] síntese Edge TTS falhou ({type(exc).__name__})',file=sys.stderr,flush=True)
+            return b''
 
     def _companion_control(self,active):
         from concurrent.futures import Future, TimeoutError as FutureTimeout

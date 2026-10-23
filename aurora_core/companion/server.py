@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import ipaddress
 import json
+import base64
 import os
 import secrets
 import shutil
@@ -137,12 +138,14 @@ class PairingAuth:
 class CompanionServer:
     """Small HTTPS API; request processing stays injected into AuroraService."""
 
-    def __init__(self, directory: Path, address: str, port: int, on_message, *, on_voice=None, on_control=None, api_timeout=120):
+    def __init__(self, directory: Path, address: str, port: int, on_message, *, on_voice=None, on_control=None, on_speech=None, sound_directory=None, api_timeout=120):
         self.directory = directory
         self.address = address
         self.port = int(port)
         self.on_message = on_message
         self.on_voice = on_voice
+        self.on_speech = on_speech
+        self.sound_directory = Path(sound_directory) if sound_directory else None
         self._on_control = on_control
         self.api_timeout = api_timeout
         self.auth = PairingAuth(directory)
@@ -176,6 +179,27 @@ class CompanionServer:
                 self.end_headers()
                 self.wfile.write(body)
 
+            def _speech_audio(self, text):
+                if not outer.on_speech:
+                    return ""
+                try:
+                    audio = outer.on_speech(text)
+                    if not isinstance(audio, bytes) or not audio or len(audio) > 3_000_000:
+                        return ""
+                    return base64.b64encode(audio).decode("ascii")
+                except Exception as exc:
+                    print(f"[companion] Edge TTS indisponível ({type(exc).__name__})", flush=True)
+                    return ""
+
+            def _audio(self, data, content_type):
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(data)))
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.end_headers()
+                self.wfile.write(data)
+
             def _body(self):
                 try:
                     length = int(self.headers.get("Content-Length", "0"))
@@ -196,6 +220,25 @@ class CompanionServer:
                     return
                 if not self._authorized():
                     self._json(401, {"error": "unauthorized"})
+                    return
+                if path in {"/v1/sounds/entrada.wav", "/v1/sounds/saida.wav"}:
+                    _, _, token = self.headers.get("Authorization", "").partition(" ")
+                    if not outer.owns_control(token):
+                        self._json(409, {"error": "mobile control not acquired"})
+                        return
+                    filename = path.rsplit("/", 1)[-1]
+                    sound_path = outer.sound_directory / filename if outer.sound_directory else None
+                    try:
+                        if sound_path is None or not sound_path.is_file():
+                            raise FileNotFoundError
+                        data = sound_path.read_bytes()
+                    except OSError:
+                        self._json(404, {"error": "sound not found"})
+                        return
+                    if len(data) > 500_000:
+                        self._json(413, {"error": "sound too large"})
+                        return
+                    self._audio(data, "audio/wav")
                     return
                 if path == "/v1/conversations":
                     summaries = [
@@ -279,7 +322,12 @@ class CompanionServer:
                         self._json(502, {"error": "empty response"})
                         return
                     outer._append_exchange(conversation_id, message.strip(), answer.strip(), context_history)
-                    self._json(200, {"conversation_id": conversation_id, "answer": answer.strip()})
+                    if outer.on_speech:
+                        outer.set_remote_state("speaking")
+                    speech_audio = self._speech_audio(answer.strip())
+                    self._json(200, {"conversation_id": conversation_id, "answer": answer.strip(), "speech_audio_base64": speech_audio})
+                    if outer.on_speech and outer.control_active():
+                        outer.set_remote_state("ready")
                 finally:
                     lock.release()
 
@@ -368,7 +416,12 @@ class CompanionServer:
                         self._json(502, {"error": "empty voice response"})
                         return
                     outer._append_exchange(conversation_id, transcript.strip(), answer.strip(), completion.get("context_history"))
-                    self._json(200, {"conversation_id": conversation_id, "transcript": transcript.strip(), "answer": answer.strip()})
+                    if outer.on_speech:
+                        outer.set_remote_state("speaking")
+                    speech_audio = self._speech_audio(answer.strip())
+                    self._json(200, {"conversation_id": conversation_id, "transcript": transcript.strip(), "answer": answer.strip(), "speech_audio_base64": speech_audio})
+                    if outer.on_speech and outer.control_active():
+                        outer.set_remote_state("ready")
                 finally:
                     lock.release()
 
