@@ -2,6 +2,8 @@ package app.aurora.companion
 
 import android.Manifest
 import android.content.Intent
+import android.view.SoundEffectConstants
+import android.view.View
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -99,20 +101,27 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val Ink = Color(0xFF090A12)
-private val Panel = Color(0xFF151725)
-private val Muted = Color(0xFF9DA3B8)
-private val Violet = Color(0xFF9A70FF)
-private val Blue = Color(0xFF54C7FF)
-private val Pearl = Color(0xFFF4F5FF)
+private val Ink = Color(0xFFF7F5FA)
+private val Panel = Color(0xFFFFFFFF)
+private val Muted = Color(0xFF777387)
+private val Violet = Color(0xFF8A70C4)
+private val Blue = Color(0xFF579BC2)
+private val Pearl = Color(0xFF29263A)
+private val SoftLilac = Color(0xFFEAE3F5)
+
+private fun playPhoneClick(view: View) {
+    // Local Android feedback only; companion sounds and speech still arrive from the PC.
+    view.playSoundEffect(SoundEffectConstants.CLICK)
+}
 
 data class ChatLine(val fromUser: Boolean, val text: String)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = android.graphics.Color.rgb(9, 10, 18)
-        window.navigationBarColor = android.graphics.Color.rgb(9, 10, 18)
+        window.statusBarColor = android.graphics.Color.rgb(247, 245, 250)
+        window.navigationBarColor = android.graphics.Color.rgb(247, 245, 250)
+        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
         setContent { AuroraShell() }
     }
 }
@@ -120,6 +129,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun AuroraShell() {
     val appContext = LocalContext.current
+    val rootView = androidx.compose.ui.platform.LocalView.current
     val vault = remember { CredentialVault(appContext) }
     val saved = remember { vault.load() }
     val scope = rememberCoroutineScope()
@@ -173,7 +183,9 @@ private fun AuroraShell() {
         if (!connected) return
         scope.launch {
             val bytes = fetchPcSound(name)
-            if (bytes != null) audioPlayer.play(bytes)
+            if (bytes != null) audioPlayer.play(bytes, onFinished = { success ->
+                if (!success && connected) notice = "O som $name chegou do PC, mas o celular não conseguiu reproduzi-lo."
+            })
             else if (connected) notice = "Não consegui receber o som $name do PC."
         }
     }
@@ -192,6 +204,7 @@ private fun AuroraShell() {
     }
 
     fun enterLiveMode() {
+        playPhoneClick(rootView)
         if (!connected) {
             showConnect = true
             return
@@ -204,6 +217,7 @@ private fun AuroraShell() {
     }
 
     fun leaveLiveMode(playExitSound: Boolean = true) {
+        playPhoneClick(rootView)
         if (!liveMode) return
         audioPlayer.stop()
         if (live) voiceStopRequest += 1
@@ -215,6 +229,7 @@ private fun AuroraShell() {
     BackHandler(enabled = liveMode) { leaveLiveMode() }
 
     fun startVoiceInteraction() {
+        playPhoneClick(rootView)
         if (!connected) {
             showConnect = true
         } else if (!busy) {
@@ -279,6 +294,7 @@ private fun AuroraShell() {
     }
 
     fun connectToPc() {
+        playPhoneClick(rootView)
         busy = true
         notice = "Validando certificado e pareando com o PC…"
         scope.launch {
@@ -310,6 +326,7 @@ private fun AuroraShell() {
     }
 
     fun disconnectFromPc() {
+        playPhoneClick(rootView)
         if (!connected || busy) return
         val wasLive = liveMode
         if (wasLive) leaveLiveMode(playExitSound = false)
@@ -332,6 +349,7 @@ private fun AuroraShell() {
     }
 
     fun findPc() {
+        playPhoneClick(rootView)
         discovering = true
         notice = "Procurando Aurora PCs nesta rede…"
         discovery.start(
@@ -341,6 +359,7 @@ private fun AuroraShell() {
     }
 
     fun sendCurrentMessage() {
+        playPhoneClick(rootView)
         val message = draft.trim()
         if (message.isEmpty() || !connected || busy) return
         val selectedConversation = conversationId
@@ -750,7 +769,7 @@ private fun OrbButton(live: Boolean, modifier: Modifier, activity: String = if (
         .border(1.dp, auraColor, CircleShape))
     Box(Modifier.fillMaxSize().scale(breathe).clip(CircleShape).background(
         Brush.linearGradient(
-            colors = listOf(Color(0xFFF4F6FF), Color(0xFFE8E8FF), Color(0xFFBFAEFF), Color(0xFF698CFF), Color(0xFF7753E8)),
+            colors = listOf(Color(0xFFFFFFFF), Color(0xFFF0EAF8), Color(0xFFD7C8EF), Color(0xFFA9CFE4), Color(0xFF927BC9)),
             start = androidx.compose.ui.geometry.Offset(0f, 0f),
             end = androidx.compose.ui.geometry.Offset(380f * drift, 540f * (1f - drift))
         )
@@ -893,7 +912,7 @@ private fun Composer(
     Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
         Row(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Panel)
-                .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(28.dp)).padding(9.dp),
+                .border(1.dp, Violet.copy(alpha = 0.14f), RoundedCornerShape(28.dp)).padding(9.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             TextButton(
@@ -921,7 +940,7 @@ private fun Composer(
                 enabled = connected && !busy && text.isNotBlank(),
                 modifier = Modifier.size(48.dp),
                 contentPadding = PaddingValues(0.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Pearl, contentColor = Ink),
+                colors = ButtonDefaults.buttonColors(containerColor = Violet, contentColor = Color.White),
                 shape = CircleShape,
             ) { Text(if (busy) "…" else "↑", fontSize = 22.sp) }
         }
@@ -989,7 +1008,7 @@ private fun LiveOverlay(
         Modifier.fillMaxSize()
             .background(
                 Brush.radialGradient(
-                    colors = listOf(Color(0xFF33245E), Color(0xFF17172A), Ink),
+                    colors = listOf(Color(0xFFE8DDF5), Color(0xFFE7F1F7), Ink),
                     radius = 980f,
                 )
             )
@@ -1064,13 +1083,13 @@ private fun LiveOverlay(
 private fun MessageBubble(line: ChatLine) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (line.fromUser) Arrangement.End else Arrangement.Start) {
         Text(line.text, color = Pearl, fontSize = 15.sp, lineHeight = 22.sp,
-            modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(if (line.fromUser) Color(0xFF34364B) else Panel).padding(14.dp))
+            modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(if (line.fromUser) Color(0xFFE9E1F3) else Panel).padding(14.dp))
     }
 }
 
 @Composable
 private fun ConnectField(value: String, onValue: (String) -> Unit, hint: String) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp)).background(Ink).padding(12.dp)) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp)).background(SoftLilac).padding(12.dp)) {
         if (value.isEmpty()) Text(hint, color = Muted, fontSize = 12.sp)
         BasicTextField(value, onValueChange = onValue, singleLine = true,
             textStyle = TextStyle(color = Pearl, fontSize = 14.sp), modifier = Modifier.fillMaxWidth())

@@ -1,6 +1,7 @@
 package app.aurora.companion
 
 import android.media.MediaPlayer
+import android.media.AudioAttributes
 import java.io.File
 import java.io.FileOutputStream
 
@@ -24,6 +25,13 @@ class RemoteAudioPlayer(private val cacheDirectory: File) {
             val next = MediaPlayer()
             player = next
             playingFile = audioFile
+            next.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+            )
+            next.setVolume(1f, 1f)
             next.setDataSource(audioFile.absolutePath)
             next.setOnPreparedListener { media ->
                 runCatching { media.start(); onStarted() }.onFailure {

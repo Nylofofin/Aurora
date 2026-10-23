@@ -1,24 +1,24 @@
-# Aurora Android Companion — Demo Experimental 0.5.1
+# Aurora Android Companion — Beta Demo 0.6.0
 
 Cliente Android nativo Demo Experimental. Modelos, busca e automação ficam no computador; o telefone é a interface, microfone e saída de áudio.
 
 ## Estado atual
 
-- APK experimental: [release Android 0.5.1](https://github.com/ruanminezinoficial2025-ctrl/Aurora/releases/tag/android-demo-v0.5.1). É uma build de desenvolvimento assinada para debug.
+- APK Beta Demo: [release Android 0.6.0](https://github.com/ruanminezinoficial2025-ctrl/Aurora/releases/tag/android-beta-v0.6.0). É uma build de desenvolvimento assinada para debug.
 
-- Base Android com Jetpack Compose, tema escuro, esfera Aurora animada e ícone adaptativo vetorial próprio em branco, violeta e azul.
+- Interface renovada em tons claros pastel de lavanda e azul, cartões mais leves, contraste legível, esfera Aurora animada e ícone adaptativo vetorial próprio.
 - Pareamento HTTPS com fingerprint SHA-256 digitado fora de banda, código de uso único e token cifrado no Android Keystore.
 - Envio de mensagens pelo roteador central do desktop e histórico de conversas armazenado no PC.
 - Tela inicial com ações explícitas **Falar com a Aurora** e **Escrever uma mensagem**; os controles de enviar, voz, histórico e conexão são botões com área de toque ampliada.
 - Voz por turnos com foreground service do Android: toque em **Falar com a Aurora** ou **Voz**, fale e toque em **Parar e enviar**; a notificação deixa o uso do microfone visível e a captura pode continuar com a tela bloqueada. O PC transcreve em pt-BR, executa a conversa central e devolve o áudio sintetizado.
 - Respostas de voz geradas pelo PC via Edge TTS na voz configurada (Thalita por padrão) e enviadas como MP3; o cliente não usa o TTS Google/Android. A síntese precisa de internet no PC e pode levar alguns segundos; sem áudio, a resposta em texto continua disponível.
-- Durante o controle pelo celular, a fala parcial e os sons da bolha não tocam nos alto-falantes do PC; a voz Edge TTS e os sons de entrada/saída são recebidos e reproduzidos no telefone. O som de saída é baixado antes de liberar o controle ao desktop.
+- Durante o controle pelo celular, a fala parcial e os sons da bolha não tocam nos alto-falantes do PC; a voz Edge TTS e os sons de entrada/saída são recebidos e reproduzidos no telefone. Falhas de reprodução agora aparecem como aviso. O som de saída é baixado antes de liberar o controle ao desktop. Cliques usam o feedback de interface configurado no Android.
 - Modo Live em tela cheia: o botão waveform abre uma bolha central animada e toca o som de entrada do PC; cada fala começa por toque, e o X encerra e toca o som de saída. A sessão permanece aberta para novos turnos até sair.
 - Gaveta lateral com histórico completo de conversas do PC, seleção de chat e ação de nova conversa.
 - Descoberta automática do PC por DNS-SD/mDNS quando ambos estão na mesma LAN; a impressão digital TLS continua sendo verificada fora de banda.
 - Controle exclusivo: ao conectar, o stream do microfone e o wake word local do PC são encerrados; **Desconectar** devolve a escuta à Aurora desktop. Se o app ou a rede cair, o lease expira e o PC retoma em até 60 segundos.
 - Comandos explícitos de baixo risco: abrir app/site, controlar volume, consultar hardware e capturar tela. Ações que pedem confirmação presencial (como fechar app ou iniciar gravação OBS) são recusadas pelo mobile nesta demo.
-- Voz contínua em segundo plano, streaming da tela, aprovação de ações pelo celular e automação móvel ainda não estão implementados.
+- Wake word contínuo em segundo plano e streaming ao vivo da tela do PC ainda não estão implementados. No Android, o microfone em segundo plano exige um serviço visível de primeiro plano e a API SpeechRecognizer não foi feita para reconhecimento contínuo; esta build mantém a captura iniciada pelo usuário. A captura de tela do PC continua sendo uma ação pontual, sem transmissão.
 - O serviço desktop precisa estar atualizado e ativo; versões anteriores à API companion ainda não aceitam pareamento.
 
 ## Arquitetura da Demo
@@ -28,7 +28,7 @@ Cliente Android nativo Demo Experimental. Modelos, busca e automação ficam no 
 3. Conversas e histórico são armazenados no PC e sincronizados ao cliente.
 4. A demo de voz envia gravação PCM mono a 16 kHz (máximo 45 segundos) por HTTPS ao PC. O PC transcreve pela integração Google Speech e gera a resposta falada via Edge TTS; o app recebe e reproduz o MP3 sem usar TTS Google/Android. O microfone só é acessado após permissão e toque explícito. Um foreground service exibe uma notificação e mantém a gravação solicitada ativa enquanto a tela está bloqueada; o limite é 45 segundos e fechar à força o app encerra a captura. O áudio capturado fica apenas em memória no PC; o serviço de reconhecimento Google recebe o trecho de fala, como no cliente desktop.
 5. A conexão atual usa a mesma rede local. Acesso remoto futuro deverá usar VPN privada; não encaminhe a porta do PC à internet.
-6. A visualização da tela do PC será uma etapa própria, com início explícito e indicador visível. Automação do próprio Android fica fora desta Alpha.
+6. A visualização ao vivo da tela do PC precisa de uma captura persistente do desktop com autorização do portal e um canal de vídeo; a captura pontual existente não é reutilizada como stream. Automação do próprio Android fica fora desta Beta Demo.
 
 ## Começar uma conversa
 
