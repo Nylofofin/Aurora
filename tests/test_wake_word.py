@@ -225,6 +225,9 @@ def test_orb_is_only_a_clean_animated_sphere():
     assert "PathCubic" not in source and "morphPhase" not in source
     assert "RadialGradient" in source and "LinearGradient" in source
     assert "inputLevel" in source and "voiceEnergy" in source
+    assert "SmoothedAnimation" in source and "activeEnergy" in source
+    assert source.count("Shape {") == 3
+    assert "duration: root.mode === \"searching\" ? 1550" in source
     assert "statusText" not in source and "statusBadge" not in source
     assert "voiceGlyph" not in source and "thoughtCore" not in source and "orbit" not in source
     assert "Text {" not in source and "Repeater {" not in source

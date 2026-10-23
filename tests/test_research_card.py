@@ -1,4 +1,5 @@
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication, QLabel
 
 from aurora_core.ui.research_card import ResearchCard
 
@@ -73,3 +74,33 @@ def test_research_card_shows_local_parallel_inspection_without_web_sources(monke
     assert card.worker_labels[1].text().endswith("concluída")
     card.hide()
     app.processEvents()
+
+
+def test_research_card_keeps_untrusted_labels_as_plain_text(monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    card = ResearchCard()
+    monkeypatch.setattr(card, "_show_near", lambda _anchor: None)
+    card.begin(12, "<b>Consulta</b>", None)
+    card.set_sources(12, [{
+        "title": "<img src='https://invalid.example/pixel'> Fonte",
+        "host": "fonte.example", "url": "https://fonte.example/",
+    }])
+
+    source_title = card.source_layout.itemAt(0).widget().findChildren(QLabel)[0]
+    assert card.query_label.text() == "<b>Consulta</b>"
+    assert source_title.text().startswith("<img")
+    assert card.query_label.textFormat() == Qt.TextFormat.PlainText
+    assert source_title.textFormat() == Qt.TextFormat.PlainText
+    card.hide()
+    app.processEvents()
+
+
+def test_card_summary_preview_stops_at_sentence_or_word_boundary():
+    first_sentence = "Esta frase termina com sentido."
+    text = first_sentence + " " + ("Uma segunda frase longa sem pausa " * 20)
+
+    assert ResearchCard._summary_preview(text, limit=40) == first_sentence
+
+    clipped = ResearchCard._summary_preview("palavra " * 20, limit=24)
+    assert clipped.endswith("…")
+    assert not clipped.endswith("palavr…")

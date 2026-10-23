@@ -1,5 +1,11 @@
 # Histórico de versões
 
+## Em desenvolvimento
+
+- Redesenha a esfera com luz interna azul-violeta mais econômica por frame, respostas de movimento suavizadas ao microfone e à fala, e pulso de conclusão.
+- Reorganiza o cartão contextual em superfícies tonais Material You adaptadas ao tema Qt, melhora o espaço para fontes e anima entrada/saída.
+- Exibe o conteúdo dinâmico como texto simples e limita o resumo em fronteiras de frase ou palavra.
+
 ## 1.4.0 — Orchestra Runtime Coordination (ORC), 2026-10-23
 
 - Divide pesquisas compostas em até três consultas web independentes, com limite de concorrência adaptado à carga e à memória.

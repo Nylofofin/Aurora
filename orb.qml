@@ -22,17 +22,18 @@ Item {
     property bool dragging: false
 
     readonly property color stateColor: ({
-        listening: "#8deaff", thinking: "#b89aff", searching: "#77d9ff",
-        weather: "#8bdcff", preparing: "#c2a5ff", speaking: "#e2c5ff",
-        approval: "#ffe0a1", controlling: "#b9a1ff", error: "#ff9dbb", idle: "#bba7ff"
-    })[mode] || "#bba7ff"
+        listening: "#8DDBF4", thinking: "#AF9BE8", searching: "#82C6EE",
+        weather: "#91CDE7", preparing: "#BAA5ED", speaking: "#D6C4F5",
+        approval: "#E8C889", controlling: "#B2A0E2", error: "#E7A2B2", idle: "#A99AD8"
+    })[mode] || "#A99AD8"
     property color animatedStateColor: stateColor
-    property real tintStrength: mode === "listening" ? 0.29
+    property real tintStrength: mode === "listening" ? 0.34
         : mode === "speaking" ? 0.34
-        : mode === "searching" ? 0.32
-        : mode === "thinking" || mode === "preparing" || mode === "weather" ? 0.25 : 0.14
+        : mode === "searching" ? 0.37
+        : mode === "thinking" || mode === "preparing" || mode === "weather" ? 0.29 : 0.18
     readonly property real voiceEnergy: mode === "listening" ? inputLevel : 0.0
-    readonly property real outputEnergy: mode === "speaking" ? Math.max(speechPulse, 0.14) : 0.0
+    readonly property real outputEnergy: mode === "speaking" ? Math.max(speechPulse, 0.10) : 0.0
+    readonly property real activeEnergy: Math.max(voiceEnergy, outputEnergy, completionPulse)
 
     signal startVoice()
     signal hideRequested()
@@ -42,123 +43,113 @@ Item {
 
     scale: revealScale
 
-    Behavior on tintStrength { NumberAnimation { duration: 420; easing.type: Easing.InOutCubic } }
-    Behavior on animatedStateColor { ColorAnimation { duration: 460; easing.type: Easing.InOutCubic } }
-    Behavior on inputLevel { NumberAnimation { duration: 55; easing.type: Easing.OutCubic } }
-    Behavior on speechPulse { NumberAnimation { duration: 38; easing.type: Easing.OutCubic } }
-    Behavior on completionPulse { NumberAnimation { duration: 95; easing.type: Easing.OutCubic } }
+    Behavior on tintStrength { NumberAnimation { duration: 320; easing.type: Easing.InOutCubic } }
+    Behavior on animatedStateColor { ColorAnimation { duration: 360; easing.type: Easing.InOutCubic } }
+    Behavior on inputLevel { SmoothedAnimation { velocity: 3.2; duration: 90; maximumEasingTime: 90 } }
+    Behavior on speechPulse { NumberAnimation { duration: 82; easing.type: Easing.OutCubic } }
+    Behavior on completionPulse { NumberAnimation { duration: 105; easing.type: Easing.OutCubic } }
 
-    // A single glass sphere. All motion and state cues stay on its surface.
+    // Motion stays on the glass surface: a slow breath plus a moving internal
+    // light field. No detached rings, particles or changing silhouette.
     Item {
         id: sphere
-        x: 11; y: 11; width: 114; height: 114
+        x: 10; y: 10; width: 116; height: 116
         transformOrigin: Item.Center
         property real breathing: 0.0
         property real sheenTravel: 0.0
-        scale: 0.985 + breathing * 0.015 + root.voiceEnergy * 0.022 + root.outputEnergy * 0.024 + root.completionPulse * 0.038
-        Behavior on scale { NumberAnimation { duration: root.mode === "speaking" || root.mode === "listening" ? 52 : 220; easing.type: Easing.OutCubic } }
+        scale: 0.99 + breathing * 0.012 + root.activeEnergy * 0.026
+        Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
 
         SequentialAnimation on breathing {
             running: root.motionEnabled
             loops: Animation.Infinite
-            NumberAnimation { from: 0; to: 1; duration: root.mode === "searching" ? 1900 : 3900; easing.type: Easing.InOutSine }
-            NumberAnimation { from: 1; to: 0; duration: root.mode === "searching" ? 2100 : 4500; easing.type: Easing.InOutSine }
+            NumberAnimation {
+                from: 0; to: 1
+                duration: root.mode === "searching" ? 1550
+                    : root.mode === "thinking" || root.mode === "preparing" ? 2300 : 3500
+                easing.type: Easing.InOutSine
+            }
+            NumberAnimation {
+                from: 1; to: 0
+                duration: root.mode === "searching" ? 1850
+                    : root.mode === "thinking" || root.mode === "preparing" ? 2700 : 4100
+                easing.type: Easing.InOutSine
+            }
         }
         SequentialAnimation on sheenTravel {
             running: root.motionEnabled
             loops: Animation.Infinite
-            NumberAnimation { from: -1; to: 1; duration: root.mode === "searching" ? 1500 : root.mode === "thinking" ? 2800 : 6200; easing.type: Easing.InOutSine }
-            NumberAnimation { from: 1; to: -1; duration: root.mode === "searching" ? 1800 : root.mode === "thinking" ? 3200 : 6900; easing.type: Easing.InOutSine }
+            NumberAnimation {
+                from: -1; to: 1
+                duration: root.mode === "searching" ? 2100
+                    : root.mode === "thinking" || root.mode === "preparing" ? 3300 : 5100
+                easing.type: Easing.InOutSine
+            }
+            NumberAnimation {
+                from: 1; to: -1
+                duration: root.mode === "searching" ? 2400
+                    : root.mode === "thinking" || root.mode === "preparing" ? 3600 : 5600
+                easing.type: Easing.InOutSine
+            }
         }
 
+        // Pearlescent shell with one quiet blue-to-violet tonal gradient.
         Shape {
             anchors.fill: parent
             ShapePath {
-                strokeColor: "#baffffff"; strokeWidth: 1.0
+                strokeColor: "#70FFFFFF"; strokeWidth: 1.0
                 fillGradient: LinearGradient {
-                    x1: 16; y1: 5; x2: 101; y2: 108
-                    GradientStop { position: 0.00; color: "#fffefe" }
-                    GradientStop { position: 0.16; color: "#ecfaff" }
-                    GradientStop { position: 0.33; color: "#c9efff" }
-                    GradientStop { position: 0.51; color: "#87d5ff" }
-                    GradientStop { position: 0.69; color: "#587ffa" }
-                    GradientStop { position: 0.85; color: "#725fe9" }
-                    GradientStop { position: 1.00; color: "#5138b5" }
+                    x1: 22; y1: 4; x2: 95; y2: 112
+                    GradientStop { position: 0.00; color: "#FFFDFC" }
+                    GradientStop { position: 0.19; color: "#EDF8FC" }
+                    GradientStop { position: 0.42; color: "#BFEAF5" }
+                    GradientStop { position: 0.66; color: "#91B9EF" }
+                    GradientStop { position: 0.84; color: "#8C8CDE" }
+                    GradientStop { position: 1.00; color: "#675BAF" }
                 }
                 PathAngleArc { centerX: 57; centerY: 57; radiusX: 56; radiusY: 56; startAngle: 0; sweepAngle: 360 }
             }
         }
 
-        // Soft state color and depth are blended into the sphere itself.
+        // State tint and internal color drift share one surface pass.
         Shape {
             anchors.fill: parent
-            opacity: Math.min(0.88, root.tintStrength + root.voiceEnergy * 0.13 + root.outputEnergy * 0.12 + root.completionPulse * 0.18)
+            opacity: Math.min(0.72, root.tintStrength + root.activeEnergy * 0.13)
             ShapePath {
                 strokeColor: "transparent"; strokeWidth: 0
                 fillGradient: RadialGradient {
-                    centerX: 57 + sphere.sheenTravel * 11 + root.voiceEnergy * 8 - root.outputEnergy * 6; centerY: 60 + root.completionPulse * 5; centerRadius: 64
-                    focalX: 35 + sphere.sheenTravel * 9 + root.voiceEnergy * 7; focalY: 24 - root.outputEnergy * 4; focalRadius: 0
-                    GradientStop { position: 0.0; color: Qt.rgba(root.animatedStateColor.r, root.animatedStateColor.g, root.animatedStateColor.b, 0.68) }
-                    GradientStop { position: 0.56; color: Qt.rgba(root.animatedStateColor.r, root.animatedStateColor.g, root.animatedStateColor.b, 0.32) }
-                    GradientStop { position: 1.0; color: "#00000000" }
-                }
-                PathAngleArc { centerX: 57; centerY: 57; radiusX: 56; radiusY: 56; startAngle: 0; sweepAngle: 360 }
-            }
-        }
-        Shape {
-            anchors.fill: parent
-            ShapePath {
-                strokeColor: "transparent"; strokeWidth: 0
-                fillGradient: RadialGradient {
-                    centerX: 59; centerY: 76; centerRadius: 57; focalX: 57; focalY: 67; focalRadius: 1
-                    GradientStop { position: 0.0; color: "#586ac0ff" }
-                    GradientStop { position: 0.48; color: "#3f657cff" }
-                    GradientStop { position: 0.84; color: "#176454ff" }
-                    GradientStop { position: 1.0; color: "#006454ff" }
+                    centerX: 54 + sphere.sheenTravel * 13 + root.voiceEnergy * 6
+                    centerY: 58 + sphere.breathing * 5
+                    centerRadius: 66
+                    focalX: 30 + sphere.sheenTravel * 10 - root.outputEnergy * 5
+                    focalY: 24 + root.voiceEnergy * 3
+                    focalRadius: 0
+                    GradientStop { position: 0.00; color: Qt.rgba(root.animatedStateColor.r, root.animatedStateColor.g, root.animatedStateColor.b, 0.60) }
+                    GradientStop { position: 0.50; color: Qt.rgba(root.animatedStateColor.r, root.animatedStateColor.g, root.animatedStateColor.b, 0.24) }
+                    GradientStop { position: 1.00; color: "#00000000" }
                 }
                 PathAngleArc { centerX: 57; centerY: 57; radiusX: 56; radiusY: 56; startAngle: 0; sweepAngle: 360 }
             }
         }
 
-        // Pearl reflection sweeps over the orb; its response tracks voice
-        // input/output without adding glyphs, dots, or detached indicators.
+        // A soft pearl highlight moves slowly; voice energy gently lifts it.
         Shape {
-            x: 12 + sphere.sheenTravel * 3 + root.voiceEnergy * 6 - root.outputEnergy * 4
-            y: 4 + sphere.breathing * 2 - root.completionPulse * 2
-            width: 88; height: 69
-            opacity: Math.min(1.0, 0.64 + root.voiceEnergy * 0.28 + root.outputEnergy * 0.25 + root.completionPulse * 0.32)
-            scale: 1.0 + root.voiceEnergy * 0.035 + root.outputEnergy * 0.04 + root.completionPulse * 0.06
+            x: 13 + sphere.sheenTravel * 4 + root.voiceEnergy * 3
+            y: 5 + sphere.breathing * 2 - root.completionPulse * 2
+            width: 88; height: 70
+            opacity: Math.min(0.94, 0.68 + root.activeEnergy * 0.22)
+            scale: 1.0 + root.activeEnergy * 0.035
             ShapePath {
                 strokeColor: "transparent"; strokeWidth: 0
                 fillGradient: RadialGradient {
-                    centerX: 43; centerY: 28; centerRadius: 43
-                    focalX: 34 + sphere.sheenTravel * 2; focalY: 19; focalRadius: 0
-                    GradientStop { position: 0.00; color: "#f0ffffff" }
-                    GradientStop { position: 0.34; color: "#b5ffffff" }
-                    GradientStop { position: 0.72; color: "#45ffffff" }
-                    GradientStop { position: 1.00; color: "#00ffffff" }
+                    centerX: 44; centerY: 33; centerRadius: 44
+                    focalX: 33 + sphere.sheenTravel * 3; focalY: 21; focalRadius: 0
+                    GradientStop { position: 0.00; color: "#EFFFFFFF" }
+                    GradientStop { position: 0.34; color: "#AFFFFFFF" }
+                    GradientStop { position: 0.73; color: "#36FFFFFF" }
+                    GradientStop { position: 1.00; color: "#00FFFFFF" }
                 }
                 PathAngleArc { centerX: 44; centerY: 34; radiusX: 43; radiusY: 33; startAngle: 0; sweepAngle: 360 }
-            }
-        }
-        Rectangle {
-            x: 19 + (sphere.sheenTravel + 1) * 14
-            y: 17 + sphere.breathing * 1.5
-            width: 58; height: 13; radius: 7; rotation: -20
-            opacity: 0.45 + root.voiceEnergy * 0.28 + root.outputEnergy * 0.22
-            gradient: Gradient {
-                orientation: Gradient.Horizontal
-                GradientStop { position: 0.00; color: "#00ffffff" }
-                GradientStop { position: 0.30; color: "#afffffff" }
-                GradientStop { position: 0.62; color: "#76ffffff" }
-                GradientStop { position: 1.00; color: "#00ffffff" }
-            }
-        }
-        Shape {
-            anchors.fill: parent
-            ShapePath {
-                strokeColor: "#75ffffff"; strokeWidth: 1.1; fillColor: "transparent"
-                PathAngleArc { centerX: 57; centerY: 57; radiusX: 54.5; radiusY: 54.5; startAngle: 205; sweepAngle: 128 }
             }
         }
     }
