@@ -5,7 +5,7 @@
 
 As releases seguem o formato **Aurora LDR `<versão>` — `<codinome funcional>` (`<SIGLA>`)**. O codinome descreve a mudança principal daquela versão; a sigla curta facilita identificar a build em logs e documentação. A tag SemVer (`vMAJOR.MINOR.PATCH`) continua sendo a referência exata do código. Os nomes de releases anteriores permanecem como registro histórico.
 
-> **Android descontinuado em 23/10/2026.** O cliente móvel não recebe mais suporte ou releases. O projeto voltou a focar no desktop Linux. Consulte o [anúncio e registro de testes](android-client/ARCHIVE.md). Os commits ficam preservados como registro histórico; as tags de release e os APKs Android foram retirados.
+> **Android descontinuado em 23/10/2026.** O cliente móvel não recebe mais suporte ou releases. O projeto voltou a focar no desktop Linux. Consulte o [anúncio e registro de testes](android-client/ARCHIVE.md). Os commits do período e o código legado arquivado preservam o histórico; as tags de release e os APKs Android foram removidos.
 
 O servidor de rede do Companion também fica **desativado por padrão**. Configurações antigas com `companion_enabled: true` continuam explícitas e podem ser desligadas em `~/.config/aurora/aurora-settings.json`; habilite-o somente se ainda usa o cliente arquivado e entende que ele abre um endpoint HTTPS acessível na rede local.
 
