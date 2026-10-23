@@ -804,12 +804,13 @@ class AuroraService(QObject):
     def execute_action(self,name,args):
         audited={'open_application','close_application','manage_window','volume_control',
                  'system_info','get_system_info','create_file','remember_preference','forget_preference'}
+        started=time.monotonic()
         try:
             result=dispatch_action(self,name,args)
         except Exception:
-            if name in audited: audit_action(name,'failed')
+            if name in audited: audit_action(name,'failed',elapsed_ms=round((time.monotonic()-started)*1000))
             raise
-        if name in audited: audit_action(name,"returned",result)
+        if name in audited: audit_action(name,"returned",result,elapsed_ms=round((time.monotonic()-started)*1000))
         return result
     def unload_model(self,model=None):
         model=model or self.cfg['model']

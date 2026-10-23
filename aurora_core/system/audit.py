@@ -9,8 +9,16 @@ def classify_action_result(result: object) -> str:
     text = " ".join(str(result or "").casefold().split())
     if not text:
         return "returned"
+    if "autorização expirou" in text or "permissão expirou" in text:
+        return "expired"
+    if any(phrase in text for phrase in (
+        "foi cancelada", "foi cancelado", "ação cancelada", "ação cancelado",
+        "captura cancelada", "gravação cancelada",
+    )):
+        return "cancelled"
     if any(phrase in text for phrase in (
         "não consegui", "não encontrei", "não criei", "não confirmei",
+        "não iniciou", "não alterou", "não foi salvo",
         "não foi possível", "ação falhou", "ação não disponível", "foi recusada",
     )):
         return "failed"
@@ -22,10 +30,16 @@ def classify_action_result(result: object) -> str:
     return "returned"
 
 
-def audit_action(name: str, outcome: str = "returned", result: object = None) -> None:
+def audit_action(name: str, outcome: str = "returned", result: object = None,
+                 *, elapsed_ms: int | None = None) -> None:
     try:
         import aurora_integrations
-        aurora_integrations._append_action_log(name, classify_action_result(result) if result is not None else outcome)
+        details = {"elapsed_ms": max(0, int(elapsed_ms))} if elapsed_ms is not None else None
+        status = classify_action_result(result) if result is not None else outcome
+        if details is None:
+            aurora_integrations._append_action_log(name, status)
+        else:
+            aurora_integrations._append_action_log(name, status, details)
     except OSError:
         # A logging failure must not turn a completed local action into a false
         # failure message; the log writer already keeps the file user-private.
