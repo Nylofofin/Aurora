@@ -9,6 +9,10 @@
 
 **Experimento:** peça “diagnóstico da Aurora” para obter uma verificação local e somente leitura do Ollama/modelos, dependências de voz, modelo Vosk e sessão gráfica. O diagnóstico não testa microfone, serviços online, OBS ou Spotify e não altera configurações.
 
+## Cliente Android Companion (Alpha em desenvolvimento)
+
+Estamos iniciando um cliente Android para conversas, histórico e modo Live, mantendo inferência, busca e automação no computador. O esqueleto visual ainda não se conecta ao servidor e não é uma Alpha funcional. O plano e as instruções de compilação estão em [`android-client/README.md`](android-client/README.md). O Ollama continuará limitado ao próprio PC; a primeira conexão será pareada na rede local e o acesso remoto dependerá de VPN privada.
+
 ## Ambiente
 
 Aurora foi desenvolvida para um desktop Linux com sessão gráfica. CPU, memória e GPU são detectadas localmente; este README não registra o perfil de hardware de uma máquina específica. O uso de Wayland/XWayland e o suporte a janelas dependem do compositor e das ferramentas instaladas. Modelo de conversa: `gemma3:1b-it-qat`; ações com ferramentas usam `gemma4:e2b-it-q4_K_M`.
