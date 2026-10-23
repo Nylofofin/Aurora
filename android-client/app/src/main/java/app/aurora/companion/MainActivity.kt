@@ -287,32 +287,32 @@ private fun AuroraShell() {
         }
     }
 
-    suspend fun fetchPcSound(name: String): ByteArray? {
+    suspend fun loadBundledSound(name: String): ByteArray? {
         soundCache[name]?.let { return it }
+        val resource = when (name) {
+            "entrada.wav" -> R.raw.aurora_entrada
+            "saida.wav" -> R.raw.aurora_saida
+            else -> return null
+        }
         return runCatching {
-            withContext(Dispatchers.IO) { CompanionClient(endpoint, fingerprint, token).sound(name) }
+            withContext(Dispatchers.IO) { appContext.resources.openRawResource(resource).use { it.readBytes() } }
         }.getOrNull()?.also { soundCache[name] = it }
     }
 
-    fun warmLiveSounds(client: CompanionClient) {
+    fun warmLiveSounds() {
         scope.launch {
-            val sounds = withContext(Dispatchers.IO) {
-                listOf("entrada.wav", "saida.wav").mapNotNull { name ->
-                    runCatching { name to client.sound(name) }.getOrNull()
-                }
-            }
-            sounds.forEach { (name, bytes) -> soundCache[name] = bytes }
+            listOf("entrada.wav", "saida.wav").forEach { loadBundledSound(it) }
         }
     }
 
     fun playPcSound(name: String) {
         if (!connected) return
         scope.launch {
-            val bytes = fetchPcSound(name)
-            if (bytes != null) audioPlayer.play(bytes, onFinished = { success ->
-                if (!success && connected) notice = "O som $name chegou do PC, mas o celular não conseguiu reproduzi-lo."
+            val bytes = loadBundledSound(name)
+            if (bytes != null) audioPlayer.play(bytes, fileExtension = ".wav", onFinished = { success ->
+                if (!success && connected) notice = "O som $name está no app, mas o celular não conseguiu reproduzi-lo."
             })
-            else if (connected) notice = "Não consegui receber o som $name do PC."
+            else if (connected) notice = "O som $name embutido no app não pôde ser carregado."
         }
     }
 
@@ -323,7 +323,7 @@ private fun AuroraShell() {
             notice = "A resposta chegou em texto, mas o PC não conseguiu gerar o áudio Edge TTS."
             return
         }
-        audioPlayer.play(bytes, onStarted = { remoteState = "speaking" }) { success ->
+        audioPlayer.play(bytes, fileExtension = ".mp3", onStarted = { remoteState = "speaking" }) { success ->
             remoteState = "ready"
             if (!success) notice = "Recebi a resposta, mas não consegui reproduzir o áudio enviado pelo PC."
         }
@@ -379,7 +379,7 @@ private fun AuroraShell() {
                 conversations = withContext(Dispatchers.IO) { client.conversations() }
                 connected = true
                 notice = "PC conectado; controle e áudio transferidos para o celular."
-                warmLiveSounds(client)
+                warmLiveSounds()
             } catch (_: Exception) {
                 if (controlAcquired) withContext(Dispatchers.IO) { runCatching { client.releaseControl() } }
                 // Keep the pairing credentials for temporary Wi-Fi/server outages.
@@ -437,7 +437,7 @@ private fun AuroraShell() {
                 val client = CompanionClient(endpoint, cleanFingerprint, newToken)
                 withContext(Dispatchers.IO) { client.acquireControl() }
                 conversations = withContext(Dispatchers.IO) { client.conversations() }
-                warmLiveSounds(client)
+                warmLiveSounds()
                 token = newToken
                 fingerprint = cleanFingerprint
                 connected = true
@@ -465,12 +465,12 @@ private fun AuroraShell() {
         scope.launch {
             try {
                 // Fetch the PC's exit cue while this phone still owns the lease.
-                val exitSound = if (wasLive) fetchPcSound("saida.wav") else null
+                val exitSound = if (wasLive) loadBundledSound("saida.wav") else null
                 withContext(Dispatchers.IO) { CompanionClient(endpoint, fingerprint, token).releaseControl() }
                 connected = false
                 remoteState = "idle"
                 soundCache.clear()
-                exitSound?.let { audioPlayer.play(it) }
+                exitSound?.let { audioPlayer.play(it, fileExtension = ".wav") }
                 notice = "Celular desconectado. A Aurora do PC voltou a escutar."
             } catch (error: Exception) {
                 notice = "Não confirmei a desconexão: ${error.message ?: "verifique o PC"}."

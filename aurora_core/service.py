@@ -614,6 +614,10 @@ class AuroraService(QObject):
         if self.inf and self.inf.model!=self.cfg['model']: self.start_warmup()
     def request_approval(self,name,detail):
         explicit=bool(detail.get('direct') or detail.get('explicit_user_request'))
+        if getattr(self,'companion_request',None) and requires_user_approval(name,detail.get('args',{}),explicit_user_request=explicit):
+            detail['result']='Essa ação exige confirmação presencial no computador. Não a executei pelo celular.'
+            detail['event'].set()
+            return
         if not requires_user_approval(name,detail.get('args',{}),explicit_user_request=explicit):
             if name=='obs_record':
                 self._start_obs_action(detail)

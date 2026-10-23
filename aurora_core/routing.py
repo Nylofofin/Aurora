@@ -67,8 +67,6 @@ def route_request(self,prompt):
         self.start_background_request(self.quick_search); return
     refers_to_source=bool(self.context_history and re.search(r'\b(fonte|link|noticia|artigo|resultado)\b',normalized))
     agent_intent=source_followup or refers_to_source or needs_context_search or bool(re.search(r'\b(abra|abrir|abre|aberto|aberta|inicie|iniciar|execute|executar|rode|rodar|clique|clicar|digite|digitar|escreva|escrever|controle o computador|controle o pc|crie|criar|faca|gere|gerar|lembre|lembrar|esqueca|esquecer|salve|salvar|salve como|salvar como|leia|ler|acesse|acessar|lance|lancar|bote|coloque|minimize|minimizar|maximize|maximizar|feche|fechar|fecha|encerre|encerrar|encerra|aumente|aumentar|diminua|diminuir|baixe|baixar|silencie|mute|pesquise|pesquisar|busque|buscar|procure|procurar|investigue|investigar)\b',normalized))
-    if agent_intent and getattr(self,'companion_request',None):
-        self.quick_summary_done('Ainda não habilitei automações do PC pelo cliente Android.',self.request_generation); return
     model=self.cfg.get('agent_model','gemma4:e2b-it-q4_K_M') if agent_intent else self.cfg['model']
     inference=Inference(self.cfg,prompt,model=model,use_tools=agent_intent,history=self.context_history[-6:],response_language=self.response_language)
     generation=self.request_generation

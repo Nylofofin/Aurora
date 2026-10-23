@@ -105,6 +105,58 @@ def test_companion_request_can_enter_shared_router_without_local_voice(monkeypat
     assert service.result[0] == "Agora são dez horas."
 
 
+def test_mobile_agent_requests_are_sent_to_the_local_tools_model(monkeypatch):
+    monkeypatch.setattr(routing, "parse_local_command", lambda _prompt: None)
+    monkeypatch.setattr(routing, "local_datetime_answer", lambda _prompt: "")
+    monkeypatch.setattr(routing, "search_intent", lambda _prompt: "")
+    monkeypatch.setattr(routing, "factual_web_intent", lambda _prompt: False)
+    monkeypatch.setattr(routing, "research_request_intent", lambda _prompt: False)
+    class Signal:
+        def connect(self, _callback): pass
+
+    class FakeInference:
+        def __init__(self, *args, **kwargs):
+            self.args, self.kwargs = args, kwargs
+            self.sentence = self.search = self.approval = self.error = self.result = Signal()
+
+    monkeypatch.setattr(routing, "Inference", FakeInference)
+
+    class Service:
+        voice = _Voice()
+        orb = _Orb()
+        inf = None
+        cfg = {"model": "gemma3:1b", "agent_model": "gemma4:e2b"}
+        context_history = []
+        activity_generation = 0
+        request_generation = 0
+        response_language = "Português brasileiro"
+        companion_request = {"future": Future()}
+
+        def start_inference(self, inference, generation):
+            self.started = (inference, generation)
+
+    service = Service()
+    routing.route_request(service, "Minimize a janela do navegador")
+
+    inference, generation = service.started
+    assert inference.kwargs["model"] == "gemma4:e2b"
+    assert inference.kwargs["use_tools"] is True
+    assert generation == 1
+
+
+def test_companion_tool_approval_is_refused_immediately_without_desktop_ui():
+    from threading import Event
+
+    class Service:
+        companion_request = {"future": Future()}
+
+    detail = {"name": "close_application", "args": {"application": "browser"}, "event": Event()}
+    AuroraService.request_approval(Service(), "close_application", detail)
+
+    assert detail["event"].is_set()
+    assert "confirmação presencial" in detail["result"]
+
+
 def test_mobile_control_suspends_pc_microphone_and_disconnect_resumes_it():
     class Voice(_Voice):
         def __init__(self):

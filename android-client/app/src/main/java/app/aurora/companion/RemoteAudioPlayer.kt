@@ -11,7 +11,7 @@ class RemoteAudioPlayer(private val cacheDirectory: File) {
     private var playingFile: File? = null
 
     @Synchronized
-    fun play(bytes: ByteArray, onStarted: () -> Unit = {}, onFinished: (Boolean) -> Unit = {}) {
+    fun play(bytes: ByteArray, fileExtension: String = ".mp3", onStarted: () -> Unit = {}, onFinished: (Boolean) -> Unit = {}) {
         stop()
         if (bytes.isEmpty()) {
             onFinished(false)
@@ -19,7 +19,8 @@ class RemoteAudioPlayer(private val cacheDirectory: File) {
         }
         var file: File? = null
         try {
-            val audioFile = File.createTempFile("aurora-reply-", ".audio", cacheDirectory)
+            val safeExtension = fileExtension.takeIf { it in setOf(".mp3", ".wav") } ?: ".mp3"
+            val audioFile = File.createTempFile("aurora-reply-", safeExtension, cacheDirectory)
             file = audioFile
             FileOutputStream(audioFile).use { it.write(bytes) }
             val next = MediaPlayer()
