@@ -7,7 +7,7 @@ from .prompts import assistant_system_prompt, complete_spoken_response
 from .tools import TOOLS, execute_local_tool
 from ..system.files import normalize_words
 from ..system.commands import parse_local_command
-from ..web.language import likely_english, likely_portuguese
+from ..web.language import likely_english, likely_portuguese, likely_spanish
 from ..web.intent import _is_historical_query, current_search_window, guided_learning_intent
 from ..web.fetch import read_public_page
 from ..web.pipeline import search_public_web
@@ -51,6 +51,20 @@ class Inference(QThread):
             translated=''.join(parts).strip()
             return translated or text
         except Exception: return text
+    def _needs_translation(self,text):
+        language=self.response_language
+        if language=='Português brasileiro':
+            return likely_english(text) or likely_spanish(text)
+        if language=='English':
+            return likely_portuguese(text) or likely_spanish(text)
+        if language=='Spanish':
+            return likely_english(text) or likely_portuguese(text)
+        return likely_english(text) or likely_portuguese(text) or likely_spanish(text)
+    def _translate_before_speaking(self,text):
+        translated=self.translate_to_language(text,self.response_language)
+        if self.response_language=='Português brasileiro' and likely_spanish(translated):
+            return 'Não consegui responder em português agora. Pode repetir, por favor?'
+        return translated
     def run(self):
         ep=self.cfg['endpoint'].rstrip('/')
         if not local_endpoint(ep): self.error.emit('O endpoint precisa ser localhost.'); return
@@ -84,7 +98,7 @@ class Inference(QThread):
                                     for item in pieces[:-1]:
                                         item=item.strip()
                                         if item:
-                                            needs_translation=(self.response_language=='Português brasileiro' and likely_english(item)) or (self.response_language=='English' and likely_portuguese(item)) or (self.response_language not in ('Português brasileiro','English') and (likely_english(item) or likely_portuguese(item)))
+                                            needs_translation=self._needs_translation(item)
                                             if defer_stream or needs_translation:
                                                 # Do not start a second Ollama request while this stream is still open.
                                                 defer_stream=True; deferred_sentences.append((item,needs_translation))
@@ -98,7 +112,7 @@ class Inference(QThread):
                 final_action_turn=not calls and bool(action_results) and not other_tool_used
                 if not action_only_turn and not final_action_turn:
                     for item,needs_translation in deferred_sentences:
-                        if needs_translation: item=self.translate_to_language(item,self.response_language)
+                        if needs_translation: item=self._translate_before_speaking(item)
                         spoken_parts.append(item); self.sentence.emit(item)
                 if not calls: break
                 msgs.append({'role':'assistant','content':content,'tool_calls':calls})
@@ -128,7 +142,7 @@ class Inference(QThread):
             if not (action_results and not other_tool_used):
                 tail=spoken.strip()
                 if tail and re.search(r'[.!?][\"”’\')\]]*$',tail):
-                    if (self.response_language=='Português brasileiro' and likely_english(tail)) or (self.response_language=='English' and likely_portuguese(tail)) or (self.response_language not in ('Português brasileiro','English') and (likely_english(tail) or likely_portuguese(tail))): tail=self.translate_to_language(tail,self.response_language)
+                    if self._needs_translation(tail): tail=self._translate_before_speaking(tail)
                     spoken_parts.append(tail); self.sentence.emit(tail)
             if action_results and not other_tool_used:
                 complete_response=complete_spoken_response(' '.join(action_results))

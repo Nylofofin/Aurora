@@ -608,10 +608,69 @@ def test_obs_stop_never_launches_obs_when_websocket_is_down(monkeypatch):
                         lambda _name: (_ for _ in ()).throw(AssertionError("must not launch")))
     monkeypatch.setattr(obs.socket, "create_connection",
                         lambda *_args, **_kwargs: (_ for _ in ()).throw(ConnectionRefusedError()))
+    monkeypatch.setattr(obs, "_close_obs_after_recording_stops",
+                        lambda: (_ for _ in ()).throw(AssertionError("must not close OBS")))
 
     result = obs.obs_record("stop")
 
     assert "não enviei o comando" in result.casefold()
+
+
+def test_obs_closes_flatpak_only_after_stop_is_confirmed(monkeypatch):
+    import aurora_core.system.apps as apps
+
+    app = {"file": "/var/lib/flatpak/exports/share/applications/com.obsproject.Studio.desktop"}
+    monkeypatch.setattr(apps, "find_desktop_app", lambda _name: app)
+    closed = []
+    monkeypatch.setattr(apps, "_close_flatpak_app", lambda value: closed.append(value) or True)
+
+    assert obs._close_obs_after_recording_stops()
+    assert closed == [app]
+
+
+def test_obs_confirmed_stop_closes_obs_after_websocket_context(monkeypatch):
+    monkeypatch.setattr(obs, "_flatpak_obs_settings", lambda: {})
+    monkeypatch.setattr(obs.secrets, "compare_digest", lambda *_args: True)
+    request_ids = iter(("stop-request", "status-request"))
+    monkeypatch.setattr(obs.secrets, "token_hex", lambda _size: next(request_ids))
+    sent = []
+    closed = []
+
+    class FakeSocket:
+        def __enter__(self): return self
+        def __exit__(self, *_args): closed.append("socket-exit"); return False
+        def settimeout(self, _timeout): pass
+        def sendall(self, _data): pass
+        def recv(self, _count):
+            return (b"HTTP/1.1 101 Switching Protocols\r\n"
+                    b"Sec-WebSocket-Accept: valid\r\n\r\n")
+
+    monkeypatch.setattr(obs.socket, "create_connection", lambda *_args, **_kwargs: FakeSocket())
+    monkeypatch.setattr(obs, "_ws_send", lambda _stream, payload, _deadline=None: sent.append(payload))
+
+    def receive(_stream, _deadline=None):
+        if not sent:
+            return {"op": 0, "d": {"rpcVersion": 1}}
+        if sent[-1].get("op") == 1:
+            return {"op": 2, "d": {"negotiatedRpcVersion": 1}}
+        request = sent[-1]["d"]
+        if request["requestType"] == "StopRecord":
+            return {"op": 7, "d": {"requestId": "stop-request",
+                    "requestStatus": {"result": True}}}
+        return {"op": 7, "d": {"requestId": "status-request",
+                "requestStatus": {"result": True}, "responseData": {"outputActive": False}}}
+
+    monkeypatch.setattr(obs, "_ws_receive", receive)
+    def close_obs():
+        assert closed == ["socket-exit"]
+        closed.append("obs-close")
+        return True
+    monkeypatch.setattr(obs, "_close_obs_after_recording_stops", close_obs)
+
+    result = obs.obs_record("stop", port=4455)
+
+    assert result == "Gravação parada e OBS encerrado."
+    assert closed == ["socket-exit", "obs-close"]
 
 
 def test_obs_websocket_eof_during_handshake_returns_instead_of_spinning(monkeypatch):

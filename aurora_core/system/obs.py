@@ -21,6 +21,21 @@ OBS_VERIFY_INTERVAL = 0.12
 OBS_STARTUP_TIMEOUT = 15.0
 
 
+def _close_obs_after_recording_stops() -> bool:
+    """Exit OBS only after StopRecord has been confirmed inactive."""
+    from aurora_core.system.apps import (
+        _close_flatpak_app, _flatpak_app_id, close_application, find_desktop_app,
+    )
+
+    app = find_desktop_app("OBS Studio")
+    if _flatpak_app_id(app) == "com.obsproject.Studio":
+        # OBS is configured to minimize to tray. Closing its window can leave
+        # the Flatpak process alive, so terminate the exact app only after
+        # GetRecordStatus has confirmed outputActive=False.
+        return _close_flatpak_app(app)
+    return close_application("OBS Studio").startswith("Fechei ")
+
+
 def _flatpak_obs_config_path() -> Path:
     return (Path.home() / ".var/app/com.obsproject.Studio/config/obs-studio/"
             "plugin_config/obs-websocket/config.json")
@@ -290,7 +305,17 @@ def obs_record(action: str, password: str = "", host: str = "127.0.0.1", port: i
                 if action == "start":
                     return ("Gravação iniciada em segundo plano. Se quiser parar, é só dizer: "
                             "“Aurora, pare a gravação”.")
-                return "Gravação parada no OBS."
+                break
+        # Leave the WebSocket context before closing OBS. This runs only after
+        # StopRecord succeeded and GetRecordStatus confirmed outputActive=False.
+        try:
+            if _close_obs_after_recording_stops():
+                return "Gravação parada e OBS encerrado."
+        except Exception as exc:
+            _append_action_log("obs_record", "close_failed", {
+                "action": action, "phase": "close", "error_type": type(exc).__name__,
+            })
+        return "Gravação parada no OBS, mas não consegui encerrar o aplicativo."
     except RuntimeError as exc:
         _append_action_log("obs_record", "unavailable", {"action": action, "phase": phase,
                             "error_type": type(exc).__name__})

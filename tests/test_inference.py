@@ -1,6 +1,64 @@
 import json
 
 import aurora_core.llm.inference as inference_module
+from aurora_core.web.language import likely_portuguese, likely_spanish
+
+
+def test_spanish_output_is_detected_and_never_spoken_as_portuguese_when_translation_fails(monkeypatch):
+    spanish = "La grabación comenzó correctamente. Ya puedes pedirme que la detenga."
+    portuguese = "A gravação começou corretamente. Você pode pedir para eu parar."
+    assert likely_spanish(spanish)
+    assert not likely_spanish(portuguese)
+    assert likely_portuguese(portuguese)
+
+    cfg = {"endpoint": "http://localhost:11434", "model": "gemma3:1b",
+           "keep_alive": "5m", "num_ctx": 1024, "num_thread": 4, "num_gpu": 99}
+    worker = inference_module.Inference(cfg, "", response_language="Português brasileiro")
+    assert worker._needs_translation(spanish)
+    monkeypatch.setattr(worker, "translate_to_language", lambda *_args: spanish)
+    assert worker._translate_before_speaking(spanish) == (
+        "Não consegui responder em português agora. Pode repetir, por favor?"
+    )
+
+
+def test_spanish_output_is_translated_before_it_is_spoken(monkeypatch):
+    cfg = {"endpoint": "http://localhost:11434", "model": "gemma3:1b",
+           "keep_alive": "5m", "num_ctx": 1024, "num_thread": 4, "num_gpu": 99}
+    worker = inference_module.Inference(cfg, "", response_language="Português brasileiro")
+    monkeypatch.setattr(worker, "translate_to_language", lambda *_args: "A gravação começou corretamente.")
+    assert worker._translate_before_speaking("La grabación comenzó correctamente.") == (
+        "A gravação começou corretamente."
+    )
+
+
+def test_inference_translates_spanish_sentences_before_emitting_them(monkeypatch):
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *_args): pass
+        def __iter__(self):
+            yield json.dumps({"message": {"content": (
+                "La grabación comenzó correctamente. Ya puedes detenerla."
+            )}}).encode()
+
+    monkeypatch.setattr(inference_module.urllib.request, "urlopen",
+                        lambda *_args, **_kwargs: Response())
+    translations = {
+        "La grabación comenzó correctamente.": "A gravação começou corretamente.",
+        "Ya puedes detenerla.": "Você já pode pedir para eu parar.",
+    }
+    monkeypatch.setattr(inference_module.Inference, "translate_to_language",
+                        lambda _self, text, _language: translations[text])
+    cfg = {"endpoint": "http://localhost:11434", "model": "gemma3:1b",
+           "keep_alive": "5m", "num_ctx": 1024, "num_thread": 4, "num_gpu": 99}
+    worker = inference_module.Inference(cfg, "Responda em português")
+    spoken, results = [], []
+    worker.sentence.connect(spoken.append)
+    worker.result.connect(results.append)
+
+    worker.run()
+
+    assert spoken == list(translations.values())
+    assert results == [" ".join(translations.values())]
 
 
 def test_translation_waits_until_the_current_ollama_stream_is_closed(monkeypatch):
