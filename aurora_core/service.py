@@ -163,7 +163,7 @@ class AuroraService(QObject):
         self.orb.hide(); self.check_ollama()
 
     def _start_companion_server(self):
-        if not self.cfg.get('companion_enabled',True): return
+        if not self.cfg.get('companion_enabled',False): return
         try:
             address=discover_private_address()
             self.companion_server=CompanionServer(

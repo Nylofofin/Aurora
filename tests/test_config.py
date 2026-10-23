@@ -54,6 +54,10 @@ def test_settings_load_uses_defaults_when_json_root_is_not_an_object(monkeypatch
     assert loaded["model"] == config.DEFAULTS["model"]
 
 
+def test_companion_server_is_disabled_for_new_default_settings():
+    assert config.DEFAULTS["companion_enabled"] is False
+
+
 def test_concurrent_settings_saves_do_not_race_on_shared_temporary_file(monkeypatch, tmp_path):
     private_dir = tmp_path / "config" / "aurora"
     monkeypatch.setattr(config, "APP_CONFIG", private_dir / "aurora-settings.json")
