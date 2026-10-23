@@ -86,10 +86,22 @@ class CompanionHttpsTests(unittest.TestCase):
                 control_events.append(active)
                 return True
 
+            wake_frames = []
+            screen_frames = []
+            class ScreenStream:
+                state = "streaming"
+                def start(self): self.state = "starting"; return self.state
+                def stop(self): self.state = "stopping"
+                def frame_after(self, after, timeout):
+                    screen_frames.append((after, timeout))
+                    return 7, b"jpeg-frame"
+
             server = CompanionServer(
                 Path(temporary), "127.0.0.1", 0,
                 answer, on_voice=voice, on_control=on_control,
                 on_speech=lambda text: b"edge-audio:" + text.encode("utf-8"),
+                on_wake_audio=lambda token, frame: wake_frames.append((token, frame)) or frame == b"wake frame",
+                screen_stream=ScreenStream(),
                 sound_directory=sound_directory,
             )
             server.start()
@@ -118,6 +130,37 @@ class CompanionHttpsTests(unittest.TestCase):
                 self.assertEqual(response.status, 200)
                 self.assertTrue(control["mobile_control"])
                 self.assertEqual(control_events, [True])
+
+                connection.request("POST", "/v1/wake", b"wake frame", {
+                    "Authorization": f"Bearer {token}", "Content-Type": "audio/pcm"})
+                response = connection.getresponse()
+                self.assertEqual(response.status, 200)
+                self.assertTrue(json.loads(response.read())["wake_detected"])
+                self.assertEqual(wake_frames, [(token, b"wake frame")])
+                connection.request("POST", "/v1/wake", b"\0\0", {
+                    "Authorization": "Bearer invalid", "Content-Type": "audio/pcm"})
+                response = connection.getresponse()
+                response.read()
+                self.assertEqual(response.status, 401)
+
+                connection.request("POST", "/v1/screen/start", "{}", {
+                    "Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+                response = connection.getresponse()
+                screen_start = json.loads(response.read())
+                self.assertEqual(response.status, 202)
+                self.assertTrue(screen_start["consent_required"])
+                connection.request("GET", "/v1/screen/frame?after=6", headers={"Authorization": f"Bearer {token}"})
+                response = connection.getresponse()
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.getheader("Content-Type"), "image/jpeg")
+                self.assertEqual(response.getheader("X-Frame-Number"), "7")
+                self.assertEqual(response.read(), b"jpeg-frame")
+                self.assertEqual(screen_frames, [(6, 2.0)])
+                connection.request("POST", "/v1/screen/stop", "{}", {
+                    "Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+                response = connection.getresponse()
+                self.assertEqual(response.status, 200)
+                response.read()
 
                 connection.request("GET", "/v1/conversations", headers={"Authorization": "Bearer invalid"})
                 response = connection.getresponse()

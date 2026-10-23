@@ -1,10 +1,10 @@
-# Aurora Android Companion — Beta Demo 0.6.0
+# Aurora Android Companion — Beta Demo 0.7.0
 
 Cliente Android nativo Demo Experimental. Modelos, busca e automação ficam no computador; o telefone é a interface, microfone e saída de áudio.
 
 ## Estado atual
 
-- APK Beta Demo: [release Android 0.6.0](https://github.com/ruanminezinoficial2025-ctrl/Aurora/releases/tag/android-beta-v0.6.0). É uma build de desenvolvimento assinada para debug.
+- APK Beta Demo: [release Android 0.7.0](https://github.com/ruanminezinoficial2025-ctrl/Aurora/releases/tag/android-beta-v0.7.0). É uma build de desenvolvimento assinada para debug.
 
 - Interface renovada em tons claros pastel de lavanda e azul, cartões mais leves, contraste legível, esfera Aurora animada e ícone adaptativo vetorial próprio.
 - Pareamento HTTPS com fingerprint SHA-256 digitado fora de banda, código de uso único e token cifrado no Android Keystore.
@@ -14,11 +14,14 @@ Cliente Android nativo Demo Experimental. Modelos, busca e automação ficam no 
 - Respostas de voz geradas pelo PC via Edge TTS na voz configurada (Thalita por padrão) e enviadas como MP3; o cliente não usa o TTS Google/Android. A síntese precisa de internet no PC e pode levar alguns segundos; sem áudio, a resposta em texto continua disponível.
 - Durante o controle pelo celular, a fala parcial e os sons da bolha não tocam nos alto-falantes do PC; a voz Edge TTS e os sons de entrada/saída são recebidos e reproduzidos no telefone. Falhas de reprodução agora aparecem como aviso. O som de saída é baixado antes de liberar o controle ao desktop. Cliques usam o feedback de interface configurado no Android.
 - Modo Live em tela cheia: o botão waveform abre uma bolha central animada e toca o som de entrada do PC; cada fala começa por toque, e o X encerra e toca o som de saída. A sessão permanece aberta para novos turnos até sair.
+- Wake word experimental pelo botão **Mic**. Com a sessão conectada, um serviço de microfone em primeiro plano envia PCM por HTTPS ao PC; o modelo Vosk local reconhece “Aurora”. Se o app estiver visível, o Live inicia sem outro toque. O indicador de microfone permanece na notificação; com o app em segundo plano, é necessário abrir a notificação e tocar em **Falar** para continuar.
+- Visualização ao vivo da tela do PC pelo botão **PC**. O portal do desktop solicita consentimento no computador; quadros JPEG são enviados por HTTPS ao telefone. O fluxo é somente leitura, não salva imagens e encerra ao sair, desconectar ou após 30 segundos sem visualizador.
 - Gaveta lateral com histórico completo de conversas do PC, seleção de chat e ação de nova conversa.
 - Descoberta automática do PC por DNS-SD/mDNS quando ambos estão na mesma LAN; a impressão digital TLS continua sendo verificada fora de banda.
 - Controle exclusivo: ao conectar, o stream do microfone e o wake word local do PC são encerrados; **Desconectar** devolve a escuta à Aurora desktop. Se o app ou a rede cair, o lease expira e o PC retoma em até 60 segundos.
 - Comandos explícitos de baixo risco: abrir app/site, controlar volume, consultar hardware e capturar tela. Ações que pedem confirmação presencial (como fechar app ou iniciar gravação OBS) são recusadas pelo mobile nesta demo.
-- Wake word contínuo em segundo plano e streaming ao vivo da tela do PC ainda não estão implementados. No Android, o microfone em segundo plano exige um serviço visível de primeiro plano e a API SpeechRecognizer não foi feita para reconhecimento contínuo; esta build mantém a captura iniciada pelo usuário. A captura de tela do PC continua sendo uma ação pontual, sem transmissão.
+- O wake word mobile é experimental e não equivale ao “Hey Google”: depende do PC pareado, da conexão local e de uma ação do usuário para retomar a conversa se o app estiver em segundo plano. Não detecta a palavra quando o celular está desconectado.
+- Nesta build, wake word e transmissão de tela passaram por testes de código e compilação, mas ainda precisam de validação em um celular e de um aceite real do portal ScreenCast; trate os dois como experimentais.
 - O serviço desktop precisa estar atualizado e ativo; versões anteriores à API companion ainda não aceitam pareamento.
 
 ## Arquitetura da Demo
@@ -28,7 +31,7 @@ Cliente Android nativo Demo Experimental. Modelos, busca e automação ficam no 
 3. Conversas e histórico são armazenados no PC e sincronizados ao cliente.
 4. A demo de voz envia gravação PCM mono a 16 kHz (máximo 45 segundos) por HTTPS ao PC. O PC transcreve pela integração Google Speech e gera a resposta falada via Edge TTS; o app recebe e reproduz o MP3 sem usar TTS Google/Android. O microfone só é acessado após permissão e toque explícito. Um foreground service exibe uma notificação e mantém a gravação solicitada ativa enquanto a tela está bloqueada; o limite é 45 segundos e fechar à força o app encerra a captura. O áudio capturado fica apenas em memória no PC; o serviço de reconhecimento Google recebe o trecho de fala, como no cliente desktop.
 5. A conexão atual usa a mesma rede local. Acesso remoto futuro deverá usar VPN privada; não encaminhe a porta do PC à internet.
-6. A visualização ao vivo da tela do PC precisa de uma captura persistente do desktop com autorização do portal e um canal de vídeo; a captura pontual existente não é reutilizada como stream. Automação do próprio Android fica fora desta Beta Demo.
+6. A tela ao vivo usa o portal ScreenCast, PipeWire e GStreamer. O consentimento do desktop é obrigatório; o fluxo é somente leitura. Automação do próprio Android fica fora desta Beta Demo.
 
 ## Começar uma conversa
 
@@ -37,6 +40,7 @@ Cliente Android nativo Demo Experimental. Modelos, busca e automação ficam no 
 3. Para conversa Live, toque no botão **waveform** no campo inferior. A bolha cresce para o centro e toca o som de entrada; toque em **Falar** ou na bolha, permita o microfone, fale e toque em **Parar e enviar**. A resposta falada usa o áudio Edge TTS gerado no PC. Toque no **X** para sair.
 4. Para texto, toque em **Escrever uma mensagem**, digite no campo inferior e toque no botão de envio **↑**.
 5. Abra **Conversas** na barra superior para navegar pelo histórico ou criar um chat novo.
+6. Para ativação por voz, toque em **Mic** no campo de mensagem e mantenha a sessão conectada. Para ver o computador, toque em **PC** e aceite o compartilhamento na janela do desktop. Em Linux, o host precisa ter o portal ScreenCast, PipeWire, GStreamer e as bindings `python3-gobject`/`python3-dbus`; quando o venv isolado não enxerga essas bindings, o Companion inicia um worker curto com o Python do sistema só para captura e envio de quadros.
 
 ## Compilar
 
@@ -58,4 +62,4 @@ O APK de desenvolvimento, quando compilado, fica em `app/build/outputs/apk/debug
 
 O servidor aceita apenas HTTPS/TLS 1.2+, limita tentativas de pareamento e escuta no IP privado detectado, nunca em todas as interfaces. O pin deve ser comparado com o arquivo lido diretamente no PC antes de parear. Não encaminhe a porta `8765` ao roteador. O token é guardado no PC e continua válido após reiniciar o serviço; remova `device-tokens.json` no diretório companion para revogar todos os celulares pareados.
 
-Texto e transcrição são processados pelo serviço desktop e podem acionar os provedores externos documentados no README raiz. O áudio enviado ao Google Speech usa o fluxo já usado pela Aurora PC. Se a conexão cair durante o modo Live, o app interrompe a captura/reprodução e fecha o modo para evitar enviar áudio depois da perda de controle; o lease no PC expira em até 60 segundos. Esta demo não mantém escuta contínua, não exibe a tela e não permite aprovar pelo celular ações que exigem confirmação presencial. DNS-SD depende do Avahi no PC e de mDNS permitido pela rede; redes de convidados ou isolamento entre clientes podem impedir a descoberta automática.
+Texto e transcrição são processados pelo serviço desktop e podem acionar os provedores externos documentados no README raiz. O áudio do wake é enviado em blocos PCM pela LAN/TLS e reconhecido localmente pelo Vosk no PC; após o comando, o áudio é enviado ao Google Speech como no desktop. A tela é capturada após autorização do portal, transmitida por HTTPS em quadros de baixa taxa e não é gravada pelo Companion. Se a conexão cair durante o Live, o app interrompe captura/reprodução e fecha a sessão; o lease do PC expira em até 60 segundos. DNS-SD depende do Avahi no PC e de mDNS permitido pela rede; redes de convidados ou isolamento entre clientes podem impedir a descoberta automática.

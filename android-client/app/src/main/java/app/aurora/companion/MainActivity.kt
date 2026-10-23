@@ -1,11 +1,15 @@
 package app.aurora.companion
 
 import android.Manifest
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.view.SoundEffectConstants
 import android.view.View
 import android.os.Build
 import android.os.Bundle
+import android.graphics.BitmapFactory
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -26,6 +30,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -82,6 +87,9 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -91,6 +99,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.lifecycle.Lifecycle
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -108,6 +117,7 @@ private val Violet = Color(0xFF8A70C4)
 private val Blue = Color(0xFF579BC2)
 private val Pearl = Color(0xFF29263A)
 private val SoftLilac = Color(0xFFEAE3F5)
+private val SoftBlue = Color(0xFFE0F0F7)
 
 private fun playPhoneClick(view: View) {
     // Local Android feedback only; companion sounds and speech still arrive from the PC.
@@ -129,6 +139,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun AuroraShell() {
     val appContext = LocalContext.current
+    val hostActivity = appContext as? MainActivity
     val rootView = androidx.compose.ui.platform.LocalView.current
     val vault = remember { CredentialVault(appContext) }
     val saved = remember { vault.load() }
@@ -150,6 +161,11 @@ private fun AuroraShell() {
     var voiceStopRequest by remember { mutableStateOf(0) }
     var live by remember { mutableStateOf(false) }
     var liveMode by remember { mutableStateOf(false) }
+    var wakeListening by remember { mutableStateOf(false) }
+    var wakeDetectedEvents by remember { mutableStateOf(0) }
+    var wakeFailure by remember { mutableStateOf("") }
+    var showScreen by remember { mutableStateOf(false) }
+    var screenBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
     var liveSessionId by remember { mutableStateOf(0) }
     var busy by remember { mutableStateOf(false) }
     var loadingConversations by remember { mutableStateOf(false) }
@@ -160,6 +176,116 @@ private fun AuroraShell() {
     val lines = remember { mutableStateListOf<ChatLine>() }
     val composerFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
+
+    fun startWakeListener() {
+        if (!connected) { showConnect = true; return }
+        val intent = Intent(appContext, WakeCaptureService::class.java).apply {
+            action = WakeCaptureService.ACTION_START
+            putExtra(WakeCaptureService.EXTRA_ENDPOINT, endpoint)
+            putExtra(WakeCaptureService.EXTRA_FINGERPRINT, fingerprint)
+            putExtra(WakeCaptureService.EXTRA_TOKEN, token)
+        }
+        runCatching { appContext.startForegroundService(intent) }
+            .onSuccess { wakeListening = true; notice = "Ativação por voz ligada. O áudio vai ao PC para detecção local." }
+            .onFailure { notice = "Não consegui ativar a escuta: ${it.message ?: "verifique a permissão de microfone"}." }
+    }
+
+    val wakePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) startWakeListener() else notice = "A ativação por voz precisa da permissão de microfone."
+    }
+
+    fun toggleWakeListener() {
+        playPhoneClick(rootView)
+        if (wakeListening) {
+            appContext.stopService(Intent(appContext, WakeCaptureService::class.java).setAction(WakeCaptureService.ACTION_STOP))
+            wakeListening = false
+            notice = "Ativação por voz desligada."
+        } else if (!connected) showConnect = true
+        else if (appContext.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED) startWakeListener()
+        else wakePermission.launch(Manifest.permission.RECORD_AUDIO)
+    }
+
+    fun toggleScreenView() {
+        playPhoneClick(rootView)
+        if (!connected) { showConnect = true; return }
+        if (showScreen) {
+            showScreen = false
+            screenBitmap = null
+            scope.launch(Dispatchers.IO) { runCatching { CompanionClient(endpoint, fingerprint, token).stopScreenStream() } }
+            return
+        }
+        showScreen = true
+        screenBitmap = null
+        notice = "Solicitando a tela do PC. Confirme o compartilhamento na janela do computador."
+        scope.launch {
+            runCatching { withContext(Dispatchers.IO) { CompanionClient(endpoint, fingerprint, token).startScreenStream() } }
+                .onFailure { notice = "Não consegui iniciar a tela do PC: ${it.message ?: "verifique o desktop"}."; showScreen = false }
+        }
+    }
+
+    DisposableEffect(appContext) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    WakeCaptureService.ACTION_DETECTED -> wakeDetectedEvents += 1
+                    WakeCaptureService.ACTION_ERROR -> wakeFailure = intent.getStringExtra(WakeCaptureService.EXTRA_MESSAGE).orEmpty()
+                }
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(WakeCaptureService.ACTION_DETECTED)
+            addAction(WakeCaptureService.ACTION_ERROR)
+        }
+        if (Build.VERSION.SDK_INT >= 33) appContext.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        else @Suppress("DEPRECATION") appContext.registerReceiver(receiver, filter)
+        onDispose { appContext.unregisterReceiver(receiver) }
+    }
+
+    LaunchedEffect(wakeDetectedEvents) {
+        if (wakeDetectedEvents > 0) {
+            wakeListening = false
+            appContext.stopService(Intent(appContext, WakeCaptureService::class.java))
+            val foreground = hostActivity?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.RESUMED) == true
+            if (connected && !busy && foreground) {
+                playPhoneClick(rootView)
+                liveMode = true
+                voiceStartRequest += 1
+                notice = "Ouvi Aurora. Pode falar; a detecção aconteceu localmente no PC."
+            } else notice = "Ouvi Aurora. Abra o app e toque em Falar para continuar."
+        }
+    }
+
+    LaunchedEffect(wakeFailure) {
+        if (wakeFailure.isNotBlank()) {
+            wakeListening = false
+            notice = "A escuta por voz foi interrompida: $wakeFailure"
+            wakeFailure = ""
+        }
+    }
+
+    LaunchedEffect(showScreen, connected, endpoint, fingerprint, token) {
+        if (!showScreen || !connected) return@LaunchedEffect
+        var lastFrame = 0
+        while (showScreen && connected) {
+            try {
+                val next = withContext(Dispatchers.IO) {
+                    CompanionClient(endpoint, fingerprint, token).screenFrame(lastFrame)
+                }
+                if (next != null) {
+                    lastFrame = next.number
+                    val decoded = withContext(Dispatchers.Default) {
+                        BitmapFactory.decodeByteArray(next.jpeg, 0, next.jpeg.size)?.asImageBitmap()
+                    }
+                    if (decoded != null) screenBitmap = decoded
+                } else delay(200)
+            } catch (error: Exception) {
+                notice = "A transmissão da tela parou: ${error.message ?: "verifique a conexão"}."
+                showScreen = false
+                screenBitmap = null
+                break
+            }
+        }
+    }
 
     suspend fun fetchPcSound(name: String): ByteArray? {
         soundCache[name]?.let { return it }
@@ -280,6 +406,8 @@ private fun AuroraShell() {
             try {
                 remoteState = withContext(Dispatchers.IO) { CompanionClient(endpoint, fingerprint, token).heartbeatControl() }
             } catch (_: Exception) {
+                appContext.stopService(Intent(appContext, WakeCaptureService::class.java))
+                wakeListening = false
                 if (live) voiceStopRequest += 1
                 live = false
                 liveMode = false
@@ -328,6 +456,8 @@ private fun AuroraShell() {
     fun disconnectFromPc() {
         playPhoneClick(rootView)
         if (!connected || busy) return
+        appContext.stopService(Intent(appContext, WakeCaptureService::class.java))
+        wakeListening = false
         val wasLive = liveMode
         if (wasLive) leaveLiveMode(playExitSound = false)
         audioPlayer.stop()
@@ -560,10 +690,14 @@ private fun AuroraShell() {
                     connected = connected,
                     busy = busy,
                     liveMode = liveMode,
+                    wakeListening = wakeListening,
+                    screenActive = showScreen,
                     onText = { draft = it },
                     onSend = ::sendCurrentMessage,
                     onNew = { if (!busy) { conversationId = CompanionClient.newConversationId(); lines.clear(); notice = "Nova conversa no PC." } },
                     onToggleLive = { if (liveMode) leaveLiveMode() else enterLiveMode() },
+                    onToggleWake = ::toggleWakeListener,
+                    onToggleScreen = ::toggleScreenView,
                     focusRequester = composerFocusRequester,
                 )
                 if (notice.isNotBlank()) Text(notice, color = Muted, fontSize = 11.sp, modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp), textAlign = TextAlign.Center)
@@ -587,6 +721,17 @@ private fun AuroraShell() {
                     onRecording = { live = it },
                     onVoice = ::sendVoiceAudio,
                     onVoiceError = { notice = it },
+                )
+            }
+            AnimatedVisibility(
+                visible = showScreen,
+                modifier = Modifier.fillMaxSize(),
+                enter = fadeIn(tween(150)),
+                exit = fadeOut(tween(120)),
+            ) {
+                ScreenPreviewOverlay(
+                    frame = screenBitmap,
+                    onClose = ::toggleScreenView,
                 )
             }
           }
@@ -903,10 +1048,14 @@ private fun Composer(
     connected: Boolean,
     busy: Boolean,
     liveMode: Boolean,
+    wakeListening: Boolean,
+    screenActive: Boolean,
     onText: (String) -> Unit,
     onSend: () -> Unit,
     onNew: () -> Unit,
     onToggleLive: () -> Unit,
+    onToggleWake: () -> Unit,
+    onToggleScreen: () -> Unit,
     focusRequester: FocusRequester,
 ) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
@@ -915,6 +1064,36 @@ private fun Composer(
                 .border(1.dp, Violet.copy(alpha = 0.14f), RoundedCornerShape(28.dp)).padding(9.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            Button(
+                onClick = onToggleScreen,
+                enabled = connected || screenActive,
+                modifier = Modifier.size(44.dp).semantics {
+                    contentDescription = if (screenActive) "Parar transmissão da tela do PC" else "Mostrar a tela do PC"
+                },
+                contentPadding = PaddingValues(0.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (screenActive) Blue else SoftBlue,
+                    contentColor = if (screenActive) Color.White else Blue,
+                    disabledContainerColor = SoftBlue,
+                    disabledContentColor = Muted,
+                ),
+                shape = CircleShape,
+            ) { Text("PC", fontSize = 10.sp, fontWeight = FontWeight.SemiBold) }
+            Button(
+                onClick = onToggleWake,
+                enabled = connected || wakeListening,
+                modifier = Modifier.size(44.dp).semantics {
+                    contentDescription = if (wakeListening) "Desativar palavra de ativação" else "Ativar palavra de ativação Aurora"
+                },
+                contentPadding = PaddingValues(0.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (wakeListening) Violet else SoftLilac,
+                    contentColor = if (wakeListening) Color.White else Violet,
+                    disabledContainerColor = SoftLilac,
+                    disabledContentColor = Muted,
+                ),
+                shape = CircleShape,
+            ) { Text(if (wakeListening) "On" else "Mic", fontSize = 10.sp, fontWeight = FontWeight.SemiBold) }
             TextButton(
                 onClick = onNew,
                 enabled = connected && !busy,
@@ -946,6 +1125,46 @@ private fun Composer(
         }
         Text("O processamento da Aurora acontece no computador pareado.", color = Muted.copy(alpha = 0.72f), fontSize = 10.sp,
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp), textAlign = TextAlign.Center)
+    }
+}
+
+@Composable
+private fun ScreenPreviewOverlay(frame: ImageBitmap?, onClose: () -> Unit) {
+    Box(
+        Modifier.fillMaxSize().background(Color(0xFF171520)),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (frame != null) {
+            Image(
+                bitmap = frame,
+                contentDescription = "Transmissão ao vivo da tela do PC Aurora",
+                modifier = Modifier.fillMaxSize().padding(top = 72.dp, bottom = 76.dp, start = 10.dp, end = 10.dp),
+                contentScale = ContentScale.Fit,
+            )
+        } else {
+            Text(
+                "Aguardando autorização no computador…",
+                color = Color.White,
+                modifier = Modifier.padding(28.dp),
+                textAlign = TextAlign.Center,
+            )
+        }
+        Row(
+            Modifier.align(Alignment.TopCenter).fillMaxWidth().background(Color(0xFF252330)).padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column {
+                Text("Tela do computador", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text("Compartilhamento protegido pelo portal do desktop", color = Color(0xFFD5D0E0), fontSize = 11.sp)
+            }
+            Button(
+                onClick = onClose,
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE8DDF5), contentColor = Pearl),
+                shape = RoundedCornerShape(18.dp),
+            ) { Text("Parar") }
+        }
     }
 }
 

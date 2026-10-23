@@ -50,6 +50,35 @@ def test_wake_session_is_a_single_request_gate():
     assert not voice.one_shot.is_set()
 
 
+def test_phone_wake_audio_is_accepted_only_during_mobile_control_and_is_bounded():
+    voice = LocalVoice({})
+    assert not voice.feed_mobile_audio(b"\0\0")
+    voice.mobile_owned.set()
+    assert not voice.feed_mobile_audio(b"\0")
+    assert not voice.feed_mobile_audio(b"\0" * 32_002)
+
+
+def test_phone_wake_audio_is_evaluated_by_vosk_on_its_owner_thread():
+    import json
+    import threading
+
+    class FakeWakeRecognizer:
+        def AcceptWaveform(self, _block): return True
+        def Result(self): return json.dumps({"text": "aurora"})
+        def Reset(self): pass
+
+    voice = LocalVoice({})
+    voice.mobile_owned.set()
+    worker = threading.Thread(target=voice._drain_mobile_audio, args=(FakeWakeRecognizer(),))
+    worker.start()
+    try:
+        assert voice.feed_mobile_audio(b"\0\0") is True
+    finally:
+        voice.mobile_owned.clear()
+        worker.join(timeout=1)
+    assert not worker.is_alive()
+
+
 def test_wake_detection_stays_suppressed_until_request_finishes_but_allows_click():
     voice = LocalVoice({})
     assert not voice.defer_wake_detection()

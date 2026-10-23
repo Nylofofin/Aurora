@@ -15,7 +15,7 @@ import ssl
 import subprocess
 import threading
 import time
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 
 MAX_BODY = 16 * 1024
@@ -138,13 +138,15 @@ class PairingAuth:
 class CompanionServer:
     """Small HTTPS API; request processing stays injected into AuroraService."""
 
-    def __init__(self, directory: Path, address: str, port: int, on_message, *, on_voice=None, on_control=None, on_speech=None, sound_directory=None, api_timeout=120):
+    def __init__(self, directory: Path, address: str, port: int, on_message, *, on_voice=None, on_control=None, on_speech=None, on_wake_audio=None, screen_stream=None, sound_directory=None, api_timeout=120):
         self.directory = directory
         self.address = address
         self.port = int(port)
         self.on_message = on_message
         self.on_voice = on_voice
         self.on_speech = on_speech
+        self.on_wake_audio = on_wake_audio
+        self.screen_stream = screen_stream
         self.sound_directory = Path(sound_directory) if sound_directory else None
         self._on_control = on_control
         self.api_timeout = api_timeout
@@ -200,6 +202,16 @@ class CompanionServer:
                 self.end_headers()
                 self.wfile.write(data)
 
+            def _screen_frame(self, frame_number, data):
+                self.send_response(200)
+                self.send_header("Content-Type", "image/jpeg")
+                self.send_header("Content-Length", str(len(data)))
+                self.send_header("X-Frame-Number", str(frame_number))
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.end_headers()
+                self.wfile.write(data)
+
             def _body(self):
                 try:
                     length = int(self.headers.get("Content-Length", "0"))
@@ -220,6 +232,29 @@ class CompanionServer:
                     return
                 if not self._authorized():
                     self._json(401, {"error": "unauthorized"})
+                    return
+                if path == "/v1/screen/frame":
+                    _, _, token = self.headers.get("Authorization", "").partition(" ")
+                    if not outer.owns_control(token):
+                        self._json(409, {"error": "mobile control not acquired"})
+                        return
+                    if not outer.screen_stream:
+                        self._json(503, {"error": "screen stream unavailable"})
+                        return
+                    try:
+                        query = parse_qs(urlsplit(self.path).query)
+                        after = int(query.get("after", ["0"])[0])
+                        frame_number, frame = outer.screen_stream.frame_after(after, timeout=2.0)
+                    except (ValueError, RuntimeError) as exc:
+                        self._json(503, {"error": str(exc)})
+                        return
+                    if not frame:
+                        self._json(202, {"state": outer.screen_stream.state, "frame": frame_number})
+                        return
+                    if len(frame) > 2_000_000:
+                        self._json(413, {"error": "screen frame too large"})
+                        return
+                    self._screen_frame(frame_number, frame)
                     return
                 if path in {"/v1/sounds/entrada.wav", "/v1/sounds/saida.wav"}:
                     _, _, token = self.headers.get("Authorization", "").partition(" ")
@@ -262,6 +297,12 @@ class CompanionServer:
                     return
                 if path == "/v1/voice":
                     self._post_voice()
+                    return
+                if path == "/v1/wake":
+                    self._post_wake_audio()
+                    return
+                if path in {"/v1/screen/start", "/v1/screen/stop"}:
+                    self._post_screen_stream(path)
                     return
                 try:
                     payload = self._body()
@@ -424,6 +465,56 @@ class CompanionServer:
                         outer.set_remote_state("ready")
                 finally:
                     lock.release()
+
+            def _post_wake_audio(self):
+                if not self._authorized():
+                    self._json(401, {"error": "unauthorized"})
+                    return
+                _, _, token = self.headers.get("Authorization", "").partition(" ")
+                if not outer.owns_control(token):
+                    self._json(409, {"error": "mobile control not acquired"})
+                    return
+                if not outer.on_wake_audio:
+                    self._json(503, {"error": "local wake detector unavailable"})
+                    return
+                if self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower() != "audio/pcm":
+                    self._json(415, {"error": "audio/pcm required"})
+                    return
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                except ValueError:
+                    length = 0
+                if length <= 0 or length > 32000 or length % 2:
+                    self._json(400, {"error": "invalid PCM frame"})
+                    return
+                frame = self.rfile.read(length)
+                if len(frame) != length:
+                    self._json(400, {"error": "incomplete PCM frame"})
+                    return
+                try:
+                    detected = bool(outer.on_wake_audio(token, frame))
+                except Exception:
+                    self._json(503, {"error": "local wake detector failed"})
+                    return
+                self._json(200, {"wake_detected": detected})
+
+            def _post_screen_stream(self, path):
+                if not self._authorized():
+                    self._json(401, {"error": "unauthorized"})
+                    return
+                _, _, token = self.headers.get("Authorization", "").partition(" ")
+                if not outer.owns_control(token):
+                    self._json(409, {"error": "mobile control not acquired"})
+                    return
+                if not outer.screen_stream:
+                    self._json(503, {"error": "screen stream unavailable"})
+                    return
+                if path.endswith("/start"):
+                    state = outer.screen_stream.start()
+                    self._json(202, {"state": state, "consent_required": True})
+                else:
+                    outer.screen_stream.stop()
+                    self._json(200, {"state": "stopping"})
 
         self.httpd = ThreadingHTTPServer((address, self.port), Handler)
         self.httpd.daemon_threads = True

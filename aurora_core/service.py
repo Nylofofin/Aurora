@@ -20,6 +20,7 @@ from .system.apps import close_application, launch_application
 from .system.actions import execute_action as dispatch_action
 from .system.audit import audit_action
 from .system.approval import requires_user_approval
+from .system.screen_stream import DesktopScreenStream
 from .system.commands import parse_local_command
 from .system.files import create_user_file, normalize_words, xdg_user_directory
 from .system.hardware import system_hardware_summary
@@ -130,7 +131,7 @@ class AuroraService(QObject):
         # wake() then called the floating view's show()/raise_() outside Qt's GUI thread:
         # the feedback sound played, while the orb window was never mapped.
         super().__init__(app)
-        self.app=app; self.cfg=settings_load(); self.hw=hardware_profile(); self.pending=None; self.inf=None; self.inferences=[]; self.action_workers=[]; self.obs_details={}; self.action_cancel_event=threading.Event(); self.companion_request=None; self.companion_server=None
+        self.app=app; self.cfg=settings_load(); self.hw=hardware_profile(); self.pending=None; self.inf=None; self.inferences=[]; self.action_workers=[]; self.obs_details={}; self.action_cancel_event=threading.Event(); self.companion_request=None; self.companion_server=None; self.screen_stream=DesktopScreenStream()
         self.response_summary=''; self.response_finished=False; self.response_language='Português brasileiro'; self.activity_generation=0; self.request_generation=0; self.last_wake=0.0; self.background_requests=[]; self.context_history=[]; self.current_prompt=''; self.active_search_context=''
         self.orb=AuroraOrb(self.cfg); self.orb.start_voice.connect(self.listen_once); self.orb.hide_requested.connect(self.stop_conversation); self.orb.quit_requested.connect(app.quit)
         # A worker's finished/result signal can be lost during portal/Qt
@@ -166,7 +167,9 @@ class AuroraService(QObject):
             self.companion_server=CompanionServer(
                 APP_CONFIG.parent/'companion',address,self.cfg.get('companion_port',8765),self._companion_message,
                 on_voice=self._companion_voice,on_control=self._companion_control,
-                on_speech=self._companion_speech,sound_directory=APP_DIR/'assets'/'audio',
+                on_speech=self._companion_speech,on_wake_audio=self._companion_wake_audio,
+                screen_stream=self.screen_stream,
+                sound_directory=APP_DIR/'assets'/'audio',
             )
             self.companion_server.start()
             print(f'[companion] HTTPS ativo em https://{address}:{self.cfg.get("companion_port",8765)}; fingerprint SHA-256 {self.companion_server.fingerprint}; código em {self.companion_server.auth.code_path}',file=sys.stderr,flush=True)
@@ -224,6 +227,10 @@ class AuroraService(QObject):
             print(f'[companion] síntese Edge TTS falhou ({type(exc).__name__})',file=sys.stderr,flush=True)
             return b''
 
+    def _companion_wake_audio(self,token,pcm):
+        if not self.companion_server or not self.companion_server.owns_control(token): return False
+        return self.voice.feed_mobile_audio(pcm,timeout=1.5)
+
     def _companion_control(self,active):
         from concurrent.futures import Future, TimeoutError as FutureTimeout
         future=Future()
@@ -247,6 +254,8 @@ class AuroraService(QObject):
             self.orb.hide()
             if self.companion_server: self.companion_server.set_remote_state('ready')
         else:
+            screen_stream=getattr(self,'screen_stream',None)
+            if screen_stream: screen_stream.stop()
             self.voice.mobile_owned.clear()
             self.voice.end_request()
             self.orb.hide()
@@ -390,6 +399,7 @@ class AuroraService(QObject):
             self.stop_conversation()
     @Slot(str)
     def voice_state(self,state):
+        if self._mobile_audio_owned(): return
         if state=='hidden':
             if time.monotonic()-self.last_wake<3.0: return
             # A delayed recognizer "hidden" event must not hide the orb during

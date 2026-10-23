@@ -6,6 +6,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
@@ -23,6 +24,10 @@
         </activity>
         <service
             android:name=".MicCaptureService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+        <service
+            android:name=".WakeCaptureService"
             android:exported="false"
             android:foregroundServiceType="microphone" />
     </application>

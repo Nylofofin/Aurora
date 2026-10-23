@@ -4,6 +4,7 @@ from PySide6.QtCore import QThread, Signal
 from array import array
 import json, queue, re, sys, threading, time
 import math
+from concurrent.futures import Future, TimeoutError as FutureTimeout
 from ..config import VOSK_PATH
 from ..system.files import normalize_words
 from ..system.text import strip_wake_word
@@ -11,7 +12,7 @@ from ..system.text import strip_wake_word
 class LocalVoice(QThread):
     transcript=Signal(str); status=Signal(str); unavailable=Signal(str); wake=Signal(); cancel_control=Signal(); audio_level=Signal(float)
     def __init__(self,cfg):
-        super().__init__(); self.cfg=cfg; self.running=True; self.one_shot=threading.Event(); self.request_active=threading.Event(); self.interrupt_active=threading.Event(); self.cancel_control_active=threading.Event(); self.mobile_owned=threading.Event(); self.speaking=False; self.recognizer=None
+        super().__init__(); self.cfg=cfg; self.running=True; self.one_shot=threading.Event(); self.request_active=threading.Event(); self.interrupt_active=threading.Event(); self.cancel_control_active=threading.Event(); self.mobile_owned=threading.Event(); self.speaking=False; self.recognizer=None; self.mobile_audio_queue=queue.Queue(maxsize=12)
     def request_once(self): self.one_shot.set()
     def begin_request(self): self.request_active.set(); self.interrupt_active.clear()
     def end_request(self): self.request_active.clear(); self.one_shot.clear(); self.interrupt_active.clear()
@@ -52,6 +53,36 @@ class LocalVoice(QThread):
         command=self.strip_wake_word(command)
         if not command: command=self.strip_wake_word(fallback)
         return command
+    def feed_mobile_audio(self,block,timeout=1.5):
+        """Feed a short PCM frame from the paired phone to the existing local wake model."""
+        if not self.mobile_owned.is_set() or not isinstance(block,bytes) or len(block)%2 or not 0<len(block)<=32000:
+            return False
+        result=Future()
+        try: self.mobile_audio_queue.put((block,result),timeout=.2)
+        except queue.Full: return False
+        try: return bool(result.result(timeout=timeout))
+        except FutureTimeout: return False
+    def _drain_mobile_audio(self,wake_rec):
+        """Vosk stays on its owning QThread; HTTP workers only enqueue PCM frames."""
+        while self.running and self.mobile_owned.is_set():
+            try: block,result=self.mobile_audio_queue.get(timeout=.12)
+            except queue.Empty: continue
+            try:
+                finalized=wake_rec.AcceptWaveform(block)
+                detected=False
+                if finalized:
+                    text=json.loads(wake_rec.Result()).get('text','').strip()
+                    wake_rec.Reset()
+                    detected=self.is_final_wake_phrase(text,True)
+                result.set_result(detected)
+                if detected:
+                    self.status.emit('listening')
+            except Exception as exc:
+                if not result.done(): result.set_exception(exc)
+        while True:
+            try: _block,result=self.mobile_audio_queue.get_nowait()
+            except queue.Empty: break
+            if not result.done(): result.set_result(False)
     def run(self):
         try:
             import sounddevice as sd
@@ -65,7 +96,8 @@ class LocalVoice(QThread):
             while self.running:
                 while self.running and self.mobile_owned.is_set():
                     self.status.emit('hidden')
-                    time.sleep(.1)
+                    self._drain_mobile_audio(wake_rec)
+                wake_rec.Reset()
                 q=queue.Queue(maxsize=12)
                 def callback(data,frames,time_info,status):
                     try: q.put_nowait(bytes(data))

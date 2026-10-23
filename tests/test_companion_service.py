@@ -187,3 +187,19 @@ def test_streaming_reply_is_not_played_on_pc_while_mobile_owns_audio():
 
     assert speaker.spoken == []
     assert feedback.played == 0
+
+
+def test_mobile_wake_status_does_not_show_desktop_orb():
+    calls = []
+    class Orb:
+        def reveal(self, mode): calls.append(("reveal", mode))
+        def set_mode(self, mode): calls.append(("mode", mode))
+        def dismiss(self): calls.append(("dismiss",))
+    class Service:
+        orb = Orb()
+        last_wake = 0
+        def _mobile_audio_owned(self): return True
+
+    AuroraService.voice_state(Service(), "listening")
+    AuroraService.voice_state(Service(), "hidden")
+    assert calls == []

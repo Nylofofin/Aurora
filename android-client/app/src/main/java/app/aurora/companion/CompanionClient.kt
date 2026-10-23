@@ -25,6 +25,7 @@ import javax.net.ssl.X509TrustManager
 data class PcConversation(val id: String, val title: String, val messages: List<ChatLine>)
 data class CompanionReply(val answer: String, val speechAudio: ByteArray?)
 data class CompanionVoiceReply(val transcript: String, val answer: String, val speechAudio: ByteArray?)
+data class PcScreenFrame(val number: Int, val jpeg: ByteArray)
 
 class CompanionClient(
     endpoint: String,
@@ -98,6 +99,71 @@ class CompanionClient(
         require(name == "entrada.wav" || name == "saida.wav") { "Som de interface inválido." }
         require(!token.isNullOrBlank()) { "Este celular ainda não está pareado com o PC." }
         return requestBytes("/v1/sounds/$name")
+    }
+
+    fun detectWake(pcm: ByteArray): Boolean {
+        require(!token.isNullOrBlank()) { "Este celular ainda não está pareado com o PC." }
+        require(pcm.size in 2..32_000 && pcm.size % 2 == 0) { "Bloco PCM inválido." }
+        val connection = (URL(baseUrl + "/v1/wake").openConnection() as HttpsURLConnection).apply {
+            connectTimeout = 2_000
+            readTimeout = 2_500
+            requestMethod = "POST"
+            sslSocketFactory = pinnedSslContext(expectedFingerprint).socketFactory
+            hostnameVerifier = HostnameVerifier { _, _ -> true }
+            setRequestProperty("Accept", "application/json")
+            setRequestProperty("Content-Type", "audio/pcm")
+            setRequestProperty("Authorization", "Bearer $token")
+            doOutput = true
+        }
+        try {
+            connection.outputStream.use { it.write(pcm) }
+            val code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val body = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+            if (code !in 200..299) {
+                val reason = runCatching { JSONObject(body).optString("error") }.getOrNull()
+                throw IllegalStateException(reason?.takeIf { it.isNotBlank() } ?: "erro HTTP $code")
+            }
+            return JSONObject(body).optBoolean("wake_detected")
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    fun startScreenStream(): String = request("POST", "/v1/screen/start", JSONObject()).optString("state", "starting")
+
+    fun stopScreenStream() {
+        request("POST", "/v1/screen/stop", JSONObject())
+    }
+
+    fun screenFrame(after: Int): PcScreenFrame? {
+        require(!token.isNullOrBlank()) { "Este celular ainda não está pareado com o PC." }
+        val url = URL(baseUrl + "/v1/screen/frame?after=" + after.coerceAtLeast(0))
+        val connection = (url.openConnection() as HttpsURLConnection).apply {
+            connectTimeout = 4_000
+            readTimeout = 3_500
+            sslSocketFactory = pinnedSslContext(expectedFingerprint).socketFactory
+            hostnameVerifier = HostnameVerifier { _, _ -> true }
+            setRequestProperty("Accept", "image/jpeg, application/json")
+            setRequestProperty("Cache-Control", "no-store")
+            setRequestProperty("Authorization", "Bearer $token")
+        }
+        try {
+            val code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val bytes = stream?.use { it.readBytes() } ?: ByteArray(0)
+            if (code == 202) return null
+            if (code !in 200..299) {
+                val reason = runCatching { JSONObject(bytes.toString(Charsets.UTF_8)).optString("error") }.getOrNull()
+                throw IllegalStateException(reason?.takeIf { it.isNotBlank() } ?: "erro HTTP $code")
+            }
+            require(connection.contentType?.substringBefore(';') == "image/jpeg" && bytes.size in 1..2_000_000) {
+                "O quadro recebido do PC é inválido."
+            }
+            return PcScreenFrame(connection.getHeaderFieldInt("X-Frame-Number", after + 1), bytes)
+        } finally {
+            connection.disconnect()
+        }
     }
 
     private fun decodeSpeechAudio(result: JSONObject): ByteArray? {
