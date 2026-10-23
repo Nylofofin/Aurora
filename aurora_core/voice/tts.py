@@ -42,6 +42,10 @@ class Speaker(QThread):
                         log_voice_timing('tts_first_audio',elapsed_ms(started))
                         self.playing=True; self.audio_started.emit()
                 elif packet.get('type')=='WordBoundary':
+                    # Edge can deliver text timing just ahead of the first
+                    # playable audio packet. Drop those markers so the orb does
+                    # not pulse before speech is actually audible.
+                    if not first_audio: continue
                     self.speech_level.emit(self.word_boundary_pulse(packet.get('text','')))
                     if pulse_release and not pulse_release.done(): pulse_release.cancel()
                     duration=max(.06,min(float(packet.get('duration',0))/10_000_000*.72,.42))

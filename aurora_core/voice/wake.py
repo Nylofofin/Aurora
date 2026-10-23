@@ -9,6 +9,9 @@ from ..config import VOSK_PATH
 from ..system.files import normalize_words
 from ..system.text import strip_wake_word
 
+SAMPLE_RATE=16000
+MIC_BLOCK_FRAMES=1600  # 100 ms: lower orb feedback latency while preserving audio windows.
+
 class LocalVoice(QThread):
     transcript=Signal(str); status=Signal(str); unavailable=Signal(str); wake=Signal(); cancel_control=Signal(); audio_level=Signal(float)
     def __init__(self,cfg):
@@ -102,11 +105,14 @@ class LocalVoice(QThread):
                     self.status.emit('hidden')
                     self._drain_mobile_audio(wake_rec)
                 wake_rec.Reset()
-                q=queue.Queue(maxsize=12)
+                q=queue.Queue(maxsize=8)
                 def callback(data,frames,time_info,status):
                     try: q.put_nowait(bytes(data))
-                    except queue.Full: pass
-                with sd.RawInputStream(samplerate=16000,blocksize=3200,dtype='int16',channels=1,callback=callback):
+                    except queue.Full:
+                        # Prefer fresh mic feedback over processing stale visual levels.
+                        try: q.get_nowait(); q.put_nowait(bytes(data))
+                        except (queue.Empty,queue.Full): pass
+                with sd.RawInputStream(samplerate=SAMPLE_RATE,blocksize=MIC_BLOCK_FRAMES,dtype='int16',channels=1,callback=callback):
                     self.status.emit('hidden')
                     active=False; started=0.0; buffer=[]; wake_audio=[]
                     while self.running and not self.mobile_owned.is_set():
@@ -134,12 +140,12 @@ class LocalVoice(QThread):
                         if not active and self.defer_wake_detection(): continue
                         if not active:
                             wake_audio.append(block)
-                            if len(wake_audio)>88: wake_audio=wake_audio[-88:]
+                            if len(wake_audio)>176: wake_audio=wake_audio[-176:]
                             if self.one_shot.is_set():
                                 self.one_shot.clear(); active=True; buffer=[]; wake_audio=[]; started=time.monotonic(); self.status.emit('listening'); rec.Reset(); wake_rec.Reset(); continue
                         else:
                             buffer.append(block)
-                            if len(buffer)>120: buffer=buffer[-120:]
+                            if len(buffer)>240: buffer=buffer[-240:]
                             self.audio_level.emit(self.normalized_audio_level(block))
                         active_rec=rec if active else wake_rec
                         finalized=active_rec.AcceptWaveform(block)
@@ -151,7 +157,7 @@ class LocalVoice(QThread):
                         if active:
                             if text:
                                 self.audio_level.emit(0.0)
-                                pcm=b''.join(buffer[-40:]); active=False; buffer=[]; wake_audio=[]; started=time.monotonic(); self.speaking=True; self.status.emit('thinking')
+                                pcm=b''.join(buffer[-80:]); active=False; buffer=[]; wake_audio=[]; started=time.monotonic(); self.speaking=True; self.status.emit('thinking')
                                 command=self.cloud_transcribe(sr,pcm,text)
                                 if command and self.request_active.is_set(): self.transcript.emit(command)
                                 else:

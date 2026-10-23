@@ -49,6 +49,9 @@ def route_request(self,prompt):
     if not asks_hardware_temperature and re.search(r'\b(tempo|clima|previs[aã]o|temperatura|vai chover|chove)\b',prompt,re.I):
         self.orb.set_mode('weather')
         generation=self.request_generation
+        if not self._mobile_audio_owned():
+            self.research_card.begin(generation,prompt,self.orb.frameGeometry())
+            self.research_card.update_progress(generation,{"stage":"searching","tasks":[prompt],"workers":1,"completed":0,"total":1})
         self.weather=WeatherRequest(self.cfg,prompt)
         self.weather.result.connect(lambda text,g=generation: self.weather_done(text,g))
         self.weather.error.connect(lambda message,g=generation: self.weather_error(message,g))
@@ -70,11 +73,15 @@ def route_request(self,prompt):
     if not query and ((freshness and not needs_context_search) or ((factual_web_intent(prompt) or research_request_intent(prompt)) and not is_followup)):
         query=LocalVoice.strip_wake_word(prompt).strip(' \t,.:;!?')
     if query:
-        self.orb.set_mode('searching')
         generation=self.request_generation
-        self.quick_search=SearchRequest(query,freshness,news_search_intent(prompt))
-        self.quick_search.result.connect(lambda q,out,g=generation: self.quick_search_done(q,out,g))
-        self.quick_search.error.connect(lambda q,message,g=generation: self.quick_search_error(q,message,g))
+        request=SearchRequest(query,freshness,news_search_intent(prompt))
+        self.quick_search=request
+        self.orb.set_mode('searching')
+        if not self._mobile_audio_owned():
+            self.research_card.begin(generation,prompt,self.orb.frameGeometry())
+        request.progress.connect(lambda event,g=generation:self.research_progress(event,g),Qt.ConnectionType.QueuedConnection)
+        request.result.connect(lambda q,out,g=generation:self.quick_search_done(q,out,g),Qt.ConnectionType.QueuedConnection)
+        request.error.connect(lambda q,message,g=generation:self.quick_search_error(q,message,g),Qt.ConnectionType.QueuedConnection)
         self.start_background_request(self.quick_search); return
     refers_to_source=bool(self.context_history and re.search(r'\b(fonte|link|noticia|artigo|resultado)\b',normalized))
     agent_intent=source_followup or refers_to_source or needs_context_search or bool(re.search(r'\b(abra|abrir|abre|aberto|aberta|inicie|iniciar|execute|executar|rode|rodar|clique|clicar|digite|digitar|escreva|escrever|controle o computador|controle o pc|crie|criar|faca|gere|gerar|lembre|lembrar|esqueca|esquecer|salve|salvar|salve como|salvar como|leia|ler|acesse|acessar|lance|lancar|bote|coloque|minimize|minimizar|maximize|maximizar|feche|fechar|fecha|encerre|encerrar|encerra|aumente|aumentar|diminua|diminuir|baixe|baixar|silencie|mute|pesquise|pesquisar|busque|buscar|procure|procurar|investigue|investigar)\b',normalized))

@@ -44,8 +44,8 @@ Item {
 
     Behavior on tintStrength { NumberAnimation { duration: 420; easing.type: Easing.InOutCubic } }
     Behavior on animatedStateColor { ColorAnimation { duration: 460; easing.type: Easing.InOutCubic } }
-    Behavior on inputLevel { NumberAnimation { duration: 100; easing.type: Easing.OutCubic } }
-    Behavior on speechPulse { NumberAnimation { duration: 70; easing.type: Easing.OutCubic } }
+    Behavior on inputLevel { NumberAnimation { duration: 55; easing.type: Easing.OutCubic } }
+    Behavior on speechPulse { NumberAnimation { duration: 38; easing.type: Easing.OutCubic } }
     Behavior on completionPulse { NumberAnimation { duration: 95; easing.type: Easing.OutCubic } }
 
     // A single glass sphere. All motion and state cues stay on its surface.
@@ -56,7 +56,7 @@ Item {
         property real breathing: 0.0
         property real sheenTravel: 0.0
         scale: 0.985 + breathing * 0.015 + root.voiceEnergy * 0.022 + root.outputEnergy * 0.024 + root.completionPulse * 0.038
-        Behavior on scale { NumberAnimation { duration: root.mode === "speaking" || root.mode === "listening" ? 85 : 240; easing.type: Easing.OutCubic } }
+        Behavior on scale { NumberAnimation { duration: root.mode === "speaking" || root.mode === "listening" ? 52 : 220; easing.type: Easing.OutCubic } }
 
         SequentialAnimation on breathing {
             running: root.motionEnabled

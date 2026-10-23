@@ -20,13 +20,18 @@ class WeatherRequest(QThread):
 
 class SearchRequest(QThread):
 
-    result=Signal(str,str); error=Signal(str,str)
+    result=Signal(str,str); error=Signal(str,str); progress=Signal(object)
 
-    def __init__(self,query,freshness=None,news_only=False): super().__init__(); self.query=query; self.freshness=freshness; self.news_only=news_only
+    def __init__(self,query,freshness=None,news_only=False):
+        super().__init__()
+        self.query=query; self.freshness=freshness; self.news_only=news_only
 
     def run(self):
 
-        try: self.result.emit(self.query,search_public_web(self.query,self.freshness,self.news_only))
+        try:
+            self.progress.emit({"stage":"searching","tasks":["DuckDuckGo Lite", "Bing RSS", "Bing Notícias"],"workers":1,"completed":0,"total":3})
+            output=search_public_web(self.query,self.freshness,self.news_only,progress=self.progress.emit)
+            self.result.emit(self.query,output)
 
         except Exception as exc: self.error.emit(self.query,str(exc))
 

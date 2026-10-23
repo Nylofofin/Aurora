@@ -60,13 +60,15 @@ class AuroraOrb(QObject):
         self._drag_moved(x,y)
         self.cfg['bubble_position']=[self.view.x(),self.view.y()]; settings_save(self.cfg)
     def set_mode(self,mode):
-        previous=self.mode; self.mode=mode; self.root.setProperty('mode',mode)
-        if previous=='speaking' and mode!='speaking': self.root.setProperty('speechPulse',0.0)
+        self.mode=mode; self.root.setProperty('mode',mode)
+        if mode!='speaking': self.root.setProperty('speechPulse',0.0)
         if mode!='listening': self.root.setProperty('inputLevel',0.0)
     def set_input_level(self,level):
         if self.mode=='listening': self.root.setProperty('inputLevel',max(0.0,min(1.0,float(level))))
     def set_speech_level(self,level):
-        self.root.setProperty('speechPulse',max(0.0,min(1.0,float(level))))
+        # Queued word-boundary events can arrive after a sentence or cancellation.
+        # Ignore them outside active playback so an old pulse cannot animate late.
+        if self.mode=='speaking': self.root.setProperty('speechPulse',max(0.0,min(1.0,float(level))))
     def pulse_complete(self):
         self._completion_pulse_generation+=1; generation=self._completion_pulse_generation
         self.root.setProperty('completionPulse',0.0); self.root.setProperty('completionPulse',1.0)

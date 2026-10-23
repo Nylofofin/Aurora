@@ -1016,6 +1016,27 @@ def test_subject_specific_search_adapters_are_absent():
         assert forbidden not in source
 
 
+def test_search_pipeline_reports_real_provider_and_validation_progress(monkeypatch):
+    events = []
+    monkeypatch.setattr(search_pipeline, "search_google_news", lambda *_args: "")
+    monkeypatch.setattr(search_pipeline, "resource_worker_limit", lambda task_count, **_kwargs: 2)
+    monkeypatch.setattr(search_pipeline.PUBLIC_OPENER, "open",
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("offline fixture")))
+    monkeypatch.setattr(search_pipeline, "public_http_url", lambda url: url)
+
+    search_pipeline._search_public_web_uncached(
+        "Nexa network measurement", False, False, events.append
+    )
+
+    searching = [event for event in events if event.get("stage") == "searching"]
+    assert searching
+    assert searching[0]["workers"] == 2
+    assert {"DuckDuckGo Lite", "Bing RSS"}.issubset(set(searching[0]["tasks"]))
+    assert any(event.get("finished_task") == "DuckDuckGo Lite" for event in searching)
+    assert any(event.get("finished_task") == "Bing RSS" for event in searching)
+    assert any(event.get("stage") == "validating" for event in events)
+
+
 def test_short_cache_avoids_duplicate_search(monkeypatch):
     aurora._SEARCH_CACHE.clear()
     calls = []

@@ -538,3 +538,35 @@ def test_expiration_callback_for_old_approval_does_not_clear_new_one():
 
     assert service_core.pending is current
     assert not old["event"].is_set()
+
+
+def test_completed_one_shot_request_dismisses_the_orb_by_default(monkeypatch):
+    calls = []
+    monkeypatch.setattr(service_module.QTimer, "singleShot", lambda _delay, callback: callback())
+
+    class Queue:
+        def empty(self): return True
+    class Speaker:
+        active = False
+        playing = False
+        q = Queue()
+    class Voice:
+        def end_request(self): calls.append("end_request")
+    class Orb:
+        def pulse_complete(self): calls.append("pulse")
+        def dismiss(self): calls.append("dismiss")
+    class ServiceStub:
+        activity_generation = 4
+        response_finished = True
+        speaker = Speaker()
+        voice = Voice()
+        orb = Orb()
+        inf = None
+        background_requests = []
+        def weather_busy(self): return False
+        def _mobile_audio_owned(self): return False
+        def listen_once(self): calls.append("listen_once")
+
+    service_module.AuroraService.schedule_dismiss(ServiceStub(), 0)
+
+    assert calls == ["pulse", "end_request", "dismiss"]

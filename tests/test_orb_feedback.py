@@ -38,3 +38,27 @@ def test_completion_pulse_only_resets_from_latest_timer(monkeypatch):
     assert orb.root.values[-1] == ("completionPulse", 1.0)
     latest_timer()
     assert orb.root.values[-1] == ("completionPulse", 0.0)
+
+
+def test_orb_discards_late_speech_pulses_outside_playback():
+    class Root:
+        def __init__(self): self.values = []
+        def setProperty(self, name, value): self.values.append((name, value))
+
+    class OrbStub:
+        set_mode = orb_module.AuroraOrb.set_mode
+        set_speech_level = orb_module.AuroraOrb.set_speech_level
+        def __init__(self): self.mode = "searching"; self.root = Root()
+
+    orb = OrbStub()
+    orb.set_speech_level(0.8)
+    assert not orb.root.values
+
+    orb.set_mode("speaking")
+    orb.set_speech_level(0.8)
+    assert orb.root.values[-1] == ("speechPulse", 0.8)
+
+    orb.set_mode("idle")
+    before = list(orb.root.values)
+    orb.set_speech_level(0.8)
+    assert orb.root.values == before

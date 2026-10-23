@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from urllib.parse import urlparse, urlencode, urljoin, parse_qs
-import base64, concurrent.futures, re, threading, time, urllib.request
+import base64, concurrent.futures, os, re, threading, time, urllib.request
 import xml.etree.ElementTree as ET
 from ..system.files import normalize_words
 from .intent import _fresh_query_terms, _search_query_variants, _search_relevance, _search_term_forms, asks_latest_version, current_search_window, international_news_only, news_search_intent
@@ -12,6 +12,7 @@ from .fetch import _search_page_excerpt
 from .parsers import DuckDuckGoLiteResults
 from .security import PUBLIC_OPENER, public_http_url
 from .http_body import decode_http_body
+from .orchestra import resource_worker_limit
 
 def _candidate_rank(item, freshness, news_only=False, today=None, window_days=None, query=''):
     today=today or datetime.now().astimezone().date()
@@ -47,7 +48,11 @@ def _version_source_consensus(items):
     corroborated={version:hosts for version,hosts in versions.items() if len(hosts)>=2 and '' not in hosts}
     return max(corroborated.items(),key=lambda pair:(len(pair[1]),tuple(map(int,pair[0].split('.'))))) if corroborated else None
 
-def _search_public_web_uncached(query,freshness=None,news_only=None):
+def _search_public_web_uncached(query,freshness=None,news_only=None,progress=None):
+    def report(**event):
+        if progress:
+            try: progress(event)
+            except Exception: pass
     query=' '.join(query.split())
     if not query or len(query)>180: raise ValueError('Consulta vazia ou longa demais.')
     search_window='' if freshness is False else (freshness or current_search_window(query))
@@ -65,6 +70,8 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
             news=search_google_news(query,freshness)
             found=_google_news_pipeline_items(news,query,freshness)
             seen={urlparse(item['url'])._replace(query='',fragment='').geturl().rstrip('/').casefold() for item in found}
+            report(stage='searching',tasks=['Google Notícias','DuckDuckGo Lite','Bing RSS','Bing Notícias'],workers=1,completed=1,total=4,finished_task='Google Notícias',
+                   sources=[{key:item.get(key,'') for key in ('provider','title','snippet','url','host','publisher','published')} for item in found[:4]])
         except Exception as exc:
             failures.append(f'Google Notícias: {type(exc).__name__}')
     # Use two genuinely different result interfaces. DDG's normal HTML endpoint
@@ -109,16 +116,34 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
             # when the topic-only feed repeats a blocked or syndicated page.
             if news_only and 'brasil' not in news_query.split() and not international_news_only(relevance_query):
                 news_queries.append(f'{news_query} Brasil')
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(providers) + len(news_queries)) as pool:
-            jobs=[(provider,kind,pool.submit(fetch_provider,url,kind,timeout)) for provider,url,kind in providers]
-            jobs.extend(('Bing Notícias','bing-news',pool.submit(search_bing_news,news_query_variant,timeout))
-                        for news_query_variant in news_queries)
-            for provider,kind,future in jobs:
+        tasks=len(providers)+len(news_queries)
+        cpu_count=os.cpu_count() or 1
+        try: load=os.getloadavg()[0]/cpu_count
+        except (AttributeError,OSError): load=0
+        try:
+            with open('/proc/meminfo',encoding='ascii') as meminfo:
+                available_ram=next(int(line.split()[1])*1024 for line in meminfo if line.startswith('MemAvailable:'))
+        except (OSError,StopIteration,ValueError): available_ram=0
+        workers=resource_worker_limit(tasks,load_per_cpu=load,available_ram=available_ram,cpu_count=cpu_count)
+        task_names=[provider for provider,_,_ in providers]+[
+            'Bing Notícias · Brasil' if news_query_variant.endswith(' Brasil') else 'Bing Notícias'
+            for news_query_variant in news_queries]
+        report(stage='searching',tasks=task_names,workers=workers,completed=0,total=tasks)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            jobs=[(provider,kind,provider,pool.submit(fetch_provider,url,kind,timeout)) for provider,url,kind in providers]
+            jobs.extend(('Bing Notícias','bing-news',task_name,pool.submit(search_bing_news,news_query_variant,timeout))
+                        for news_query_variant,task_name in zip(news_queries,task_names[len(providers):]) )
+            futures={future:(provider,kind,task_name) for provider,kind,task_name,future in jobs}
+            for completed,future in enumerate(concurrent.futures.as_completed(futures),1):
+                provider,kind,task_name=futures[future]
                 stats=provider_counts.setdefault(provider,{'extraidos':0,'relevantes':0})
-                try: rows=future.result(timeout=timeout+0.5)
+                try: rows=future.result()
                 except Exception as exc:
-                    failures.append(f'{provider}: {type(exc).__name__}'); continue
+                    failures.append(f'{provider}: {type(exc).__name__}')
+                    report(stage='searching',tasks=task_names,workers=workers,completed=completed,total=tasks,finished_task=task_name,error=type(exc).__name__)
+                    continue
                 stats['extraidos']+=len(rows)
+                provider_found=[]
                 for row in rows:
                     href,title,snippet=row[:3]; published=row[3] if len(row)>3 else ''
                     publisher=row[4] if len(row)>4 else ''
@@ -154,10 +179,13 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
                     if key in seen: rejected['duplicado']+=1; continue
                     seen.add(key)
                     host=(urlparse(href).hostname or '').removeprefix('www.')
-                    found.append({'provider':provider,'title':title,'snippet':snippet,'url':href,'host':host,
+                    accepted={'provider':provider,'title':title,'snippet':snippet,'url':href,'host':host,
                         'publisher':publisher,'published':published if kind=='bing-news' else '',
                         'search_result_published':published if kind=='bing-rss' else '',
-                        'feed_published':kind=='bing-news','score':relevance})
+                        'feed_published':kind=='bing-news','score':relevance}
+                    found.append(accepted); provider_found.append(accepted)
+                report(stage='searching',tasks=task_names,workers=workers,completed=completed,total=tasks,finished_task=task_name,
+                       sources=[{key:item.get(key,'') for key in ('provider','title','snippet','url','host','publisher','published')} for item in provider_found[:4]])
     for attempt,(search_query,relevance_query) in enumerate(query_variants):
         collect_query(search_query,relevance_query,3.5 if attempt==0 else 1.8)
         # Google News RSS links may remain Google wrapper pages that our safe
@@ -166,6 +194,7 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
         readable_candidates=[item for item in found if item.get('host')!='news.google.com']
         enough=(_independent_recent_source_count(readable_candidates,freshness)>=2) if freshness else bool(readable_candidates)
         if enough: break
+    report(stage='validating',counts={name:dict(value) for name,value in provider_counts.items()},rejected=dict(rejected),accepted=len(found))
     if freshness and not news_only and _independent_recent_source_count(found,freshness)<2:
         # Current factual questions also benefit from dated publisher URLs in
         # the news feed, even when the user did not ask for a news roundup.
@@ -176,12 +205,19 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
         news_queries=[news_query]
         if 'brasil' not in news_query.split() and not international_news_only(query):
             news_queries.append(f'{news_query} Brasil')
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(news_queries)) as pool:
-            jobs=[pool.submit(search_bing_news,variant,2.5) for variant in news_queries]
-            for future in jobs:
-                try: rows=future.result(timeout=3.0)
+        task_names=['Bing Notícias · Brasil' if variant.endswith(' Brasil') else 'Bing Notícias' for variant in news_queries]
+        workers=resource_worker_limit(len(news_queries))
+        report(stage='searching',tasks=task_names,workers=workers,completed=0,total=len(news_queries))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            futures={pool.submit(search_bing_news,variant,2.5):task_name for variant,task_name in zip(news_queries,task_names)}
+            for completed,future in enumerate(concurrent.futures.as_completed(futures),1):
+                task_name=futures[future]
+                try: rows=future.result()
                 except Exception as exc:
-                    failures.append(f'Bing Notícias: {type(exc).__name__}'); continue
+                    failures.append(f'Bing Notícias: {type(exc).__name__}')
+                    report(stage='searching',tasks=task_names,workers=workers,completed=completed,total=len(news_queries),finished_task=task_name,error=type(exc).__name__)
+                    continue
+                provider_counts.setdefault('Bing Notícias',{'extraidos':0,'relevantes':0})['extraidos']+=len(rows)
                 for href,title,snippet,published,publisher in rows:
                     try: public_http_url(href)
                     except Exception: rejected['url']+=1; continue
@@ -194,9 +230,12 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
                     if key in seen:
                         rejected['duplicado']+=1; continue
                     seen.add(key)
+                    provider_counts['Bing Notícias']['relevantes']+=1
                     host=(urlparse(href).hostname or '').removeprefix('www.')
                     found.append({'provider':'Bing Notícias','title':title,'snippet':snippet,'url':href,'host':host,
                         'publisher':publisher,'published':published,'feed_published':True,'score':relevance})
+                report(stage='searching',tasks=task_names,workers=workers,completed=completed,total=len(news_queries),finished_task=task_name,
+                       sources=[{key:item.get(key,'') for key in ('provider','title','snippet','url','host','publisher','published')} for item in found if item.get('provider')=='Bing Notícias'][:4])
     window_days={'1d':1,'7d':7,'30d':30}.get(freshness,30)
     if freshness and not news_only and (not found or _independent_recent_source_count(found,freshness)<2):
         try:
@@ -205,6 +244,8 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
                 key=urlparse(item['url'])._replace(query='',fragment='').geturl().rstrip('/').casefold()
                 if key not in seen:
                     seen.add(key); found.append(item)
+            report(stage='validating',counts={name:dict(value) for name,value in provider_counts.items()},rejected=dict(rejected),accepted=len(found),
+                   sources=[{key:item.get(key,'') for key in ('provider','title','snippet','url','host','publisher','published')} for item in found[:4]])
         except Exception: pass
     today=datetime.now().astimezone().date()
     found.sort(key=lambda item:_candidate_rank(item,freshness,news_only,today,window_days,query),reverse=True)
@@ -230,6 +271,7 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
     if not candidates:
         if freshness: return 'Não encontrei páginas com data recente verificável para confirmar esse fato. Não vou apresentar um resultado sem data como atual.'
         candidates=found[:2]
+    report(stage='reading',tasks=[item.get('title','Fonte')[:72] for item in candidates[:6]],workers=2,completed=0,total=min(6,len(candidates)),sources=[{key:item.get(key,'') for key in ('provider','title','snippet','url','host','publisher','published')} for item in candidates[:4]])
     attempted=[]
     page_rejected={'fora_da_janela':0,'data_nao_verificada':0,'sem_conteudo':0}
     def read_page_batch(batch):
@@ -272,6 +314,7 @@ def _search_public_web_uncached(query,freshness=None,news_only=None):
         batch=candidates[next_candidate:next_candidate+2]
         next_candidate+=len(batch)
         read_page_batch(batch)
+        report(stage='reading',tasks=[item.get('title','Fonte')[:72] for item in candidates[:6]],workers=2,completed=len(attempted),total=min(6,len(candidates)),sources=[{key:item.get(key,'') for key in ('provider','title','snippet','url','host','publisher','published')} for item in attempted[:4]],page_rejected=dict(page_rejected))
         if latest_version:
             if _version_source_consensus(usable_pages()): break
         elif not freshness or _independent_recent_source_count(usable_pages(),freshness)>=2:
@@ -314,16 +357,21 @@ _SEARCH_CACHE_LOCK=threading.Lock()
 
 _SEARCH_CACHE_TTL=90
 
-def search_public_web(query,freshness=None,news_only=None):
+def search_public_web(query,freshness=None,news_only=None,progress=None):
     """Short cache for repeated queries; volatile evidence expires after 90 seconds."""
     key=(normalize_words(query),freshness,news_only)
     now=time.monotonic()
     with _SEARCH_CACHE_LOCK:
         cached=_SEARCH_CACHE.get(key)
-        if cached and now-cached[0]<_SEARCH_CACHE_TTL: return cached[1]
+        if cached and now-cached[0]<_SEARCH_CACHE_TTL:
+            if progress:
+                try: progress({'stage':'searching','tasks':['Cache local'], 'workers':0,'completed':1,'total':1})
+                except Exception: pass
+            return cached[1]
         for old_key,(created,_) in list(_SEARCH_CACHE.items()):
             if now-created>=_SEARCH_CACHE_TTL: _SEARCH_CACHE.pop(old_key,None)
-    result=_search_public_web_uncached(query,freshness,news_only)
+    result=(_search_public_web_uncached(query,freshness,news_only) if progress is None else
+            _search_public_web_uncached(query,freshness,news_only,progress))
     if not result.startswith(('Não encontrei','Não consegui','As fontes encontradas','Os resultados que pareciam')):
         with _SEARCH_CACHE_LOCK:
             if len(_SEARCH_CACHE)>=48: _SEARCH_CACHE.pop(next(iter(_SEARCH_CACHE)))

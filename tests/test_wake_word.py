@@ -126,11 +126,15 @@ def test_control_cancel_detection_can_be_enabled_and_disabled():
 
 def test_recognized_command_does_not_auto_rearm_continuous_listening():
     from pathlib import Path
+    from aurora_core.voice.wake import MIC_BLOCK_FRAMES
 
     source = (Path(__file__).resolve().parents[1] / "aurora_core" / "voice" / "wake.py").read_text()
+    service_source = (Path(__file__).resolve().parents[1] / "aurora_core" / "service.py").read_text()
     assert "if self.one_shot.is_set():" in source
     assert "self.one_shot.is_set() or self.request_active.is_set()" not in source
-    assert "pcm=b''.join(buffer[-40:]); active=False" in source
+    assert MIC_BLOCK_FRAMES == 1600
+    assert "pcm=b''.join(buffer[-80:]); active=False" in source
+    assert "getattr(self,'continuous_mode',False)" in service_source
 
 
 def test_speaker_interrupt_discards_queued_speech():
