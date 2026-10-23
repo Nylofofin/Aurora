@@ -1,14 +1,15 @@
 # Histórico de versões
 
-## Em desenvolvimento
+## 1.5.0-alpha.1 — Public Demonstration Alpha (PDA), 2026-10-23
 
-- Calcula expressões aritméticas numéricas simples localmente, sem enviar a pergunta à web ou gerar fontes com o modelo.
-- Completa o harness headless da avaliação com os contratos de cartão, fala, progresso e callback da busca usados pelo roteador real.
-- Alinha o teste de áudio de wake móvel ao ciclo de vida real do `QThread`, evitando thread de teste sem integração com Qt.
-- Desativa por padrão o servidor LAN do Companion arquivado e documenta o escopo da GPL e os direitos ainda não confirmados dos sons.
-- Redesenha a esfera com luz interna azul-violeta mais econômica por frame, respostas de movimento suavizadas ao microfone e à fala, e pulso de conclusão.
-- Reorganiza o cartão contextual em superfícies tonais Material You adaptadas ao tema Qt, melhora o espaço para fontes e anima entrada/saída.
-- Exibe o conteúdo dinâmico como texto simples e limita o resumo em fronteiras de frase ou palavra.
+Pré-release pública para demonstração e avaliação técnica. Não representa uma versão estável nem promete compatibilidade entre distribuições.
+
+- Endurece o runtime após a 1.4.0 ORC, incluindo cálculo aritmético local e ajustes de roteamento, dependências, busca, cartões e animações.
+- Desativa por padrão o servidor LAN do Companion arquivado e documenta a descontinuação do cliente Android.
+- Substitui os efeitos de áudio sem redistribuição confirmada por sinais CC0, com origem e licença registradas.
+- Remove APKs e tags de release Android do histórico Git publicado.
+- Mantém instalação por scripts/código-fonte; ainda não fornece pacotes RPM/Flatpak nem atualizador automático.
+- **Limites de demonstração:** voz/STT e Edge TTS dependem da internet; resultados web podem variar por bloqueios e atualidade; OBS, captura e automação dependem do desktop e das permissões locais. Faça revisão humana das ações e dos resultados.
 
 ## 1.4.0 — Orchestra Runtime Coordination (ORC), 2026-10-23
 

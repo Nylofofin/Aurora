@@ -1,7 +1,9 @@
 # Aurora LDR — Lumen Desktop Runtime
 
-**Versão:** `1.4.0` (PC) · `1.2.3` (Android, arquivada) · **Build:** `AUR-LDR-1.4.0-ORC+20261023.02`
-**Codinome desta release:** `ORCHESTRA RUNTIME COORDINATION (ORC)` — coordenação paralela e limitada para pesquisa web e consultas locais seguras.
+**Versão:** `1.5.0-alpha.1` (PC) · `1.2.3` (Android, arquivada) · **Build:** `AUR-LDR-1.5.0-alpha.1-PDA+20261023.01`
+**Codinome desta release:** `PUBLIC DEMONSTRATION ALPHA (PDA)` — primeira abertura pública de demonstração, com o runtime ORC e endurecimento pós-1.4.0.
+
+> **Alpha pública de demonstração — não é uma versão estável.** A Aurora é um projeto experimental para Linux desktop. Busca web, voz, OBS, portais GNOME/Wayland e automação variam conforme serviços, permissões e ambiente do usuário. Não há instalador gráfico nem pacote RPM/Flatpak; esta release oferece código-fonte e scripts de instalação para avaliação técnica.
 
 As releases seguem o formato **Aurora LDR `<versão>` — `<codinome funcional>` (`<SIGLA>`)**. O codinome descreve a mudança principal daquela versão; a sigla curta facilita identificar a build em logs e documentação. A tag SemVer (`vMAJOR.MINOR.PATCH`) continua sendo a referência exata do código. Os nomes de releases anteriores permanecem como registro histórico.
 
@@ -13,7 +15,7 @@ O servidor de rede do Companion também fica **desativado por padrão**. Configu
 
 O código-fonte próprio da Aurora é distribuído sob **GNU GPL versão 3 apenas** (`GPL-3.0-only`); consulte [`LICENSE`](LICENSE). Dependências, modelos, serviços externos e outros materiais mantêm suas próprias licenças. Os efeitos de entrada e saída em `assets/audio/` são adaptados da coleção UI SFX sob CC0 1.0; a origem, a licença e os detalhes da conversão estão documentados em [`assets/audio/SOURCES.md`](assets/audio/SOURCES.md).
 
-> **Release para Linux desktop.** A 1.4.0 adiciona coordenação ORC: até três tarefas de pesquisa web e até duas consultas locais independentes podem avançar em paralelo, sem duplicar o modelo Gemma. Não inclui pacote Flatpak/RPM nem atualizador automático; instale pelo script versionado ou pelo código-fonte no GitHub.
+> **Release para Linux desktop.** A base 1.4.0 adicionou coordenação ORC: até três tarefas de pesquisa web e até duas consultas locais independentes podem avançar em paralelo, sem duplicar o modelo Gemma. Esta alpha acrescenta correções e endurecimento pós-ORC. Não inclui pacote Flatpak/RPM nem atualizador automático; instale pelo código-fonte e scripts versionados.
 
 **A interface é orb-first.** A esfera translúcida branca, azul e violeta continua sendo o controle principal; um cartão contextual temporário aparece ao lado apenas durante pesquisa ou inspeção local, com etapas, fontes e um resumo. Não há janela de chat nem painel permanente. A bolha fica escondida em espera; ao dizer “Aurora”, surge no canto inferior direito com entrada elástica e o som `assets/audio/entrada.wav`; ao terminar, encolhe e desaparece. Escuta, pensamento, busca e fala são indicados pelo movimento, pela cor e pelo reflexo na própria esfera. Durante a escuta, o brilho e a escala respondem ao nível RMS do microfone; enquanto fala, pulsos discretos acompanham as marcações de palavra do Edge TTS sem decodificar o áudio uma segunda vez; ao concluir a resposta, há um pulso final curto. Pensamento e busca mudam o ritmo do brilho. Cada ativação recebe um pedido; depois de responder, o microfone volta a aguardar apenas a palavra “Aurora”. Clique com o botão direito para interromper a fala e cancelar o pedido atual. Arraste a bolha para posicioná-la. Perguntas aritméticas numéricas simples são calculadas localmente sem consulta web. Inferência do Gemma, memória e roteamento de ações são locais. Transcrição de voz, síntese de voz, busca web e serviços externos descritos abaixo usam a internet quando solicitados.
 
