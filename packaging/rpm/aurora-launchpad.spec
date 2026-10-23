@@ -1,0 +1,53 @@
+# SPDX-License-Identifier: GPL-3.0-only
+Name:           aurora-launchpad
+Version:        0.1.0
+Release:        1%{?dist}
+Summary:        Animated Fedora installer and setup assistant for Aurora Desktop
+License:        GPL-3.0-only
+URL:            https://github.com/Nylofofin/Aurora
+Source0:        %{name}-%{version}.tar.gz
+BuildArch:      noarch
+Requires:       python3 >= 3.11
+Requires:       python3-gobject
+Requires:       python3-cairo
+Requires:       gtk4
+Requires:       libadwaita
+Requires:       polkit
+Requires:       systemd
+Requires:       curl
+Requires:       unzip
+Requires:       python3-pip
+
+%description
+Aurora Launchpad is a graphical, animated setup wizard for Aurora Desktop,
+initially targeted only at Fedora Workstation running GNOME on Wayland. It
+checks compatibility, explains each operation and installs Aurora into the
+current user's home directory. Ollama models and local user data are preserved
+by default during removal.
+
+%prep
+%setup -q -n %{name}-%{version}
+
+%build
+
+%install
+install -Dpm0755 launchpad/aurora-launchpad %{buildroot}%{_bindir}/aurora-launchpad
+install -Dpm0644 launchpad/aurora_launchpad.py %{buildroot}%{_libexecdir}/aurora-launchpad/aurora_launchpad.py
+install -Dpm0644 launchpad/aurora_launchpad_core.py %{buildroot}%{_libexecdir}/aurora-launchpad/aurora_launchpad_core.py
+install -Dpm0644 launchpad/icons/com.nylofofin.AuroraLaunchpad.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/com.nylofofin.AuroraLaunchpad.svg
+install -Dpm0644 launchpad/aurora-launchpad.desktop %{buildroot}%{_datadir}/applications/aurora-launchpad.desktop
+mkdir -p %{buildroot}%{_datadir}/aurora-launchpad/payload
+cp -a payload/. %{buildroot}%{_datadir}/aurora-launchpad/payload/
+
+%files
+%license payload/LICENSE
+%doc payload/README.md
+%{_bindir}/aurora-launchpad
+%{_libexecdir}/aurora-launchpad/
+%{_datadir}/applications/aurora-launchpad.desktop
+%{_datadir}/icons/hicolor/scalable/apps/com.nylofofin.AuroraLaunchpad.svg
+%{_datadir}/aurora-launchpad/payload/
+
+%changelog
+* Fri Oct 23 2026 Aurora Project <nylofofin@localhost> - 0.1.0-1
+- First experimental Fedora Workstation installer.

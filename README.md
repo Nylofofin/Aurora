@@ -3,7 +3,7 @@
 **Versão:** `1.5.0-alpha.1` (PC) · `1.2.3` (Android, arquivada) · **Build:** `aurora-desktop-1.5.0-alpha.1-orchestra`
 **Release:** **Aurora Desktop 1.5.0-alpha.1 — Orchestra** — alpha pública de demonstração com coordenação ORC e endurecimento pós-1.4.0.
 
-> **Alpha pública de demonstração — não é uma versão estável.** A Aurora é um projeto experimental para Linux desktop. Busca web, voz, OBS, portais GNOME/Wayland e automação variam conforme serviços, permissões e ambiente do usuário. Não há instalador gráfico nem pacote RPM/Flatpak; esta release oferece código-fonte e scripts de instalação para avaliação técnica.
+> **Alpha pública de demonstração — não é uma versão estável.** A Aurora é um projeto experimental para Linux desktop. Busca web, voz, OBS, portais GNOME/Wayland e automação variam conforme serviços, permissões e ambiente do usuário. Esta pré-release inclui um RPM experimental do Aurora Launchpad, limitado ao Fedora Workstation com GNOME/Wayland; também oferece código-fonte e scripts.
 
 As releases seguem o formato **Aurora Desktop `<versão>` — `<codinome>`**. O codinome descreve a mudança principal daquela versão; o identificador técnico usa `aurora-desktop-<versão>-<codinome>`, sem siglas ambíguas. A tag SemVer (`vMAJOR.MINOR.PATCH`) continua sendo a referência exata do código. Nomes anteriores permanecem no changelog como registro histórico.
 
@@ -15,7 +15,7 @@ O servidor de rede do Companion também fica **desativado por padrão**. Configu
 
 O código-fonte próprio da Aurora é distribuído sob **GNU GPL versão 3 apenas** (`GPL-3.0-only`); consulte [`LICENSE`](LICENSE). Dependências, modelos, serviços externos e outros materiais mantêm suas próprias licenças. Os efeitos de entrada e saída em `assets/audio/` são adaptados da coleção UI SFX sob CC0 1.0; a origem, a licença e os detalhes da conversão estão documentados em [`assets/audio/SOURCES.md`](assets/audio/SOURCES.md).
 
-> **Release para Linux desktop.** A base 1.4.0 adicionou coordenação ORC: até três tarefas de pesquisa web e até duas consultas locais independentes podem avançar em paralelo, sem duplicar o modelo Gemma. Esta alpha acrescenta correções e endurecimento pós-ORC. Não inclui pacote Flatpak/RPM nem atualizador automático; instale pelo código-fonte e scripts versionados.
+> **Release para Linux desktop.** A base 1.4.0 adicionou coordenação ORC: até três tarefas de pesquisa web e até duas consultas locais independentes podem avançar em paralelo, sem duplicar o modelo Gemma. Esta alpha acrescenta correções e endurecimento pós-ORC. Não inclui pacote Flatpak nem atualizador automático.
 
 **A interface é orb-first.** A esfera translúcida branca, azul e violeta continua sendo o controle principal; um cartão contextual temporário aparece ao lado apenas durante pesquisa ou inspeção local, com etapas, fontes e um resumo. Não há janela de chat nem painel permanente. A bolha fica escondida em espera; ao dizer “Aurora”, surge no canto inferior direito com entrada elástica e o som `assets/audio/entrada.wav`; ao terminar, encolhe e desaparece. Escuta, pensamento, busca e fala são indicados pelo movimento, pela cor e pelo reflexo na própria esfera. Durante a escuta, o brilho e a escala respondem ao nível RMS do microfone; enquanto fala, pulsos discretos acompanham as marcações de palavra do Edge TTS sem decodificar o áudio uma segunda vez; ao concluir a resposta, há um pulso final curto. Pensamento e busca mudam o ritmo do brilho. Cada ativação recebe um pedido; depois de responder, o microfone volta a aguardar apenas a palavra “Aurora”. Clique com o botão direito para interromper a fala e cancelar o pedido atual. Arraste a bolha para posicioná-la. Perguntas aritméticas numéricas simples são calculadas localmente sem consulta web. Inferência do Gemma, memória e roteamento de ações são locais. Transcrição de voz, síntese de voz, busca web e serviços externos descritos abaixo usam a internet quando solicitados.
 
@@ -39,7 +39,15 @@ O código está separado por responsabilidade em `aurora_core/`: `system/` cont�
 
 ## Inicialização
 
-Aurora usa um **instalador nativo em shell** para integrar o serviço de usuário, Ollama local e ferramentas do desktop. Não há pacote Flatpak ou RPM nesta build. A instalação usa Python virtualenv e scripts versionados, sem instalar arquivos do app em diretórios globais.
+### Instalação gráfica experimental
+
+O asset `aurora-launchpad-0.1.0-1.fc44.noarch.rpm` desta pré-release instala o **Aurora Launchpad**, um assistente GTK/libadwaita para Fedora Workstation com GNOME em Wayland. Baixe o RPM nos assets da release e instale pelo GNOME Software ou com `sudo dnf install ./aurora-launchpad-0.1.0-1.fc44.noarch.rpm`. Ele verifica o ambiente, apresenta o plano e o tamanho dos downloads, instala os arquivos da Aurora no usuário atual, prepara Python/Vosk/Ollama e os modelos Gemma, configura `aurora.service` e mostra o progresso de cada etapa. O pacote RPM instala apenas o assistente e seus recursos; os modelos grandes são baixados depois da confirmação dentro do Launchpad. Para iniciar a Aurora, basta dizer “Aurora”; reiniciar o computador não costuma ser necessário.
+
+O desinstalador do Launchpad remove o serviço e a instalação gerenciada. Preferências, memória e modelos ficam preservados por padrão; há opções explícitas para apagar dados do usuário e os modelos Gemma que o próprio Launchpad registrou como novos. O Ollama do sistema não é removido, pois pode ser compartilhado por outros aplicativos. O Launchpad é experimental e recusa ambientes diferentes de Fedora Workstation/GNOME/Wayland.
+
+### Instalação manual
+
+Aurora também pode ser instalada por scripts versionados, sem instalar arquivos do app em diretórios globais.
 
 1. Instale Ollama para sua distribuição e baixe os dois modelos: `ollama pull gemma3:1b-it-qat` e `ollama pull gemma4:e2b-it-q4_K_M`.
 2. Clone o repositório e entre na pasta criada para o clone.
@@ -109,7 +117,7 @@ As respostas comuns mantêm o Gemma 3 1B rápido, com mais espaço de saída qua
 - Ollama e os modelos Gemma precisam ser instalados/baixados uma vez. `start-alpha.sh` aceita um runtime Ollama opcional via `AURORA_OLLAMA_RUNTIME_DIR`; sem isso, usa o Ollama instalado no sistema. A configuração local de runtime não faz parte do repositório.
 - A palavra de ativação roda localmente, mas a transcrição e a voz Edge TTS precisam de internet. `recognize_google` usa uma chave genérica indicada pelo projeto SpeechRecognition para uso pessoal/testes; o projeto avisa que ela pode ser revogada.
 - A busca e leitura de páginas usam conexões HTTP(S) diretas, sem proxies definidos por variáveis de ambiente, para conectar ao IP público validado e impedir que uma mudança de DNS redirecione a chamada para uma rede privada. Resoluções públicas verificadas ficam em cache por 10 segundos, com limite de 256 domínios.
-- Não há ainda instalador gráfico, Flatpak, RPM, atualização automática ou canal de atualização. O CI valida compilação, testes e sintaxe dos scripts; ele não testa hardware, voz real, OBS, Spotify nem publica releases. Revise os scripts antes de executá-los em outra máquina.
+- O RPM do Launchpad é experimental e só oferece suporte ao Fedora Workstation/GNOME/Wayland; ainda não há Flatpak nem atualização automática. O CI valida compilação, testes e sintaxe dos scripts; ele não testa hardware, voz real, OBS, Spotify nem a instalação completa em uma máquina limpa.
 - O Gemma 3 1B é pré-aquecido em segundo plano usando o mesmo endpoint de chat e as mesmas opções de inferência da Aurora. A latência depende do hardware e da tarefa; o Gemma 4 para tarefas de agente costuma levar mais tempo.
 - O serviço fixa `QT_QPA_PLATFORM=xcb` para permitir a bolha transparente e sempre no topo em ambientes compatíveis com XWayland. Transparência, posicionamento e always-on-top dependem do compositor e do gerenciador de janelas.
 

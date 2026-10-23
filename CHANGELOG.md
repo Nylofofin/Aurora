@@ -8,7 +8,8 @@ Pré-release pública para demonstração e avaliação técnica. Não represent
 - Desativa por padrão o servidor LAN do Companion arquivado e documenta a descontinuação do cliente Android.
 - Substitui os efeitos de áudio sem redistribuição confirmada por sinais CC0, com origem e licença registradas.
 - Remove APKs e tags de release Android do histórico Git publicado.
-- Mantém instalação por scripts/código-fonte; ainda não fornece pacotes RPM/Flatpak nem atualizador automático.
+- Adiciona o RPM experimental Aurora Launchpad para Fedora Workstation, com verificação do ambiente, instalação guiada e limpeza opcional.
+- Mantém também a instalação manual por scripts/código-fonte; ainda não fornece Flatpak nem atualizador automático.
 - **Limites de demonstração:** voz/STT e Edge TTS dependem da internet; resultados web podem variar por bloqueios e atualidade; OBS, captura e automação dependem do desktop e das permissões locais. Faça revisão humana das ações e dos resultados.
 
 ## 1.4.0 — Orchestra Runtime Coordination (ORC), 2026-10-23

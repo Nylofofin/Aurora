@@ -11,6 +11,7 @@ assets/vosk-model/
 *-preview.png
 
 reports/
+dist/
 aurora-memory.json
 
 # Android companion build output and machine-local SDK configuration
