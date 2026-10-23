@@ -269,6 +269,32 @@ def parse_provider_result_lines(text):
     return rows
 
 
+def build_eval_record(line_number, question, answer, trace, elapsed_seconds,
+                      should_search, reason, timed_out=False):
+    """Machine-readable evidence/latency summary; factual correctness stays human-reviewed."""
+    providers = []
+    for item in trace.network_requests:
+        if item.get("kind") not in ("DuckDuckGo Lite", "Bing RSS", "Bing Notícias", "Google Notícias"):
+            continue
+        providers.append({
+            "provider": item.get("kind"), "elapsed_ms": item.get("elapsed_ms"),
+            "status": item.get("status"), "extracted": item.get("extracted"),
+            "after_pipeline": item.get("after_pipeline"), "error": item.get("error"),
+        })
+    sources = parse_provider_result_lines(trace.raw_result_text)
+    return {
+        "line": line_number, "question": question,
+        "decision": {"search": bool(should_search), "reason": reason},
+        "elapsed_ms": round(elapsed_seconds * 1000), "timed_out": bool(timed_out),
+        "provider_requests": providers,
+        "sources": [{"title": title, "domain": domain, "date": date, "url": url}
+                    for title, domain, date, url in sources],
+        "pages_attempted": len(trace.pages_read),
+        "filters": dict(trace.filter_counts),
+        "answer": answer or "",
+    }
+
+
 def canonical_result_url(url, provider):
     url = urljoin("https://duckduckgo.com", url) if provider == "DuckDuckGo Lite" else url
     parsed = urlparse(url)
@@ -742,7 +768,9 @@ def evaluate(line_number, question, cfg, timeout_seconds, history=None, context_
         answer = f"tempo limite após {timeout_seconds:g}s; sem resposta final"
     lines.append("- **Resposta final:** " + (answer or "sem resposta final capturada"))
     lines.append(f"- **Tempo total:** {elapsed:.2f}s")
-    return "\n".join(lines), answer
+    record = build_eval_record(line_number, question, answer, trace, elapsed,
+                               should_search, why, timed_out["value"])
+    return "\n".join(lines), answer, record
 
 
 def main():
@@ -751,6 +779,8 @@ def main():
     parser.add_argument("--de", type=int, default=1, metavar="N", help="primeira linha inclusiva (padrão: 1)")
     parser.add_argument("--ate", type=int, metavar="M", help="última linha inclusiva (padrão: última pergunta)")
     parser.add_argument("--timeout", type=float, default=240, help="tempo máximo por pergunta (segundos)")
+    parser.add_argument("--jsonl", metavar="ARQUIVO.jsonl",
+                        help="grava resumo de métricas por pergunta, incrementalmente")
     args = parser.parse_args()
     if not QUESTIONS.is_file():
         parser.error(f"arquivo de perguntas não encontrado: {QUESTIONS}")
@@ -774,6 +804,14 @@ def main():
             os.fsync(output.fileno())
     except FileExistsError:
         parser.error(f"o arquivo de saída já existe; escolha outro caminho: {destination}")
+    metrics_destination = Path(args.jsonl).expanduser().resolve() if args.jsonl else None
+    if metrics_destination:
+        metrics_destination.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with metrics_destination.open("x", encoding="utf-8"):
+                pass
+        except FileExistsError:
+            parser.error(f"o arquivo JSONL já existe; escolha outro caminho: {metrics_destination}")
 
     app = QCoreApplication.instance() or QCoreApplication([])
     cfg = aurora.settings_load()
@@ -789,7 +827,7 @@ def main():
                 # line only as hidden context setup; the report still contains
                 # exactly the requested --de/--ate interval.
                 first_question = questions[first_pair_line - 1].strip()
-                _, first_answer = evaluate(
+                _, first_answer, _ = evaluate(
                     first_pair_line, first_question, cfg, args.timeout,
                     context_note="preparação de contexto fora do intervalo solicitado",
                 )
@@ -803,7 +841,7 @@ def main():
                 {"role": "assistant", "content": first_answer},
             ]
         question = questions[line_number - 1].strip()
-        block, answer = evaluate(
+        block, answer, record = evaluate(
             line_number, question, cfg, args.timeout, history=history, context_note=context_note
         )
         answers[line_number] = (question, answer)
@@ -811,6 +849,11 @@ def main():
             output.write("\n\n---\n\n" + block + "\n")
             output.flush()
             os.fsync(output.fileno())
+        if metrics_destination:
+            with metrics_destination.open("a", encoding="utf-8") as output:
+                output.write(json.dumps(record, ensure_ascii=False) + "\n")
+                output.flush()
+                os.fsync(output.fileno())
         print(block + "\n", flush=True)
     print(f"Trace salvo incrementalmente em: {destination}", flush=True)
     return app

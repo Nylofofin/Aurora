@@ -28,3 +28,26 @@ def test_eval_trace_patches_search_request_module_and_restores_it():
         restore_trace(originals)
 
     assert web_requests.search_public_web is original
+
+
+def test_eval_record_has_machine_readable_freshness_sources_and_latency():
+    from scripts.eval_search import build_eval_record
+
+    trace = Trace()
+    trace.raw_result_text = "Fonte oficial 23/10/2026 — https://example.org/news"
+    trace.filter_counts["data_pagina_ausente"] = 1
+    trace.pages_read.append({"url": "https://example.org/news"})
+    trace.network_requests.append({
+        "kind": "Bing RSS", "elapsed_ms": 240, "status": 200,
+        "extracted": 4, "after_pipeline": 1,
+    })
+
+    record = build_eval_record(8, "o que aconteceu hoje?", "Resposta com fonte.", trace,
+                              1.25, True, "sinal de atualidade")
+
+    assert record["elapsed_ms"] == 1250
+    assert record["decision"]["search"] is True
+    assert record["provider_requests"][0]["extracted"] == 4
+    assert record["filters"]["data_pagina_ausente"] == 1
+    assert record["pages_attempted"] == 1
+    assert record["sources"][0]["domain"] == "example.org"
