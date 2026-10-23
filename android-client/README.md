@@ -1,10 +1,14 @@
-# Aurora Android Companion — Beta Demo 0.7.3
+# Aurora Android Companion — Beta 0.8.0
 
-Cliente Android nativo Demo Experimental. Modelos, busca e automação ficam no computador; o telefone é a interface, microfone e saída de áudio. No celular, conversa casual usa o modelo de conversa; pedidos que exigem fatos atuais seguem para pesquisa e pedidos explícitos de ação usam as ferramentas locais permitidas.
+Cliente Android nativo Companion. Modelos, busca e automação ficam no computador; o telefone é a interface, microfone e saída de áudio. No celular, conversa casual usa o modelo de conversa; pedidos que exigem fatos atuais seguem para pesquisa e pedidos explícitos de ação usam as ferramentas locais permitidas.
 
 ## Estado atual
 
-- APK Beta Demo: [release Android 0.7.3](https://github.com/ruanminezinoficial2025-ctrl/Aurora/releases/tag/android-beta-v0.7.3). É uma build de desenvolvimento assinada para debug.
+- APK Beta: [release Android 0.8.0](https://github.com/ruanminezinoficial2025-ctrl/Aurora/releases/tag/android-beta-v0.8.0). É uma build assinada para testes.
+- **Bolha Flutuante (Overlay Widget)**: Ao sair do app durante o modo Live (Home ou alternador de tarefas), a Aurora torna-se uma bolha flutuante interativa sobre outros apps, podendo ser arrastada ou clicada para retornar.
+- **Escuta Contínua ("Hey Aurora")**: Serviço em primeiro plano com SpeechRecognizer local contínuo que desperta a assistente assim que a palavra de ativação é ouvida.
+- **Latência Reduzida**: Blocos PCM de detecção de wake no PC reduzidos de 1s para 200ms com retry automático.
+- **Arquitetura Reativa**: Lógica desacoplada em `AuroraViewModel` e thread-safety reforçado para reprodução de áudio.
 
 - Interface renovada em tons claros pastel de lavanda e azul, cartões mais leves, contraste legível, esfera Aurora animada e ícone adaptativo vetorial próprio.
 - Pareamento HTTPS com fingerprint SHA-256 digitado fora de banda, código de uso único e token cifrado no Android Keystore.
