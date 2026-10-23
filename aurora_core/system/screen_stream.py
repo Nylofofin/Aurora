@@ -1,11 +1,10 @@
-"""Consent-gated, view-only desktop stream through the XDG portal and PipeWire."""
+"""Consent-gated desktop stream and touch input through XDG portals/PipeWire."""
 from __future__ import annotations
 
-import secrets
 import shutil
+import json
 import struct
 import subprocess
-import sys
 import threading
 import time
 from pathlib import Path
@@ -26,6 +25,7 @@ class DesktopScreenStream:
         self._state = "idle"
         self._viewer_last_seen = 0.0
         self._worker = None
+        self._worker_lock = threading.Lock()
 
     @property
     def state(self):
@@ -72,121 +72,24 @@ class DesktopScreenStream:
                 self._error = error
             self._condition.notify_all()
 
-    @staticmethod
-    def _portal_response(bus, request_path, timeout=30):
-        from gi.repository import GLib
-
-        loop = GLib.MainLoop()
-        result = {}
-        def received(code, data):
-            result["code"] = int(code)
-            result["data"] = dict(data)
-            if loop.is_running(): loop.quit()
-        receiver = bus.add_signal_receiver(
-            received, signal_name="Response", dbus_interface="org.freedesktop.portal.Request",
-            path=request_path,
-        )
-        timer = GLib.timeout_add(int(timeout * 1000), lambda: (loop.quit(), False)[1])
-        try:
-            loop.run()
-        finally:
-            GLib.source_remove(timer)
-            receiver.remove()
-        if "code" not in result:
-            raise TimeoutError("O portal não respondeu à solicitação de compartilhamento.")
-        if result["code"] != 0:
-            raise PermissionError("O compartilhamento da tela foi recusado ou cancelado no desktop.")
-        return result["data"]
+    def send_input(self, event):
+        """Send one validated pointer event to the active portal session."""
+        with self._worker_lock:
+            process = self._worker
+            if self.state != "streaming" or process is None or process.poll() is not None or process.stdin is None:
+                return False
+            try:
+                process.stdin.write((json.dumps(event, separators=(",", ":")) + "\n").encode("utf-8"))
+                process.stdin.flush()
+                return True
+            except (BrokenPipeError, OSError, ValueError):
+                return False
 
     def _capture(self):
-        # Fedora's PyGObject/dbus bindings are built for the system interpreter
-        # and usually are not importable from Aurora's isolated venv. Keep the
-        # service isolated and run only the portal/PipeWire adapter there.
-        try:
-            import gi  # noqa: F401
-            import dbus  # noqa: F401
-        except ImportError:
-            self._capture_system_worker()
-            return
-
-        pipeline = None
-        bus = None
-        dbus = None
-        Gst = None
-        session_path = None
-        try:
-            import dbus
-            from dbus.mainloop.glib import DBusGMainLoop
-            import gi
-            gi.require_version("Gst", "1.0")
-            gi.require_version("GstApp", "1.0")
-            from gi.repository import Gst
-            DBusGMainLoop(set_as_default=True)
-            Gst.init(None)
-            bus = dbus.SessionBus()
-            portal = dbus.Interface(
-                bus.get_object("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop"),
-                "org.freedesktop.portal.ScreenCast",
-            )
-            token = "aurora_" + secrets.token_hex(8)
-            request = portal.CreateSession({"handle_token": token, "session_handle_token": token + "_session"})
-            data = self._portal_response(bus, request)
-            session_path = str(data["session_handle"])
-            request = portal.SelectSources(session_path, {
-                "handle_token": token + "_sources", "types": dbus.UInt32(1),
-                "multiple": False, "cursor_mode": dbus.UInt32(2),
-            })
-            self._portal_response(bus, request)
-            request = portal.Start(session_path, "", {"handle_token": token + "_start"})
-            data = self._portal_response(bus, request)
-            streams = data.get("streams", [])
-            if not streams:
-                raise RuntimeError("O portal não retornou uma tela para transmitir.")
-            node_id = int(streams[0][0])
-            remote_fd = portal.OpenPipeWireRemote(session_path, {})
-            fd = remote_fd.take() if hasattr(remote_fd, "take") else int(remote_fd)
-            desc = (
-                f"pipewiresrc fd={fd} path={node_id} do-timestamp=true ! videoconvert ! videoscale ! "
-                f"video/x-raw,width={self.width},framerate={self.fps}/1 ! jpegenc quality=58 ! "
-                "appsink name=aurora_sink max-buffers=1 drop=true sync=false"
-            )
-            pipeline = Gst.parse_launch(desc)
-            sink = pipeline.get_by_name("aurora_sink")
-            if pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
-                raise RuntimeError("Não consegui iniciar o fluxo PipeWire.")
-            self._set_state("streaming")
-            while not self._stop.is_set() and time.monotonic() - self._viewer_last_seen < 30:
-                sample = sink.emit("try-pull-sample", 1_000_000_000)
-                if sample is None:
-                    continue
-                buffer = sample.get_buffer()
-                success, mapping = buffer.map(Gst.MapFlags.READ)
-                if not success:
-                    continue
-                try:
-                    frame = bytes(mapping.data)
-                finally:
-                    buffer.unmap(mapping)
-                if len(frame) > 2_000_000:
-                    continue
-                with self._condition:
-                    self._frame = frame
-                    self._frame_number += 1
-                    self._condition.notify_all()
-        except Exception as exc:
-            self._set_state("error", str(exc) or type(exc).__name__)
-        finally:
-            if pipeline is not None:
-                pipeline.set_state(Gst.State.NULL)
-            if session_path and bus is not None:
-                try:
-                    session = dbus.Interface(bus.get_object("org.freedesktop.portal.Desktop", session_path),
-                                              "org.freedesktop.portal.Session")
-                    session.Close()
-                except Exception:
-                    pass
-            if not self._error:
-                self._set_state("idle")
+        # The system-python adapter owns both the screen stream and the
+        # consent-gated RemoteDesktop session, so the screen and touch input
+        # use the same portal-approved stream on Wayland and X11.
+        self._capture_system_worker()
 
     def _capture_system_worker(self):
         worker = Path(__file__).with_name("screen_stream_worker.py")
@@ -196,9 +99,10 @@ class DesktopScreenStream:
             return
         process = subprocess.Popen(
             [interpreter, str(worker), str(self.width), str(self.fps)],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0,
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0,
         )
-        self._worker = process
+        with self._worker_lock:
+            self._worker = process
         stderr_lines = []
         def read_stderr():
             for line in iter(process.stderr.readline, b""):
@@ -209,7 +113,6 @@ class DesktopScreenStream:
         error_reader = threading.Thread(target=read_stderr, name="aurora-screen-stderr", daemon=True)
         error_reader.start()
         try:
-            self._set_state("streaming")
             while not self._stop.is_set() and time.monotonic() - self._viewer_last_seen < 30:
                 header = self._read_exact(process.stdout, 4)
                 if not header:
@@ -223,6 +126,7 @@ class DesktopScreenStream:
                 with self._condition:
                     self._frame = frame
                     self._frame_number += 1
+                    self._state = "streaming"
                     self._condition.notify_all()
             if not self._stop.is_set():
                 detail = " ".join(stderr_lines).strip()
@@ -242,7 +146,8 @@ class DesktopScreenStream:
                     except subprocess.TimeoutExpired:
                         process.kill()
                         process.wait()
-            self._worker = None
+            with self._worker_lock:
+                self._worker = None
             if process.stdout:
                 process.stdout.close()
             if process.stderr:

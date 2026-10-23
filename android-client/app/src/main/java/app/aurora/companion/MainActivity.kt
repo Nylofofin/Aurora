@@ -297,29 +297,13 @@ private fun LoginBarrierScreen(viewModel: AuroraViewModel, colors: AuroraColors)
                     Text("Começar com Conta Local", fontWeight = FontWeight.Bold, color = Color.White)
                 }
 
-                Spacer(Modifier.height(10.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        onClick = {
-                            viewModel.completeLogin("google", nameInput.ifBlank { "Usuário Google" }, ageInput, "🌐")
-                        },
-                        modifier = Modifier.weight(1f).height(44.dp),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = colors.surfaceVariant)
-                    ) {
-                        Text("Google", fontSize = 12.sp, color = colors.textPrimary)
-                    }
-                    Button(
-                        onClick = {
-                            viewModel.completeLogin("github", nameInput.ifBlank { "Dev GitHub" }, ageInput, "🐙")
-                        },
-                        modifier = Modifier.weight(1f).height(44.dp),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = colors.surfaceVariant)
-                    ) {
-                        Text("GitHub", fontSize = 12.sp, color = colors.textPrimary)
-                    }
-                }
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "Perfil local neste celular; sem login Google/GitHub e sem conta na nuvem.",
+                    fontSize = 11.sp,
+                    color = colors.textSecondary,
+                    textAlign = TextAlign.Center,
+                )
             }
         }
     }
@@ -744,10 +728,18 @@ private fun DesktopTabContent(viewModel: AuroraViewModel, colors: AuroraColors) 
         ) {
             val bitmap = viewModel.screenBitmap
             if (bitmap != null) {
+                fun mapToScreen(position: Offset, areaWidth: Int, areaHeight: Int): Pair<Float, Float>? {
+                    if (areaWidth <= 0 || areaHeight <= 0) return null
+                    val fit = minOf(areaWidth / bitmap.width.toFloat(), areaHeight / bitmap.height.toFloat())
+                    val imageWidth = bitmap.width * fit
+                    val imageHeight = bitmap.height * fit
+                    val left = (areaWidth - imageWidth) / 2f
+                    val top = (areaHeight - imageHeight) / 2f
+                    if (position.x < left || position.y < top || position.x > left + imageWidth || position.y > top + imageHeight) return null
+                    return ((position.x - left) / imageWidth).coerceIn(0f, 1f) to
+                        ((position.y - top) / imageHeight).coerceIn(0f, 1f)
+                }
                 BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                    val boxWidth = maxWidth.value
-                    val boxHeight = maxHeight.value
-
                     Image(
                         bitmap = bitmap,
                         contentDescription = "Desktop Stream",
@@ -757,28 +749,43 @@ private fun DesktopTabContent(viewModel: AuroraViewModel, colors: AuroraColors) 
                             .pointerInput(Unit) {
                                 detectTapGestures(
                                     onTap = { offset ->
-                                        val normX = (offset.x / size.width).coerceIn(0f, 1f)
-                                        val normY = (offset.y / size.height).coerceIn(0f, 1f)
-                                        viewModel.sendDesktopInput("click", normX, normY, button = 1)
+                                        mapToScreen(offset, size.width, size.height)?.let { (x, y) ->
+                                            viewModel.sendDesktopInput("click", x, y, button = 1)
+                                        }
                                     },
                                     onDoubleTap = { offset ->
-                                        val normX = (offset.x / size.width).coerceIn(0f, 1f)
-                                        val normY = (offset.y / size.height).coerceIn(0f, 1f)
-                                        viewModel.sendDesktopInput("double_click", normX, normY, button = 1)
+                                        mapToScreen(offset, size.width, size.height)?.let { (x, y) ->
+                                            viewModel.sendDesktopInput("double_click", x, y, button = 1)
+                                        }
                                     },
                                     onLongPress = { offset ->
-                                        val normX = (offset.x / size.width).coerceIn(0f, 1f)
-                                        val normY = (offset.y / size.height).coerceIn(0f, 1f)
-                                        viewModel.sendDesktopInput("click", normX, normY, button = 3)
+                                        mapToScreen(offset, size.width, size.height)?.let { (x, y) ->
+                                            viewModel.sendDesktopInput("click", x, y, button = 3)
+                                        }
                                     }
                                 )
                             }
                             .pointerInput(Unit) {
-                                detectDragGestures { change, dragAmount ->
+                                var lastPoint: Pair<Float, Float>? = null
+                                detectDragGestures(
+                                    onDragStart = { position ->
+                                        lastPoint = mapToScreen(position, size.width, size.height)
+                                        lastPoint?.let { (x, y) -> viewModel.sendDesktopInput("down", x, y) }
+                                    },
+                                    onDragEnd = {
+                                        lastPoint?.let { (x, y) -> viewModel.sendDesktopInput("up", x, y) }
+                                        lastPoint = null
+                                    },
+                                    onDragCancel = {
+                                        lastPoint?.let { (x, y) -> viewModel.sendDesktopInput("up", x, y) }
+                                        lastPoint = null
+                                    },
+                                ) { change, _ ->
                                     change.consume()
-                                    val normX = (change.position.x / size.width).coerceIn(0f, 1f)
-                                    val normY = (change.position.y / size.height).coerceIn(0f, 1f)
-                                    viewModel.sendDesktopInput("move", normX, normY)
+                                    mapToScreen(change.position, size.width, size.height)?.let { point ->
+                                        lastPoint = point
+                                        viewModel.sendDesktopInput("move", point.first, point.second)
+                                    }
                                 }
                             }
                     )

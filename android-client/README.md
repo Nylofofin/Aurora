@@ -1,18 +1,20 @@
-# Aurora Android Companion — Release 1.2.0
+# Aurora Android Companion — Release 1.2.1 · NOVA-COMPANION-TOUCH
 
 Cliente Android nativo Companion. Modelos, busca e automação ficam no computador; o telefone é a interface, microfone e saída de áudio.
 
-## Novidades da Release Oficial 1.2.0
+## Novidades da Release 1.2.1
 
-- **Escuta Contínua no Live Mode Sem Fechar o Microfone**: O microfone permanece ativo em loop conversacional ininterrupto no modo Live. Ao terminar de falar e após a Aurora responder, o microfone reabre no mesmo instante sem fechar nem precisar de cliques.
-- **Barreira Inicial & Perfis Locais**: Ao abrir o aplicativo, tela de login (Google, GitHub ou Conta Local). Todas as preferências, nome, idade e avatar ficam salvos no dispositivo e sincronizados com a memória da Aurora no PC ("E ela lembra!").
+- **Escuta Contínua no Live Mode**: Um único `AudioRecord` permanece aberto na sessão Live e o VAD segmenta as falas sem destruir/reabrir o microfone após cada resposta. A captura retoma automaticamente após a voz da Aurora.
+- **Perfil Local**: Ao abrir o aplicativo, informe nome, idade opcional e avatar. O perfil fica no armazenamento local privado do Android; ao conectar, preferências selecionadas são enviadas pela LAN/TLS para personalização local no PC. Não há login Google/GitHub nem conta na nuvem.
 - **Interface Repaginada com Abas e Temas**: Navegação moderna com abas de Chat, Live, Desktop Remoto e Configurações. Suporte a temas personalizáveis: Aurora (Lilás), Dark (OLED Escuro), Light (Claro Suave) e Cyber Neon.
-- **Controle Remoto do Desktop com Toque (Experimental)**:
+- **Controle Remoto do Desktop com Toque (Experimental, com consentimento GNOME)**:
   - Diga *"Aurora, mostre meu computador"* ou acesse a aba Desktop para espelhar a tela do PC em tempo real.
   - Controle completo por toque: toque simples clica, toque duplo abre itens, toque longo abre o menu de contexto (botão direito) e arrasto move o cursor.
   - Para voltar, basta dizer *"Sair do desktop"* ou clicar em Sair.
-- **Permissões GNOME Automáticas**: Integração direta com GNOME Wayland/X11 e AT-SPI para controle de entrada sem restrições.
-- **APK Release**: [release oficial Android 1.2.0](https://github.com/ruanminezinoficial2025-ctrl/Aurora/releases/tag/android-v1.2.0). Build oficial assinada.
+- O GNOME apresenta o diálogo do portal RemoteDesktop/ScreenCast para o usuário aprovar tela e ponteiro. A Aurora não habilita RDP/VNC globalmente nem ignora o consentimento do sistema.
+- **APK Release**: [release integrada Android + PC 1.2.1](https://github.com/ruanminezinoficial2025-ctrl/Aurora/releases/tag/v1.2.1). Build assinada para debug, até validação em aparelho real.
+
+- **Live mantém o AudioRecord aberto entre turnos**: o VAD fecha apenas o segmento de fala, sem destruir e reabrir a sessão do microfone após cada resposta.
 
 - Interface renovada em tons claros pastel de lavanda e azul, cartões mais leves, contraste legível, esfera Aurora animada e ícone adaptativo vetorial próprio.
 - Pareamento HTTPS com fingerprint SHA-256 digitado fora de banda, código de uso único e token cifrado no Android Keystore.
@@ -21,15 +23,15 @@ Cliente Android nativo Companion. Modelos, busca e automação ficam no computad
 - Voz por turnos com foreground service do Android: toque em **Falar com a Aurora** ou **Voz**, fale e toque em **Parar e enviar**; a notificação deixa o uso do microfone visível e a captura pode continuar com a tela bloqueada. O PC transcreve em pt-BR, executa a conversa central e devolve o áudio sintetizado.
 - Respostas de voz geradas pelo PC via Edge TTS na voz configurada (Thalita por padrão) e enviadas em um POST HTTPS binário separado (`audio/mpeg`), sem Base64 no JSON do chat. O cliente não usa o TTS Google/Android. A síntese precisa de internet no PC e pode levar alguns segundos; se falhar, a mensagem permanece e a interface mostra a etapa/erro.
 - Durante o controle pelo celular, a fala parcial e os sons da bolha não tocam nos alto-falantes do PC. Os sons de entrada/saída são assets WAV embutidos no APK, sem streaming pela rede. A voz Edge TTS é gerada no PC e enviada em MP3; o cliente usa extensão reconhecível pelo Android e avisa se não conseguir reproduzir. O som de saída é carregado do APK antes de liberar o controle ao desktop. Cliques usam o feedback de interface configurado no Android.
-- Modo Live em tela cheia: o botão waveform abre uma bolha central animada e toca o som de entrada do PC; cada fala começa por toque, e o X encerra e toca o som de saída. A sessão permanece aberta para novos turnos até sair.
+- Modo Live em tela cheia: o botão waveform abre uma bolha central animada e toca o som de entrada; a escuta por turnos permanece ativa até tocar no X, que encerra e toca o som de saída.
 - Wake word experimental pelo botão **Mic**. Com a sessão conectada, um serviço de microfone em primeiro plano envia PCM por HTTPS ao PC; o modelo Vosk local reconhece “Aurora”. Se o app estiver visível, o Live inicia sem outro toque. O indicador de microfone permanece na notificação; com o app em segundo plano, é necessário abrir a notificação e tocar em **Falar** para continuar.
-- Visualização ao vivo da tela do PC pelo botão **PC**. O portal do desktop solicita consentimento no computador; quadros JPEG são enviados por HTTPS ao telefone. O fluxo é somente leitura, não salva imagens e encerra ao sair, desconectar ou após 30 segundos sem visualizador.
+- Desktop Remoto pelo botão **Desktop**. O portal GNOME solicita consentimento para tela e ponteiro; quadros JPEG são enviados por HTTPS e os toques mapeados viram eventos de ponteiro no mesmo stream aprovado. O fluxo não salva imagens e encerra ao sair, desconectar ou após 30 segundos sem visualizador.
 - Gaveta lateral com histórico completo de conversas do PC, seleção de chat e ação de nova conversa.
 - Descoberta automática do PC por DNS-SD/mDNS quando ambos estão na mesma LAN; a impressão digital TLS continua sendo verificada fora de banda.
 - Controle exclusivo: ao conectar, o stream do microfone e o wake word local do PC são encerrados; **Desconectar** devolve a escuta à Aurora desktop. Se o app ou a rede cair, o lease expira e o PC retoma em até 60 segundos.
 - Comandos explícitos de baixo risco: abrir app/site, controlar volume, consultar hardware e capturar tela. Ações que pedem confirmação presencial (como fechar app ou iniciar gravação OBS) são recusadas pelo mobile nesta demo.
 - O wake word mobile é experimental e não equivale ao “Hey Google”: depende do PC pareado, da conexão local e de uma ação do usuário para retomar a conversa se o app estiver em segundo plano. Não detecta a palavra quando o celular está desconectado.
-- Nesta build, wake word e transmissão de tela passaram por testes de código e compilação, mas ainda precisam de validação em um celular e de um aceite real do portal ScreenCast; trate os dois como experimentais.
+- Nesta build, wake contínuo, captura/stream e validação de eventos passaram por testes de código e compilação. Ainda precisam de validação no celular e aceite real do portal GNOME RemoteDesktop/ScreenCast; trate-os como experimentais.
 - O serviço desktop precisa estar atualizado e ativo; versões anteriores à API companion ainda não aceitam pareamento.
 
 ## Arquitetura da Demo
@@ -39,7 +41,7 @@ Cliente Android nativo Companion. Modelos, busca e automação ficam no computad
 3. Conversas e histórico são armazenados no PC e sincronizados ao cliente.
 4. A demo de voz envia gravação PCM mono a 16 kHz (máximo 45 segundos) por HTTPS ao PC. O PC transcreve pela integração Google Speech e gera a resposta falada via Edge TTS; o app recebe e reproduz o MP3 sem usar TTS Google/Android. O microfone só é acessado após permissão e toque explícito. Um foreground service exibe uma notificação e mantém a gravação solicitada ativa enquanto a tela está bloqueada; o limite é 45 segundos e fechar à força o app encerra a captura. O áudio capturado fica apenas em memória no PC; o serviço de reconhecimento Google recebe o trecho de fala, como no cliente desktop.
 5. A conexão atual usa a mesma rede local. Acesso remoto futuro deverá usar VPN privada; não encaminhe a porta do PC à internet.
-6. A tela ao vivo usa o portal ScreenCast, PipeWire e GStreamer. O consentimento do desktop é obrigatório; o fluxo é somente leitura. Automação do próprio Android fica fora desta Beta Demo.
+6. Tela e ponteiro remoto usam os portais GNOME RemoteDesktop/ScreenCast, PipeWire e GStreamer. O usuário aprova o compartilhamento e controle no diálogo do desktop; a Aurora não ativa RDP/VNC globalmente nem contorna o portal. O fluxo é limitado à sessão aprovada e termina ao desconectar.
 
 ## Começar uma conversa
 

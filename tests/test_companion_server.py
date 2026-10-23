@@ -88,10 +88,12 @@ class CompanionHttpsTests(unittest.TestCase):
 
             wake_frames = []
             screen_frames = []
+            remote_inputs = []
             class ScreenStream:
                 state = "streaming"
                 def start(self): self.state = "starting"; return self.state
                 def stop(self): self.state = "stopping"
+                def send_input(self, event): remote_inputs.append(event); return True
                 def frame_after(self, after, timeout):
                     screen_frames.append((after, timeout))
                     return 7, b"jpeg-frame"
@@ -156,6 +158,14 @@ class CompanionHttpsTests(unittest.TestCase):
                 self.assertEqual(response.getheader("X-Frame-Number"), "7")
                 self.assertEqual(response.read(), b"jpeg-frame")
                 self.assertEqual(screen_frames, [(6, 2.0)])
+                connection.request("POST", "/v1/desktop/input", json.dumps({
+                    "action": "click", "x": 0.25, "y": 0.75, "button": 1,
+                }), {"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+                response = connection.getresponse()
+                self.assertEqual(response.status, 200)
+                self.assertTrue(json.loads(response.read())["success"])
+                self.assertEqual(remote_inputs[0]["action"], "click")
+                self.assertEqual(remote_inputs[0]["x"], 0.25)
                 connection.request("POST", "/v1/screen/stop", "{}", {
                     "Authorization": f"Bearer {token}", "Content-Type": "application/json"})
                 response = connection.getresponse()

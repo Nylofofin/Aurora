@@ -1,7 +1,8 @@
-# Aurora — NOVA-TOUCH
+# Aurora — NOVA-TOUCH-R1
 
-**Versão:** `1.2.0` (release estável integrada PC e celular com Desktop Remoto Touch) · **Build:** `AUR-20261023.G3.RELEASE`
-**Geração:** `3` · **Codinome técnico:** `NOVA-TOUCH` — assistente local-first com Gemma via Ollama, Desktop Remoto Touch e modo Live contínuo.
+**Versão:** `1.2.1` (patch de escuta contínua e Desktop Remoto com consentimento do portal) · **Build:** `AUR-20261023.G3.PATCH1`
+**Geração:** `3` · **Codinome técnico PC:** `NOVA-TOUCH-R1` — assistente local-first com Gemma via Ollama e Companion móvel.
+**Codinome técnico Android:** `NOVA-COMPANION-TOUCH` — interface de chat, Live e Desktop Remoto experimental.
 
 > **Release pessoal para Linux desktop.** A versão 1.0.2 reúne correções de idioma e automação do OBS. A Aurora confirma que a gravação parou antes de encerrar o OBS Flatpak. O OBS é iniciado com pedido de minimização para bandeja; gravação sem janela depende da configuração do próprio OBS e do ambiente gráfico. Não inclui pacote Flatpak/RPM nem atualizador automático. O código-fonte está publicado no GitHub.
 
@@ -9,9 +10,9 @@
 
 **Experimento:** peça “diagnóstico da Aurora” para obter uma verificação local e somente leitura do Ollama/modelos, dependências de voz, modelo Vosk e sessão gráfica. O diagnóstico não testa microfone, serviços online, OBS ou Spotify e não altera configurações.
 
-## Cliente Android Companion (Release v1.0.0)
+## Cliente Android Companion (Release v1.2.1)
 
-O cliente Android **Release 1.0.0** conversa com o roteador central e mantém histórico no PC. Na mesma LAN, **Encontrar meu PC automaticamente** usa DNS-SD/mDNS. O pareamento exige conferir o pin SHA-256 no PC e digitar o código de uso único. Ao adquirir o controle, a captura de microfone/wake do desktop fecha; desconectar devolve a escuta local, e uma queda de rede libera o controle após 60 segundos. Os sons de entrada/saída ficam embutidos no APK; a voz Edge TTS (Thalita) é gerada no PC e enviada ao telefone. Cliques usam o feedback do Android e falhas de reprodução de voz aparecem na interface. O PC transcreve gravações pelo Google Speech. O modo Live conta com conversa contínua hands-free e bolha flutuante overlay com zona de descarte; a tela do PC pode ser transmitida via ScreenCast, PipeWire e GStreamer. Instale o APK na [release oficial do cliente Android v1.0.0](https://github.com/ruanminezinoficial2025-ctrl/Aurora/releases/tag/android-v1.0.0); instruções e limites estão em [`android-client/README.md`](android-client/README.md).
+O cliente Android **1.2.1 · NOVA-COMPANION-TOUCH** conversa com o roteador central e mantém histórico no PC. Na mesma LAN, **Encontrar meu PC automaticamente** usa DNS-SD/mDNS. O pareamento exige conferir o pin SHA-256 no PC e digitar o código de uso único. Ao adquirir o controle, a captura de microfone/wake do desktop fecha; desconectar devolve a escuta local, e uma queda de rede libera o controle após 60 segundos. O perfil local e o tema ficam no armazenamento privado do celular; campos de perfil podem ser sincronizados pela LAN/TLS para personalização local no PC. Não há autenticação Google/GitHub nem conta de nuvem. O modo Live mantém a sessão de captura do microfone entre turnos. O Desktop Remoto combina ScreenCast/PipeWire com entrada por XDG RemoteDesktop, após consentimento visível do GNOME. Instale pela [release integrada v1.2.1](https://github.com/ruanminezinoficial2025-ctrl/Aurora/releases/tag/v1.2.1); instruções e limites estão em [`android-client/README.md`](android-client/README.md).
 
 ## Ambiente
 

@@ -1,3 +1,6 @@
+import io
+import json
+
 from aurora_core.system.screen_stream import DesktopScreenStream
 
 
@@ -31,3 +34,18 @@ def test_worker_frame_reader_handles_partial_reads_and_eof():
 
     assert DesktopScreenStream._read_exact(Fragmented(b"abcdefgh"), 6) == b"abcdef"
     assert DesktopScreenStream._read_exact(Fragmented(b"ab"), 3) == b""
+
+
+def test_screen_stream_forwards_input_only_while_portal_session_is_streaming():
+    class Worker:
+        stdin = io.BytesIO()
+        def poll(self): return None
+
+    stream = DesktopScreenStream()
+    worker = Worker()
+    stream._worker = worker
+    assert stream.send_input({"action": "click", "x": 0.5, "y": 0.5}) is False
+    stream._set_state("streaming")
+    assert stream.send_input({"action": "click", "x": 0.5, "y": 0.5}) is True
+    worker.stdin.seek(0)
+    assert json.loads(worker.stdin.readline()) == {"action": "click", "x": 0.5, "y": 0.5}

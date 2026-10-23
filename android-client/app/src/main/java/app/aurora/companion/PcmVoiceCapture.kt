@@ -21,11 +21,18 @@ import kotlin.math.sqrt
 class PcmVoiceCapture {
     private val stopped = AtomicBoolean(false)
     @Volatile private var recorder: AudioRecord? = null
+    @Volatile private var recordingStarted = false
 
     fun stop() {
         stopped.set(true)
+        val active = recorder
+        try {
+            if (active?.recordingState == AudioRecord.RECORDSTATE_RECORDING) active.stop()
+        } catch (_: Exception) { }
+        recordingStarted = false
     }
 
+    @Synchronized
     fun captureWav(): ByteArray {
         val sampleRate = 16_000
         val minBuffer = AudioRecord.getMinBufferSize(
@@ -37,24 +44,24 @@ class PcmVoiceCapture {
         }
 
         val bufferSize = maxOf(minBuffer * 2, 6_400)
-        var audio: AudioRecord? = null
-        try {
-            audio = AudioRecord(
-                MediaRecorder.AudioSource.MIC, sampleRate, AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT, bufferSize,
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "Erro ao instanciar AudioRecord", e)
-            return ByteArray(0)
-        }
+        val audio = recorder ?: try {
+                AudioRecord(
+                    MediaRecorder.AudioSource.MIC, sampleRate, AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT, bufferSize,
+                ).also { recorder = it }
+            } catch (e: Exception) {
+                Log.e(TAG, "Erro ao instanciar AudioRecord", e)
+                return ByteArray(0)
+            }
 
         if (audio.state != AudioRecord.STATE_INITIALIZED) {
             Log.e(TAG, "AudioRecord não inicializado (recurso ocupado)")
             runCatching { audio.release() }
+            if (recorder === audio) recorder = null
+            recordingStarted = false
             return ByteArray(0)
         }
 
-        recorder = audio
         val pcm = ByteArrayOutputStream()
         val buffer = ShortArray(1_600) // 100ms chunks a 16kHz
         val byteBuffer = ByteArray(3_200)
@@ -71,16 +78,20 @@ class PcmVoiceCapture {
         val maxWaitingChunksWithoutSpeech = 60 // 6.0s sem fala alguma = desiste pacificamente
 
         try {
-            audio.startRecording()
+            if (!recordingStarted) {
+                audio.startRecording()
+                recordingStarted = true
+            }
             while (!stopped.get() && (System.nanoTime() - startedAt) < 45_000_000_000L) {
                 val readShorts = audio.read(buffer, 0, buffer.size)
                 if (readShorts > 0) {
                     totalChunks++
 
-                    // Descarta os primeiros 2 chunks (200ms) para ignorar clique/beep inicial
-                    if (totalChunks <= 2) {
+                    // Descarta o início do primeiro ciclo para ignorar o beep de entrada.
+                    if (!hasReadAudio && totalChunks <= 2) {
                         continue
                     }
+                    hasReadAudio = true
 
                     var sumSquares = 0.0
                     for (i in 0 until readShorts) {
@@ -115,20 +126,13 @@ class PcmVoiceCapture {
                             }
                         }
                     }
+                } else if (readShorts < 0) {
+                    throw IllegalStateException("AudioRecord.read falhou: $readShorts")
                 }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Exceção durante leitura do microfone", e)
-        } finally {
-            try {
-                if (audio.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
-                    audio.stop()
-                }
-            } catch (_: Exception) { }
-            try {
-                audio.release()
-            } catch (_: Exception) { }
-            recorder = null
+            close()
         }
 
         if (!hasSpoken) {
@@ -143,6 +147,20 @@ class PcmVoiceCapture {
         }
 
         return wavHeader(bytes.size, sampleRate) + bytes
+    }
+
+    private var hasReadAudio = false
+
+    @Synchronized
+    fun close() {
+        stopped.set(true)
+        val active = recorder
+        recorder = null
+        recordingStarted = false
+        try {
+            if (active?.recordingState == AudioRecord.RECORDSTATE_RECORDING) active.stop()
+        } catch (_: Exception) { }
+        try { active?.release() } catch (_: Exception) { }
     }
 
     private fun wavHeader(dataSize: Int, sampleRate: Int): ByteArray {

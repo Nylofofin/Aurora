@@ -86,6 +86,7 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
     private var screenStreamJob: Job? = null
     private var liveModeLoopJob: Job? = null
     private var currentLiveCapture: PcmVoiceCapture? = null
+    private var lastRemoteInputSentAt = 0L
 
     init {
         if (savedCredentials != null) {
@@ -315,10 +316,11 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
     private fun startContinuousLiveLoop() {
         liveModeLoopJob?.cancel()
         liveModeLoopJob = viewModelScope.launch(Dispatchers.IO) {
+            val capture = PcmVoiceCapture()
+            currentLiveCapture = capture
             Log.i("AuroraLive", "Iniciando loop contínuo de conversação hands-free")
-            while (isActive && liveMode && connected) {
-                val capture = PcmVoiceCapture()
-                currentLiveCapture = capture
+            try {
+              while (isActive && liveMode && connected) {
                 withContext(Dispatchers.Main) {
                     live = true
                     remoteState = "listening"
@@ -327,7 +329,6 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
 
                 // Captura a fala com VAD local
                 val wav = capture.captureWav()
-                currentLiveCapture = null
 
                 if (!isActive || !liveMode || !connected) break
 
@@ -392,10 +393,14 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
                 // Delay curto para amortecer eco residual do alto-falante
                 delay(200)
                 // O loop reinicia automaticamente: escuta aberta de novo!
-            }
-            withContext(Dispatchers.Main) {
-                live = false
-                remoteState = "idle"
+              }
+            } finally {
+                currentLiveCapture = null
+                capture.close()
+                withContext(Dispatchers.Main) {
+                    live = false
+                    if (!liveMode) remoteState = "idle"
+                }
             }
         }
     }
@@ -468,8 +473,14 @@ class AuroraViewModel(application: Application) : AndroidViewModel(application) 
 
     fun sendDesktopInput(action: String, x: Float, y: Float, button: Int = 1, delta: Float = 0f) {
         if (!connected || token.isBlank()) return
+        val now = SystemClock.elapsedRealtime()
+        if (action == "move" && now - lastRemoteInputSentAt < 40L) return
+        lastRemoteInputSentAt = now
         viewModelScope.launch(Dispatchers.IO) {
-            CompanionClient(endpoint, fingerprint, token).sendDesktopInput(action, x, y, button, delta)
+            val accepted = CompanionClient(endpoint, fingerprint, token).sendDesktopInput(action, x, y, button, delta)
+            if (!accepted) withContext(Dispatchers.Main) {
+                notice = "O GNOME não aceitou o toque. Conecte a tela e aprove o diálogo de compartilhamento/controle no PC."
+            }
         }
     }
 

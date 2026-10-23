@@ -583,14 +583,17 @@ class CompanionServer:
                     if not isinstance(payload, dict):
                         self._json(400, {"error": "invalid json"})
                         return
-                    action = str(payload.get("action", "move"))
-                    x = float(payload.get("x", 0.0))
-                    y = float(payload.get("y", 0.0))
-                    button = int(payload.get("button", 1))
-                    delta = float(payload.get("delta", 0.0))
-                    from ..system.remote_input import inject_remote_event
-                    ok = inject_remote_event(action, x, y, button, delta)
-                    self._json(200 if ok else 500, {"success": ok})
+                    from ..system.remote_input import validate_remote_event
+                    event = validate_remote_event(
+                        payload.get("action", "move"), payload.get("x", 0.0),
+                        payload.get("y", 0.0), payload.get("button", 1),
+                        payload.get("delta", 0.0),
+                    )
+                    if not outer.screen_stream:
+                        self._json(409, {"error": "remote desktop stream is not available"})
+                        return
+                    ok = outer.screen_stream.send_input(event)
+                    self._json(200 if ok else 409, {"success": ok, "error": None if ok else "screen sharing and GNOME pointer consent are required"})
                 except Exception as exc:
                     self._json(400, {"error": str(exc)})
 
