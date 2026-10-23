@@ -5,6 +5,7 @@ import json
 import time
 import socket
 import threading
+import pytest
 
 import aurora
 import aurora_integrations as integrations
@@ -423,6 +424,9 @@ def test_local_fast_router_handles_media_capture_and_obs_requests():
     assert aurora.parse_local_command("pare de gravar a tela") == (
         "obs_record", {"action": "stop"}
     )
+    for request in ("Aurora, pare a gravação", "interrompa a gravação do OBS",
+                    "parar a gravação no OBS"):
+        assert aurora.parse_local_command(request) == ("obs_record", {"action": "stop"})
 
 
 def test_hardware_fast_route_reaches_the_system_info_executor(monkeypatch):
@@ -669,7 +673,8 @@ def test_obs_flatpak_settings_with_non_object_json_are_ignored(monkeypatch, tmp_
     assert integrations._flatpak_obs_settings() == {}
 
 
-def test_obs_websocket_authenticates_and_confirms_record_request(monkeypatch):
+@pytest.mark.parametrize("active_after_start", [True, False])
+def test_obs_websocket_authenticates_and_verifies_record_state(monkeypatch, active_after_start):
     monkeypatch.setattr(integrations, "_append_action_log", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(integrations, "_flatpak_obs_settings", lambda: {
         "server_enabled": True, "auth_required": True,
@@ -720,6 +725,12 @@ def test_obs_websocket_authenticates_and_confirms_record_request(monkeypatch):
                 send_frame(connection, {"op": 7, "d": {"requestType": "StartRecord",
                     "requestId": request["d"]["requestId"],
                     "requestStatus": {"result": True, "code": 100}}})
+                status = integrations._ws_receive(connection)
+                requests.append(status)
+                send_frame(connection, {"op": 7, "d": {"requestType": "GetRecordStatus",
+                    "requestId": status["d"]["requestId"],
+                    "requestStatus": {"result": True, "code": 100},
+                    "responseData": {"outputActive": active_after_start}}})
         except Exception as exc:
             errors.append((stage[0], repr(exc)))
         finally:
@@ -730,7 +741,11 @@ def test_obs_websocket_authenticates_and_confirms_record_request(monkeypatch):
     outcome = integrations.obs_record("start", port=port)
     thread.join(timeout=3)
     assert not thread.is_alive()
-    assert "iniciada" in outcome, (outcome, errors)
+    if active_after_start:
+        assert "iniciada" in outcome, (outcome, errors)
+    else:
+        assert "não confirmei" in outcome.casefold()
     assert not errors
     assert requests[0]["d"]["requestType"] == "StartRecord"
+    assert requests[1]["d"]["requestType"] == "GetRecordStatus"
 

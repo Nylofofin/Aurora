@@ -34,7 +34,7 @@ def parse_local_command(prompt):
             return ('spotify_play',{'query':track})
     if re.search(r'\b(?:tire|tira|faca|faca um|faca uma|captura|capture|print|screenshot)\b',text) and re.search(r'\b(?:print|screenshot|captura|captura de tela|tela)\b',text):
         return ('take_screenshot',{})
-    if re.search(r'\b(?:pare|parar|para|encerre|encerrar|finalize|finalizar)\b.*\b(?:gravacao|gravar|gravando|registro)\b',text):
+    if re.search(r'\b(?:pare|parar|para|encerre|encerrar|finalize|finalizar|interrompa|interromper|interrompe)\b.*\b(?:gravacao|gravar|gravando|registro)\b',text):
         return ('obs_record',{'action':'stop'})
     if re.search(r'\b(?:grave|grava|gravar|gravacao|inicie|iniciar|comece|comecar)\b.*\b(?:tela|screen|gravacao|gravando|video)\b',text):
         return ('obs_record',{'action':'start'})

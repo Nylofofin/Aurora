@@ -458,6 +458,67 @@ def test_tapping_pending_approval_interrupts_voice_before_execution():
     assert sequence == ["interrupt", ("resolve", True)]
 
 
+def test_new_wake_defaults_response_language_to_brazilian_portuguese():
+    class Voice:
+        def begin_request(self): pass
+    class Orb:
+        def reveal(self, _mode): pass
+    class Feedback:
+        def play(self): pass
+    class ServiceStub:
+        response_language = "Spanish"
+        activity_generation = 0
+        inf = None
+        voice = Voice()
+        orb = Orb()
+        feedback = Feedback()
+
+    stub = ServiceStub()
+    service_module.AuroraService.wake(stub)
+    assert stub.response_language == "Português brasileiro"
+
+
+def test_obs_stop_action_clears_interrupt_listener_without_cancelling_stop(monkeypatch):
+    from PySide6.QtCore import QObject
+    interrupt = threading.Event()
+    interrupt.set()
+
+    class Signal:
+        def connect(self, _callback): pass
+    class Worker:
+        def __init__(self, *_args):
+            self.completed = Signal()
+            self.finished = Signal()
+        def start(self): pass
+        def isRunning(self): return False
+    monkeypatch.setattr(service_module, "_ObsActionRequest", Worker)
+
+    class Orb:
+        def set_mode(self, _mode): pass
+    class Voice:
+        interrupt_active = interrupt
+    class ServiceStub(service_module.AuroraService):
+        def __init__(self):
+            QObject.__init__(self)
+            self.voice = Voice()
+            self.orb = Orb()
+            self.cfg = {}
+            self.action_cancel_event = threading.Event()
+            self.request_generation = 1
+            self.action_workers = []
+            self.obs_details = {}
+        def _schedule_action_watchdog(self, *_args): pass
+
+    stub = ServiceStub()
+    detail = {"name": "obs_record", "args": {"action": "stop"},
+              "event": threading.Event(), "result": "Ação recusada."}
+    service_module.AuroraService._start_obs_action(stub, detail)
+
+    assert not interrupt.is_set()
+    assert len(stub.action_workers) == 1
+    assert stub.obs_details[stub.action_workers[0]] is detail
+
+
 def test_expiration_callback_for_old_approval_does_not_clear_new_one():
     old = {"event": threading.Event()}
     current = {"event": threading.Event()}

@@ -744,6 +744,28 @@ def obs_record(action: str, password: str = "", host: str = "127.0.0.1", port: i
                     _append_action_log("obs_record", "rejected", {"action": action})
                     return (f"O OBS recusou o comando: {comment}. A gravação não foi alterada."
                             if comment else "O OBS recusou o comando. A gravação não foi alterada.")
+                # A successful StartRecord/StopRecord RPC is not enough to
+                # tell the user the output changed; verify OBS's resulting
+                # state before speaking a success confirmation.
+                status_id = secrets.token_hex(8)
+                _ws_send(stream, {"op": 6, "d": {"requestType": "GetRecordStatus",
+                          "requestId": status_id, "requestData": {}}}, deadline)
+                while True:
+                    status_reply = _ws_receive(stream, deadline)
+                    if status_reply.get("op") != 7:
+                        continue
+                    status_data = status_reply.get("d", {})
+                    if status_data.get("requestId") != status_id:
+                        continue
+                    break
+                expected_active = action == "start"
+                actual_active = status_data.get("responseData", {}).get("outputActive")
+                if (not status_data.get("requestStatus", {}).get("result")
+                        or actual_active is not expected_active):
+                    _append_action_log("obs_record", "unavailable", {"action": action,
+                                        "phase": "verify", "error_type": "StateMismatch"})
+                    return ("O OBS aceitou o comando, mas não confirmei que a gravação "+
+                            ("está ativa." if expected_active else "foi parada."))
                 _append_action_log("obs_record", "started" if action == "start" else "stopped")
                 return "Gravação iniciada no OBS." if action == "start" else "Gravação parada no OBS."
     except RuntimeError as exc:

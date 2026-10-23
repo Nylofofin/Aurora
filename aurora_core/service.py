@@ -187,6 +187,9 @@ class AuroraService(QObject):
     @Slot()
     def wake(self):
         self.last_wake=time.monotonic()
+        # A language requested for a playful turn must not leak into the next
+        # activation or into confirmations for a later desktop action.
+        self.response_language='Português brasileiro'
         # Give this activation its own cancellation token. Workers from a
         # cancelled request retain the old, set token when a new wake arrives.
         self.action_cancel_event=threading.Event()
@@ -473,6 +476,12 @@ class AuroraService(QObject):
         detail['event'].set(); self.orb.set_mode('thinking')
         if detail.get('direct'): self.complete_direct_action(detail['result'] if approved else 'Tudo bem, não executei essa ação.')
     def _start_obs_action(self,detail):
+        if detail.get('args',{}).get('action')=='stop':
+            # "Para a gravação" contains the same word as the voice interrupt
+            # phrase. This request is already the user's explicit stop command;
+            # do not let the cancel recognizer cancel its own OBS RPC.
+            interrupt_listener=getattr(self.voice,'interrupt_active',None)
+            if interrupt_listener: interrupt_listener.clear()
         self.orb.set_mode('controlling')
         detail['request_generation']=self.request_generation
         detail['cancel_event']=self.action_cancel_event
