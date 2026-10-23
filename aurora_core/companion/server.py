@@ -301,6 +301,9 @@ class CompanionServer:
                 if path == "/v1/wake":
                     self._post_wake_audio()
                     return
+                if path == "/v1/speech":
+                    self._post_speech()
+                    return
                 if path in {"/v1/screen/start", "/v1/screen/stop"}:
                     self._post_screen_stream(path)
                     return
@@ -363,12 +366,15 @@ class CompanionServer:
                         self._json(502, {"error": "empty response"})
                         return
                     outer._append_exchange(conversation_id, message.strip(), answer.strip(), context_history)
-                    if outer.on_speech:
-                        outer.set_remote_state("speaking")
-                    speech_audio = self._speech_audio(answer.strip())
-                    self._json(200, {"conversation_id": conversation_id, "answer": answer.strip(), "speech_audio_base64": speech_audio})
-                    if outer.on_speech and outer.control_active():
-                        outer.set_remote_state("ready")
+                    if payload.get("speech_delivery") == "separate":
+                        self._json(200, {"conversation_id": conversation_id, "answer": answer.strip()})
+                    else:
+                        if outer.on_speech:
+                            outer.set_remote_state("speaking")
+                        speech_audio = self._speech_audio(answer.strip())
+                        self._json(200, {"conversation_id": conversation_id, "answer": answer.strip(), "speech_audio_base64": speech_audio})
+                        if outer.on_speech and outer.control_active():
+                            outer.set_remote_state("ready")
                 finally:
                     lock.release()
 
@@ -457,14 +463,56 @@ class CompanionServer:
                         self._json(502, {"error": "empty voice response"})
                         return
                     outer._append_exchange(conversation_id, transcript.strip(), answer.strip(), completion.get("context_history"))
-                    if outer.on_speech:
-                        outer.set_remote_state("speaking")
-                    speech_audio = self._speech_audio(answer.strip())
-                    self._json(200, {"conversation_id": conversation_id, "transcript": transcript.strip(), "answer": answer.strip(), "speech_audio_base64": speech_audio})
-                    if outer.on_speech and outer.control_active():
-                        outer.set_remote_state("ready")
+                    separate_speech = self.headers.get("X-Speech-Delivery", "").lower() == "separate"
+                    if separate_speech:
+                        self._json(200, {"conversation_id": conversation_id, "transcript": transcript.strip(), "answer": answer.strip()})
+                    else:
+                        if outer.on_speech:
+                            outer.set_remote_state("speaking")
+                        speech_audio = self._speech_audio(answer.strip())
+                        self._json(200, {"conversation_id": conversation_id, "transcript": transcript.strip(), "answer": answer.strip(), "speech_audio_base64": speech_audio})
+                        if outer.on_speech and outer.control_active():
+                            outer.set_remote_state("ready")
                 finally:
                     lock.release()
+
+            def _post_speech(self):
+                if not self._authorized():
+                    self._json(401, {"error": "unauthorized"})
+                    return
+                _, _, token = self.headers.get("Authorization", "").partition(" ")
+                if not outer.owns_control(token):
+                    self._json(409, {"error": "mobile control not acquired"})
+                    return
+                try:
+                    payload = self._body()
+                except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
+                    self._json(400, {"error": "invalid request"})
+                    return
+                text = payload.get("text") if isinstance(payload, dict) else None
+                if not isinstance(text, str) or not text.strip() or len(text) > 1800:
+                    self._json(400, {"error": "invalid speech text"})
+                    return
+                if not outer.on_speech:
+                    self._json(503, {"error": "Edge TTS unavailable"})
+                    return
+                outer.set_remote_state("speaking")
+                try:
+                    try:
+                        audio = outer.on_speech(text.strip())
+                    except Exception as exc:
+                        print(f"[companion] Edge TTS falhou ({type(exc).__name__})", flush=True)
+                        self._json(503, {"error": "Edge TTS failed"})
+                        return
+                    if not isinstance(audio, bytes) or not audio or len(audio) > 3_000_000:
+                        print("[companion] Edge TTS retornou áudio vazio ou acima do limite", flush=True)
+                        self._json(503, {"error": "Edge TTS returned no audio"})
+                        return
+                    print(f"[companion] Edge TTS entregando MP3: {len(audio)} bytes", flush=True)
+                    self._audio(audio, "audio/mpeg")
+                finally:
+                    if outer.control_active():
+                        outer.set_remote_state("ready")
 
             def _post_wake_audio(self):
                 if not self._authorized():

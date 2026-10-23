@@ -316,16 +316,23 @@ private fun AuroraShell() {
         }
     }
 
-    fun playPcSpeech(bytes: ByteArray?) {
+    fun playPcSpeech(text: String, liveSession: Int? = null) {
         if (!connected) return
-        if (bytes == null || bytes.isEmpty()) {
-            remoteState = "ready"
-            notice = "A resposta chegou em texto, mas o PC não conseguiu gerar o áudio Edge TTS."
-            return
-        }
-        audioPlayer.play(bytes, fileExtension = ".mp3", onStarted = { remoteState = "speaking" }) { success ->
-            remoteState = "ready"
-            if (!success) notice = "Recebi a resposta, mas não consegui reproduzir o áudio enviado pelo PC."
+        remoteState = "preparing"
+        scope.launch {
+            try {
+                val bytes = withContext(Dispatchers.IO) {
+                    CompanionClient(endpoint, fingerprint, token).speech(text)
+                }
+                if (!connected || (liveSession != null && (!liveMode || liveSessionId != liveSession))) return@launch
+                audioPlayer.play(bytes, fileExtension = ".mp3", onStarted = { remoteState = "speaking" }) { success ->
+                    remoteState = "ready"
+                    if (!success) notice = "MP3 da Thalita chegou (${bytes.size} bytes), mas o Android falhou ao reproduzir."
+                }
+            } catch (error: Exception) {
+                remoteState = "ready"
+                notice = "Texto recebido; voz do PC falhou: ${error.message ?: "erro de áudio"}."
+            }
         }
     }
 
@@ -505,7 +512,7 @@ private fun AuroraShell() {
                 lines += ChatLine(false, reply.answer)
                 rememberConversation(selectedConversation, message)
                 notice = "Conversa sincronizada com o PC."
-                playPcSpeech(reply.speechAudio)
+                playPcSpeech(reply.answer)
             } catch (error: Exception) {
                 lines += ChatLine(false, "Não consegui falar com o PC: ${error.message ?: "verifique a conexão"}.")
                 notice = "A conexão com o PC falhou."
@@ -530,7 +537,7 @@ private fun AuroraShell() {
                 lines += ChatLine(false, result.answer)
                 rememberConversation(selectedConversation, result.transcript)
                 notice = "Resposta da Thalita recebida do PC."
-                if (liveMode && liveSessionId == requestLiveSession) playPcSpeech(result.speechAudio)
+                if (liveMode && liveSessionId == requestLiveSession) playPcSpeech(result.answer, requestLiveSession)
             } catch (error: Exception) {
                 notice = "Falha na conversa por voz: ${error.message ?: "verifique a conexão"}."
             } finally {

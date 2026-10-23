@@ -144,6 +144,43 @@ def test_mobile_agent_requests_are_sent_to_the_local_tools_model(monkeypatch):
     assert generation == 1
 
 
+def test_mobile_small_talk_uses_conversation_model_without_tools(monkeypatch):
+    monkeypatch.setattr(routing, "parse_local_command", lambda _prompt: None)
+    monkeypatch.setattr(routing, "local_datetime_answer", lambda _prompt: "")
+    monkeypatch.setattr(routing, "search_intent", lambda _prompt: "")
+    monkeypatch.setattr(routing, "factual_web_intent", lambda _prompt: False)
+    monkeypatch.setattr(routing, "research_request_intent", lambda _prompt: False)
+
+    class Signal:
+        def connect(self, _callback): pass
+
+    class FakeInference:
+        def __init__(self, *args, **kwargs):
+            self.args, self.kwargs = args, kwargs
+            self.sentence = self.search = self.approval = self.error = self.result = Signal()
+
+    monkeypatch.setattr(routing, "Inference", FakeInference)
+
+    class Service:
+        voice = _Voice()
+        orb = _Orb()
+        inf = None
+        cfg = {"model": "gemma3:1b", "agent_model": "gemma4:e2b"}
+        context_history = []
+        activity_generation = 0
+        request_generation = 0
+        response_language = "Português brasileiro"
+        companion_request = {"future": Future()}
+
+        def start_inference(self, inference, generation): self.started = inference
+
+    service = Service()
+    routing.route_request(service, "Quero te contar como foi meu dia")
+
+    assert service.started.kwargs["model"] == "gemma3:1b"
+    assert service.started.kwargs["use_tools"] is False
+
+
 def test_companion_tool_approval_is_refused_immediately_without_desktop_ui():
     from threading import Event
 

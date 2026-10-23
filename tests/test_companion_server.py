@@ -178,6 +178,34 @@ class CompanionHttpsTests(unittest.TestCase):
                     b"edge-audio:Resposta central: Oi Aurora; contexto=0",
                 )
 
+                separate_payload = json.dumps({
+                    "conversation_id": "alpha2", "message": "Conversa pelo telefone",
+                    "speech_delivery": "separate",
+                })
+                connection.request("POST", "/v1/chat", separate_payload, {
+                    "Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+                response = connection.getresponse()
+                mobile_answer = json.loads(response.read())
+                self.assertEqual(response.status, 200)
+                self.assertNotIn("speech_audio_base64", mobile_answer)
+
+                connection.request("POST", "/v1/speech", json.dumps({"text": "fala teste"}), {
+                    "Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+                response = connection.getresponse()
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.getheader("Content-Type"), "audio/mpeg")
+                self.assertEqual(response.read(), b"edge-audio:fala teste")
+                self.assertEqual(server.remote_state(), "ready")
+
+                server.on_speech = lambda _text: (_ for _ in ()).throw(RuntimeError("TTS failed"))
+                connection.request("POST", "/v1/speech", json.dumps({"text": "falha teste"}), {
+                    "Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+                response = connection.getresponse()
+                self.assertEqual(response.status, 503)
+                response.read()
+                self.assertEqual(server.remote_state(), "ready")
+                server.on_speech = lambda text: b"edge-audio:" + text.encode("utf-8")
+
                 connection.request("GET", "/v1/sounds/entrada.wav", headers={"Authorization": f"Bearer {token}"})
                 sound = connection.getresponse()
                 self.assertEqual(sound.status, 200)
@@ -208,13 +236,14 @@ class CompanionHttpsTests(unittest.TestCase):
                     wav.writeframes(b"\0\0" * 8_000)
                 connection.request(
                     "POST", "/v1/voice", buffer.getvalue(),
-                    {"Authorization": f"Bearer {token}", "Content-Type": "audio/wav", "X-Conversation-ID": "alpha1"},
+                    {"Authorization": f"Bearer {token}", "Content-Type": "audio/wav", "X-Conversation-ID": "alpha1", "X-Speech-Delivery": "separate"},
                 )
                 response = connection.getresponse()
                 voice_answer = json.loads(response.read())
                 self.assertEqual(response.status, 200)
                 self.assertEqual(voice_answer["transcript"], "Pergunta falada")
                 self.assertEqual(voice_answer["answer"], "Resposta central para voz")
+                self.assertNotIn("speech_audio_base64", voice_answer)
 
                 connection.request("GET", "/v1/conversations/alpha1", headers={"Authorization": f"Bearer {token}"})
                 response = connection.getresponse()

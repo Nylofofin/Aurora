@@ -1,17 +1,18 @@
-# Aurora Android Companion — Beta Demo 0.7.1
+# Aurora Android Companion — Beta Demo 0.7.2
 
-Cliente Android nativo Demo Experimental. Modelos, busca e automação ficam no computador; o telefone é a interface, microfone e saída de áudio.
+Cliente Android nativo Demo Experimental. Modelos, busca e automação ficam no computador; o telefone é a interface, microfone e saída de áudio. No celular, conversa casual usa o modelo de conversa; pedidos que exigem fatos atuais seguem para pesquisa e pedidos explícitos de ação usam as ferramentas locais permitidas.
 
 ## Estado atual
 
 - APK Beta Demo: [release Android 0.7.1](https://github.com/ruanminezinoficial2025-ctrl/Aurora/releases/tag/android-beta-v0.7.1). É uma build de desenvolvimento assinada para debug.
+- A versão 0.7.2 é uma build local de teste; a release publicada continua em 0.7.1 até validação no celular.
 
 - Interface renovada em tons claros pastel de lavanda e azul, cartões mais leves, contraste legível, esfera Aurora animada e ícone adaptativo vetorial próprio.
 - Pareamento HTTPS com fingerprint SHA-256 digitado fora de banda, código de uso único e token cifrado no Android Keystore.
 - Envio de mensagens pelo roteador central do desktop e histórico de conversas armazenado no PC.
 - Tela inicial com ações explícitas **Falar com a Aurora** e **Escrever uma mensagem**; os controles de enviar, voz, histórico e conexão são botões com área de toque ampliada.
 - Voz por turnos com foreground service do Android: toque em **Falar com a Aurora** ou **Voz**, fale e toque em **Parar e enviar**; a notificação deixa o uso do microfone visível e a captura pode continuar com a tela bloqueada. O PC transcreve em pt-BR, executa a conversa central e devolve o áudio sintetizado.
-- Respostas de voz geradas pelo PC via Edge TTS na voz configurada (Thalita por padrão) e enviadas como MP3; o cliente não usa o TTS Google/Android. A síntese precisa de internet no PC e pode levar alguns segundos; sem áudio, a resposta em texto continua disponível.
+- Respostas de voz geradas pelo PC via Edge TTS na voz configurada (Thalita por padrão) e enviadas em um POST HTTPS binário separado (`audio/mpeg`), sem Base64 no JSON do chat. O cliente não usa o TTS Google/Android. A síntese precisa de internet no PC e pode levar alguns segundos; se falhar, a mensagem permanece e a interface mostra a etapa/erro.
 - Durante o controle pelo celular, a fala parcial e os sons da bolha não tocam nos alto-falantes do PC. Os sons de entrada/saída são assets WAV embutidos no APK, sem streaming pela rede. A voz Edge TTS é gerada no PC e enviada em MP3; o cliente usa extensão reconhecível pelo Android e avisa se não conseguir reproduzir. O som de saída é carregado do APK antes de liberar o controle ao desktop. Cliques usam o feedback de interface configurado no Android.
 - Modo Live em tela cheia: o botão waveform abre uma bolha central animada e toca o som de entrada do PC; cada fala começa por toque, e o X encerra e toca o som de saída. A sessão permanece aberta para novos turnos até sair.
 - Wake word experimental pelo botão **Mic**. Com a sessão conectada, um serviço de microfone em primeiro plano envia PCM por HTTPS ao PC; o modelo Vosk local reconhece “Aurora”. Se o app estiver visível, o Live inicia sem outro toque. O indicador de microfone permanece na notificação; com o app em segundo plano, é necessário abrir a notificação e tocar em **Falar** para continuar.

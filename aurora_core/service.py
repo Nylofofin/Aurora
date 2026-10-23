@@ -211,6 +211,7 @@ class AuroraService(QObject):
         """Synthesize the mobile reply with the desktop's configured Edge TTS voice."""
         import asyncio
         import edge_tts
+        started=time.monotonic()
         from .voice.tts import Speaker
         clean_text=Speaker.clean(text)[:1800]
         if not clean_text: return b''
@@ -222,9 +223,14 @@ class AuroraService(QObject):
                     chunks.append(packet['data'])
             return b''.join(chunks)
         try:
-            return asyncio.run(asyncio.wait_for(collect_audio(),timeout=20.0))
+            audio=asyncio.run(asyncio.wait_for(collect_audio(),timeout=20.0))
+            if audio:
+                print(f'[companion] Edge TTS gerou MP3: {len(audio)} bytes em {time.monotonic()-started:.2f}s',file=sys.stderr,flush=True)
+            else:
+                print('[companion] Edge TTS terminou sem gerar áudio',file=sys.stderr,flush=True)
+            return audio
         except Exception as exc:
-            print(f'[companion] síntese Edge TTS falhou ({type(exc).__name__})',file=sys.stderr,flush=True)
+            print(f'[companion] síntese Edge TTS falhou ({type(exc).__name__}) após {time.monotonic()-started:.2f}s',file=sys.stderr,flush=True)
             return b''
 
     def _companion_wake_audio(self,token,pcm):

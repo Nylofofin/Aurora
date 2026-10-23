@@ -23,8 +23,8 @@ import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
 
 data class PcConversation(val id: String, val title: String, val messages: List<ChatLine>)
-data class CompanionReply(val answer: String, val speechAudio: ByteArray?)
-data class CompanionVoiceReply(val transcript: String, val answer: String, val speechAudio: ByteArray?)
+data class CompanionReply(val answer: String)
+data class CompanionVoiceReply(val transcript: String, val answer: String)
 data class PcScreenFrame(val number: Int, val jpeg: ByteArray)
 
 class CompanionClient(
@@ -84,15 +84,54 @@ class CompanionClient(
         require(!token.isNullOrBlank()) { "Este celular ainda não está pareado com o PC." }
         val result = request(
             "POST", "/v1/chat",
-            JSONObject().put("conversation_id", conversationId).put("message", message),
+            JSONObject().put("conversation_id", conversationId).put("message", message)
+                .put("speech_delivery", "separate"),
         )
-        return CompanionReply(result.getString("answer"), decodeSpeechAudio(result))
+        return CompanionReply(result.getString("answer"))
     }
 
     fun sendVoice(conversationId: String, wav: ByteArray): CompanionVoiceReply {
         require(!token.isNullOrBlank()) { "Este celular ainda não está pareado com o PC." }
         val result = requestAudio("/v1/voice", conversationId, wav)
-        return CompanionVoiceReply(result.getString("transcript"), result.getString("answer"), decodeSpeechAudio(result))
+        return CompanionVoiceReply(result.getString("transcript"), result.getString("answer"))
+    }
+
+    fun speech(text: String): ByteArray {
+        require(!token.isNullOrBlank()) { "Este celular ainda não está pareado com o PC." }
+        require(text.isNotBlank() && text.length <= 1800) { "Texto para voz inválido." }
+        val connection = (URL(baseUrl + "/v1/speech").openConnection() as HttpsURLConnection).apply {
+            connectTimeout = 5_000
+            readTimeout = 25_000
+            requestMethod = "POST"
+            sslSocketFactory = pinnedSslContext(expectedFingerprint).socketFactory
+            hostnameVerifier = HostnameVerifier { _, _ -> true }
+            setRequestProperty("Accept", "audio/mpeg, application/json")
+            setRequestProperty("Content-Type", "application/json")
+            setRequestProperty("Cache-Control", "no-store")
+            setRequestProperty("Authorization", "Bearer $token")
+            doOutput = true
+        }
+        try {
+            connection.outputStream.use {
+                it.write(JSONObject().put("text", text).toString().toByteArray(Charsets.UTF_8))
+            }
+            val code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val bytes = stream?.use { it.readBytes() } ?: ByteArray(0)
+            if (code !in 200..299) {
+                val error = runCatching { JSONObject(bytes.toString(Charsets.UTF_8)).optString("error") }.getOrNull()
+                throw IllegalStateException(error?.takeIf { it.isNotBlank() } ?: "voz HTTP $code")
+            }
+            require(connection.contentType?.substringBefore(';') == "audio/mpeg" && bytes.size in 4..3_000_000) {
+                "O PC respondeu, mas não entregou um MP3 válido."
+            }
+            require(bytes[0] == 0xff.toByte() || bytes.copyOfRange(0, 3).contentEquals("ID3".toByteArray())) {
+                "O áudio recebido do PC não parece ser MP3."
+            }
+            return bytes
+        } finally {
+            connection.disconnect()
+        }
     }
 
     fun sound(name: String): ByteArray {
@@ -166,12 +205,6 @@ class CompanionClient(
         }
     }
 
-    private fun decodeSpeechAudio(result: JSONObject): ByteArray? {
-        val encoded = result.optString("speech_audio_base64")
-        if (encoded.isBlank()) return null
-        return runCatching { Base64.decode(encoded, Base64.DEFAULT) }.getOrNull()?.takeIf { it.isNotEmpty() }
-    }
-
     private fun requestAudio(path: String, conversationId: String, wav: ByteArray): JSONObject {
         val connection = (URL(baseUrl + path).openConnection() as HttpsURLConnection).apply {
             connectTimeout = 8_000
@@ -182,6 +215,7 @@ class CompanionClient(
             setRequestProperty("Accept", "application/json")
             setRequestProperty("Content-Type", "audio/wav")
             setRequestProperty("X-Conversation-ID", conversationId)
+            setRequestProperty("X-Speech-Delivery", "separate")
             setRequestProperty("Authorization", "Bearer $token")
             doOutput = true
         }
