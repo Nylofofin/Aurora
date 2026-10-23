@@ -36,8 +36,8 @@ def test_explicit_comparison_becomes_independent_research_subagents():
 
 
 def test_multiple_explicit_questions_are_split_but_simple_lists_are_not():
-    tasks = plan_research_subagents("Quem criou o projeto Nebrya? Qual é a versão atual do Python?")
-    assert [task.query for task in tasks] == ["Quem criou o projeto Nebrya", "Qual é a versão atual do Python"]
+    tasks = plan_research_subagents("Quem criou o projeto Orion? Qual é a versão atual do Python?")
+    assert [task.query for task in tasks] == ["Quem criou o projeto Orion", "Qual é a versão atual do Python"]
     assert len(plan_research_subagents("Quem criou o projeto X? E a versão atual?")) == 1
     assert len(plan_research_subagents("Notícias de ciência e tecnologia hoje")) == 1
 
