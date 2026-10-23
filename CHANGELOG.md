@@ -1,12 +1,23 @@
 # Histórico de versões
 
-## Em desenvolvimento
+## 1.4.0 — Orchestra Runtime Coordination (ORC), 2026-10-23
 
-- A verificação do OBS agora aguarda a propagação assíncrona do estado de gravação, evitando falso “não confirmei” após o OBS aceitar `StartRecord`. Testes cobrem estado atrasado e estado que nunca muda.
+- Divide pesquisas compostas em até três consultas web independentes, com limite de concorrência adaptado à carga e à memória.
+- Permite até duas inspeções locais independentes em paralelo; ações que alteram estado continuam sequenciais.
+- Adiciona cartões de progresso contextual para pesquisas e inspeções locais.
+- Mantém uma única inferência Gemma para sintetizar resultados e preserva os limites de fontes e segurança do pipeline existente.
+- Não inclui pacotes Flatpak/RPM, atualização automática ou suporte Android ativo.
+
+## 1.3.0 — Lumen Desktop Runtime (LDR), 2026-10-23
+
+- Formaliza a identidade técnica LDR e o identificador da build no cliente e nos logs.
+- Adiciona cartões de informação experimentais e refinamentos visuais da bolha.
+- Inclui checagens automatizadas de compilação, testes e scripts no GitHub Actions.
 
 ## 1.0.2 — Polaris-Edge, Patch 2 (pré-release, 2026-10-22)
 
 - Separa OBS, captura pelo portal, Spotify e registro de ações em módulos dedicados sob `aurora_core/system/`, mantendo a fachada de compatibilidade.
+- Aguarda a propagação assíncrona do estado do OBS antes de confirmar início/parada da gravação; testes cobrem estado atrasado e estado que nunca muda.
 - Atualiza a documentação para distinguir minimização do OBS de execução realmente sem janela.
 - Inclui os commits locais posteriores a 1.0.1; 227 testes automatizados passaram.
 - **Limite conhecido:** a sessão atual do OBS iniciou em Safe Mode e desativou `obs-websocket`; gravação real em segundo plano ainda não foi confirmada. Esta publicação é pré-release.

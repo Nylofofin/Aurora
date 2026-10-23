@@ -20,5 +20,17 @@ android-client/**/build/
 android-client/.idea/
 android-client/*.iml
 
-# Android binaries are published as GitHub release assets, not stored in git
+# Keep generated Android binaries out of new Git commits.
 artifacts/*.apk
+
+# Local credentials, certificates, and runtime environment files
+.env
+.env.*
+!.env.example
+runtime.env
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
