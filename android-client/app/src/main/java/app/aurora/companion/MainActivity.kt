@@ -22,6 +22,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -29,6 +30,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
@@ -70,6 +72,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -126,6 +131,7 @@ private fun AuroraShell() {
     var fingerprint by remember { mutableStateOf(saved?.second.orEmpty()) }
     var token by remember { mutableStateOf(saved?.third.orEmpty()) }
     var draft by remember { mutableStateOf("") }
+    var voiceStartRequest by remember { mutableStateOf(0) }
     var live by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var discovering by remember { mutableStateOf(false) }
@@ -133,6 +139,16 @@ private fun AuroraShell() {
     var conversationId by remember { mutableStateOf(CompanionClient.newConversationId()) }
     var conversations by remember { mutableStateOf<List<PcConversation>>(emptyList()) }
     val lines = remember { mutableStateListOf<ChatLine>() }
+    val composerFocusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    fun startVoiceInteraction() {
+        if (!connected) {
+            showConnect = true
+        } else if (!busy) {
+            voiceStartRequest += 1
+        }
+    }
 
     LaunchedEffect(saved) {
         if (saved != null) {
@@ -314,10 +330,30 @@ private fun AuroraShell() {
                 modifier = Modifier.fillMaxSize().padding(WindowInsets.statusBars.asPaddingValues())
                     .padding(WindowInsets.navigationBars.asPaddingValues()).imePadding()
             ) {
-                TopBar(connected, remoteState, onHistory = { showHistory = true; refreshConversations() }, onConnect = { showConnect = true }, onDisconnect = ::disconnectFromPc)
+                TopBar(
+                    connected,
+                    remoteState,
+                    onHistory = { showHistory = true; refreshConversations() },
+                    onConnect = { showConnect = true },
+                    onDisconnect = ::disconnectFromPc,
+                    onOrbClick = { if (connected) startVoiceInteraction() else showConnect = true },
+                )
                 if (lines.isEmpty()) {
-                    Welcome(live || busy, onLive = { }, connected = connected,
-                        activity = if (live) "listening" else remoteState)
+                    Welcome(
+                        modifier = Modifier.weight(1f),
+                        live = live,
+                        working = busy,
+                        connected = connected,
+                        activity = if (live) "listening" else remoteState,
+                        onStartVoice = ::startVoiceInteraction,
+                        onWrite = {
+                            if (connected) {
+                                composerFocusRequester.requestFocus()
+                                keyboardController?.show()
+                            } else showConnect = true
+                        },
+                        onConnect = { showConnect = true },
+                    )
                 } else {
                     LazyColumn(
                         modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 20.dp),
@@ -328,7 +364,7 @@ private fun AuroraShell() {
                     }
                     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
                         horizontalArrangement = Arrangement.Center) {
-                        OrbButton(live || busy, Modifier.size(54.dp), activity = if (live) "listening" else remoteState) { }
+                        OrbButton(live || busy, Modifier.size(54.dp), activity = if (live) "listening" else remoteState, onClick = ::startVoiceInteraction)
                     }
                 }
                 Composer(
@@ -341,7 +377,8 @@ private fun AuroraShell() {
                     onRecording = { live = it },
                     onVoiceError = { notice = it },
                     onNew = { if (!busy) { conversationId = CompanionClient.newConversationId(); lines.clear(); notice = "Nova conversa no PC." } },
-                    onLive = { }
+                    voiceStartRequest = voiceStartRequest,
+                    focusRequester = composerFocusRequester,
                 )
                 if (notice.isNotBlank()) Text(notice, color = Muted, fontSize = 11.sp, modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp), textAlign = TextAlign.Center)
             }
@@ -395,14 +432,21 @@ private fun AuroraShell() {
 }
 
 @Composable
-private fun TopBar(connected: Boolean, remoteState: String, onHistory: () -> Unit, onConnect: () -> Unit, onDisconnect: () -> Unit) {
+private fun TopBar(
+    connected: Boolean,
+    remoteState: String,
+    onHistory: () -> Unit,
+    onConnect: () -> Unit,
+    onDisconnect: () -> Unit,
+    onOrbClick: () -> Unit,
+) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            OrbButton(false, Modifier.size(38.dp), activity = if (connected) remoteState else "idle") { }
+            OrbButton(false, Modifier.size(38.dp), activity = if (connected) remoteState else "idle", onClick = onOrbClick)
             Spacer(Modifier.width(11.dp))
             Column {
                 Text("Aurora", color = Pearl, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
@@ -426,31 +470,65 @@ private fun remoteStateLabel(state: String): String = when (state) {
 }
 
 @Composable
-private fun Welcome(live: Boolean, onLive: () -> Unit, connected: Boolean, activity: String) {
+private fun Welcome(
+    modifier: Modifier = Modifier,
+    live: Boolean,
+    working: Boolean,
+    connected: Boolean,
+    activity: String,
+    onStartVoice: () -> Unit,
+    onWrite: () -> Unit,
+    onConnect: () -> Unit,
+) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 26.dp),
+        modifier = modifier.fillMaxWidth().padding(horizontal = 26.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        OrbButton(live, Modifier.size(150.dp), activity, onLive)
+        OrbButton(live, Modifier.size(150.dp), activity, if (connected) onStartVoice else onConnect)
         Spacer(Modifier.height(27.dp))
-        Text(if (live) "Estou ouvindo você" else "Oi, sou a Aurora", color = Pearl, fontSize = 26.sp, fontWeight = FontWeight.Medium)
+        Text(
+            when {
+                live -> "Estou ouvindo você"
+                working -> "A Aurora está processando"
+                connected -> "Aurora conectada"
+                else -> "Oi, sou a Aurora"
+            },
+            color = Pearl, fontSize = 26.sp, fontWeight = FontWeight.Medium
+        )
         Spacer(Modifier.height(9.dp))
         Text(
-            if (connected) "Fale comigo ou escreva uma mensagem."
+            if (connected) "Toque em Falar com a Aurora para começar. Você também pode escrever uma mensagem."
             else "Conecte ao computador para conversar com sua assistente.",
             color = Muted, textAlign = TextAlign.Center, fontSize = 15.sp, lineHeight = 22.sp
         )
-        Spacer(Modifier.height(26.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-            Suggestion("Pesquisar na web")
-            Suggestion("Conversar")
+        Spacer(Modifier.height(22.dp))
+        Button(
+            onClick = if (connected) onStartVoice else onConnect,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+            enabled = !live && !working,
+            colors = ButtonDefaults.buttonColors(containerColor = Violet, contentColor = Pearl),
+            shape = RoundedCornerShape(18.dp),
+        ) {
+            Text(
+                when {
+                    live -> "Gravando sua voz…"
+                    working -> "Aguarde a resposta…"
+                    connected -> "Falar com a Aurora"
+                    else -> "Conectar ao PC"
+                },
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
         }
-        Spacer(Modifier.height(8.dp))
-        Suggestion("Pedir algo ao meu PC")
+        if (connected) {
+            TextButton(onClick = onWrite, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text("Escrever uma mensagem", color = Blue, fontSize = 14.sp)
+            }
+        }
         if (live) {
             Spacer(Modifier.height(18.dp))
-            Text("Toque em Parar para enviar sua fala ao computador.", color = Blue, fontSize = 12.sp, textAlign = TextAlign.Center)
+            Text("Toque em “Parar e enviar” no campo abaixo quando terminar.", color = Blue, fontSize = 12.sp, textAlign = TextAlign.Center)
         }
     }
 }
@@ -517,7 +595,13 @@ private fun OrbButton(live: Boolean, modifier: Modifier, activity: String = if (
 }
 
 @Composable
-private fun VoiceCaptureButton(enabled: Boolean, onRecording: (Boolean) -> Unit, onCaptured: (ByteArray) -> Unit, onError: (String) -> Unit) {
+private fun VoiceCaptureButton(
+    enabled: Boolean,
+    startRequest: Int = 0,
+    onRecording: (Boolean) -> Unit,
+    onCaptured: (ByteArray) -> Unit,
+    onError: (String) -> Unit,
+) {
     val appContext = LocalContext.current
     val scope = rememberCoroutineScope()
     var active by remember { mutableStateOf(false) }
@@ -566,42 +650,76 @@ private fun VoiceCaptureButton(enabled: Boolean, onRecording: (Boolean) -> Unit,
         if (grants[Manifest.permission.RECORD_AUDIO] == true) startCapture()
         else onError("Permita o microfone para usar a conversa por voz.")
     }
+    val requestPermission: () -> Unit = {
+        val requested = buildList {
+            add(Manifest.permission.RECORD_AUDIO)
+            if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        permission.launch(requested.toTypedArray())
+    }
+    LaunchedEffect(startRequest) {
+        if (startRequest > 0 && enabled && !active && !stopping) requestPermission()
+    }
     DisposableEffect(Unit) { onDispose { currentCapture[0]?.stop() } }
-    Text(
-        when { active -> "Parar"; stopping -> "Enviando"; else -> "Voz" },
-        color = if (enabled || active) Blue else Muted,
-        fontSize = 11.sp,
-        modifier = Modifier.padding(horizontal = 8.dp).clickable(enabled = (enabled || active) && !stopping) {
+    Button(
+        onClick = {
             if (active) {
                 stopping = true
                 active = false
                 onRecording(false)
                 currentCapture[0]?.stop()
-            } else {
-                val requested = buildList {
-                    add(Manifest.permission.RECORD_AUDIO)
-                    if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
-                }
-                permission.launch(requested.toTypedArray())
-            }
+            } else requestPermission()
         },
-    )
+        enabled = (enabled || active) && !stopping,
+        modifier = Modifier.heightIn(min = 48.dp),
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = if (active) Violet else Panel,
+            contentColor = Pearl,
+            disabledContainerColor = Panel,
+            disabledContentColor = Muted,
+        ),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Text(
+            when { active -> "Parar e enviar"; stopping -> "Enviando…"; else -> "Voz" },
+            fontSize = 12.sp,
+            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+        )
+    }
 }
 
 @Composable
-private fun Composer(text: String, connected: Boolean, busy: Boolean, onText: (String) -> Unit, onSend: () -> Unit, onVoice: (ByteArray) -> Unit, onRecording: (Boolean) -> Unit, onVoiceError: (String) -> Unit, onNew: () -> Unit, onLive: () -> Unit) {
+private fun Composer(
+    text: String,
+    connected: Boolean,
+    busy: Boolean,
+    onText: (String) -> Unit,
+    onSend: () -> Unit,
+    onVoice: (ByteArray) -> Unit,
+    onRecording: (Boolean) -> Unit,
+    onVoiceError: (String) -> Unit,
+    onNew: () -> Unit,
+    voiceStartRequest: Int,
+    focusRequester: FocusRequester,
+) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
         Row(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(Panel)
                 .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(28.dp)).padding(9.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("+", color = Muted, fontSize = 25.sp, modifier = Modifier.clickable(enabled = connected && !busy, onClick = onNew).padding(horizontal = 10.dp))
+            TextButton(
+                onClick = onNew,
+                enabled = connected && !busy,
+                modifier = Modifier.heightIn(min = 48.dp),
+                contentPadding = PaddingValues(horizontal = 8.dp),
+            ) { Text("＋", color = Muted, fontSize = 22.sp) }
             BasicTextField(
                 value = text,
                 onValueChange = onText,
                 enabled = connected && !busy,
-                modifier = Modifier.weight(1f).padding(vertical = 12.dp),
+                modifier = Modifier.weight(1f).focusRequester(focusRequester).padding(vertical = 12.dp),
                 textStyle = TextStyle(color = Pearl, fontSize = 15.sp),
                 decorationBox = { inner ->
                     Box {
@@ -610,10 +728,21 @@ private fun Composer(text: String, connected: Boolean, busy: Boolean, onText: (S
                     }
                 }
             )
-            VoiceCaptureButton(enabled = connected && !busy, onRecording = onRecording, onCaptured = onVoice, onError = onVoiceError)
-            Text(if (busy) "…" else "↑", color = if (connected && !busy) Ink else Muted, fontSize = 20.sp,
-                modifier = Modifier.clip(CircleShape).background(if (connected && !busy) Pearl else Color(0xFF353747), CircleShape)
-                    .clickable(enabled = connected && !busy, onClick = onSend).padding(horizontal = 13.dp, vertical = 7.dp))
+            VoiceCaptureButton(
+                enabled = connected && !busy,
+                startRequest = voiceStartRequest,
+                onRecording = onRecording,
+                onCaptured = onVoice,
+                onError = onVoiceError,
+            )
+            Button(
+                onClick = onSend,
+                enabled = connected && !busy && text.isNotBlank(),
+                modifier = Modifier.size(48.dp),
+                contentPadding = PaddingValues(0.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Pearl, contentColor = Ink),
+                shape = CircleShape,
+            ) { Text(if (busy) "…" else "↑", fontSize = 22.sp) }
         }
         Text("O processamento da Aurora acontece no computador pareado.", color = Muted.copy(alpha = 0.72f), fontSize = 10.sp,
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp), textAlign = TextAlign.Center)
@@ -639,13 +768,12 @@ private fun ConnectField(value: String, onValue: (String) -> Unit, hint: String)
 
 @Composable
 private fun SmallAction(label: String, onClick: () -> Unit) {
-    Text(label, color = Pearl, fontSize = 12.sp,
-        modifier = Modifier.clip(RoundedCornerShape(18.dp)).background(Panel).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 9.dp))
-}
-
-@Composable
-private fun Suggestion(label: String) {
-    Text(label, color = Color(0xFFC7C9D6), fontSize = 12.sp,
-        modifier = Modifier.clip(RoundedCornerShape(18.dp)).background(Panel).padding(horizontal = 13.dp, vertical = 9.dp))
+    Button(
+        onClick = onClick,
+        modifier = Modifier.heightIn(min = 48.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Pearl),
+        shape = RoundedCornerShape(18.dp),
+    ) { Text(label, fontSize = 12.sp) }
 }
 

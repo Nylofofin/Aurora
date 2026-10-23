@@ -11,8 +11,8 @@ android {
         applicationId = "app.aurora.companion"
         minSdk = 26
         targetSdk = 36
-        versionCode = 7
-        versionName = "0.4.3-demo"
+        versionCode = 8
+        versionName = "0.4.4-demo"
     }
 
     buildFeatures { compose = true }
