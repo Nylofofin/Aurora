@@ -76,6 +76,20 @@ class _AnimatedOrb(QWidget):
         field.setColorAt(.58, QColor(lower.red(), lower.green(), lower.blue(), 92))
         field.setColorAt(1, QColor(lower.red(), lower.green(), lower.blue(), 0))
         painter.fillPath(circle, field)
+        # Match the live orb's refractive surface so the onboarding preview
+        # represents the selected finish instead of a static approximation.
+        refraction = math.sin(self.phase * 0.63) * size * 0.16
+        fold = QLinearGradient(-size * .18 + refraction, size * .28,
+                               size * .92 + refraction, size * .72)
+        fold.setColorAt(0.00, QColor(255, 255, 255, 0))
+        fold.setColorAt(0.44, QColor(255, 255, 255, 24))
+        fold.setColorAt(0.52, QColor(255, 255, 255, 92))
+        fold.setColorAt(0.60, QColor(255, 255, 255, 18))
+        fold.setColorAt(1.00, QColor(255, 255, 255, 0))
+        refraction_path = QPainterPath()
+        refraction_path.addEllipse(-size * .08 + refraction, size * .27,
+                                   size * 1.16, size * .42)
+        painter.fillPath(refraction_path, fold)
         shine = QRadialGradient(size*.31, size*.22, size*.48)
         shine.setColorAt(0, QColor(255, 255, 255, 235))
         shine.setColorAt(.35, QColor(255, 255, 255, 120))
