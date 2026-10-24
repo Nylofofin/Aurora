@@ -462,7 +462,14 @@ class PersonalizationWizard(QDialog):
 
     def _preview_voice(self, voice):
         name = "Aurora" if self.default_name.isChecked() else (self.assistant_name.text().strip() or "Aurora")
-        self.voice_status.setText(f"Reproduzindo prévia de {next((n for s, n, _ in SUPPORTED_VOICES if s == voice), voice)}…")
+        label = next((n for s, n, _ in SUPPORTED_VOICES if s == voice), voice)
+        # A preview must replace a previous preview immediately. Otherwise a
+        # queued Edge request can make a click appear to do nothing for many
+        # seconds while an older sample is still being generated.
+        interrupt = getattr(self.speaker, "interrupt", None)
+        if callable(interrupt):
+            interrupt()
+        self.voice_status.setText(f"Reproduzindo prévia de {label}…")
         self.speaker.say_with_voice(f"Olá, eu sou {name}. Estou pronta para ajudar.", voice)
         self._play_sfx("select")
 
