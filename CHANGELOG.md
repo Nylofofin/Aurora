@@ -1,5 +1,11 @@
 # Histórico de versões
 
+## Aurora Desktop 1.7.1-beta.3 — Cygnus X-1 Private Memory Hardening, 2026-10-24 (pré-release beta)
+
+- Preferências da memória pessoal passam a ser gravadas com permissão `600`, e a leitura restringe permissões de arquivos legados já existentes.
+- Arquivos temporários de atualização também são privados; a gravação agora faz flush e `fsync` antes da substituição atômica.
+- O arquivo de memória legado existente foi mantido e teve suas permissões restringidas; nenhuma preferência foi removida.
+
 ## Aurora Desktop 1.7.1-beta.2 — Cygnus X-1 Hardware Query Recovery, 2026-10-24 (pré-release beta)
 
 - Perguntas naturais sobre os componentes do próprio computador agora são roteadas diretamente à ferramenta local de hardware, sem depender do modelo para iniciar a consulta.

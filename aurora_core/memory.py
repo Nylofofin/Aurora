@@ -10,6 +10,7 @@ MEMORY_LOCK=threading.Lock()
 
 def user_memory_load():
     try:
+        os.chmod(MEMORY_FILE,0o600)
         data=json.loads(MEMORY_FILE.read_text(encoding='utf-8'))
         return [str(x)[:240] for x in data.get('preferences',[]) if str(x).strip()][:24]
     except Exception: return []
@@ -18,7 +19,9 @@ def user_memory_update(preference,forget=False):
     clean=' '.join(str(preference).split()).strip()[:240]
     if not clean: return 'Não encontrei uma preferência para salvar.'
     with MEMORY_LOCK:
-        try: data=json.loads(MEMORY_FILE.read_text(encoding='utf-8'))
+        try:
+            os.chmod(MEMORY_FILE,0o600)
+            data=json.loads(MEMORY_FILE.read_text(encoding='utf-8'))
         except Exception: data={'preferences':[]}
         values=[str(x) for x in data.get('preferences',[]) if str(x).strip()]
         if forget:
@@ -29,7 +32,20 @@ def user_memory_update(preference,forget=False):
             key=unicodedata.normalize('NFKD',clean).casefold()
             if any(unicodedata.normalize('NFKD',x).casefold()==key for x in values): return 'Essa preferência já está salva.'
             values=(values+[clean])[-24:]; message='Salvei essa preferência localmente para as próximas conversas.'
+        MEMORY_FILE.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
         temporary=MEMORY_FILE.with_suffix('.tmp')
-        temporary.write_text(json.dumps({'preferences':values},ensure_ascii=False,indent=2),encoding='utf-8')
+        try: os.chmod(temporary,0o600)
+        except FileNotFoundError: pass
+        fd=os.open(temporary,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
+        try:
+            os.fchmod(fd,0o600)
+            with os.fdopen(fd,'w',encoding='utf-8') as output:
+                json.dump({'preferences':values},output,ensure_ascii=False,indent=2)
+                output.flush(); os.fsync(output.fileno())
+        except Exception:
+            try: os.close(fd)
+            except OSError: pass
+            raise
         os.replace(temporary,MEMORY_FILE)
+        os.chmod(MEMORY_FILE,0o600)
         return message
