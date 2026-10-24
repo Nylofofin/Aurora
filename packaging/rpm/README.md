@@ -4,6 +4,8 @@ Aurora Launchpad is an experimental graphical installer for Fedora Workstation w
 
 Launchpad recommends up to three published GitHub releases: the newest pre-release, the preceding pre-release, and the newest stable release. It labels experimental channels and dates separately. The user selects a card, reviews the exact tag and installation effects, and confirms before any release payload is downloaded. The chosen tag is resolved to a commit SHA; Launchpad downloads that immutable commit archive over HTTPS, checks the final host, enforces download and extraction limits, rejects links and unsafe archive paths, and verifies the expected desktop files before copying them to the user's application directory.
 
+When an older Launchpad starts, it checks the newest stable release for a newer `aurora-launchpad-*.noarch.rpm`. If one exists, installation choices remain locked until the user presses the single **Update Launchpad** button. The downloaded RPM is accepted only from an official GitHub release URL, within the size limit, and with the SHA-256 digest published by GitHub; after `dnf` replaces the package, the new executable is reopened.
+
 The preceding pre-release is only an earlier build and is not guaranteed stable. A release channel is omitted if GitHub has no valid published candidate for it. GitHub access is required to load the recommendations and download the selected version.
 
 ## Installation
@@ -22,7 +24,7 @@ On Fedora, install rpm-build and run:
 
     SOURCE_REF=master packaging/rpm/build-rpm.sh
 
-The output RPM and SHA256SUMS are written to dist/. The build script resolves SOURCE_REF to a commit and packages only the Launchpad sources. Aurora code changes no longer require rebuilding the installer; Launchpad changes do. RPM publishing is not automated yet.
+The output RPM and SHA256SUMS are written to dist/. The build script resolves SOURCE_REF to a commit and packages only the Launchpad sources. Aurora code changes no longer require rebuilding the installer; Launchpad changes do.
 
 ## Limits
 
