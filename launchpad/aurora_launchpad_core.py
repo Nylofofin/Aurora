@@ -3,12 +3,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+import hmac
+import json
+import os
 from pathlib import Path
 import shutil
 
 
 MODEL_NAMES = ("gemma3:1b-it-qat", "gemma4:e2b-it-q4_K_M")
 MINIMUM_FREE_GIB = 10
+# Reviewed upstream installer snapshot fetched from https://ollama.com/install.sh
+# on 2026-10-23. Changing this pin requires reviewing the new root-level actions.
+OLLAMA_INSTALLER_SHA256 = "25f64b810b947145095956533e1bdf56eacea2673c55a7e586be4515fc882c9f"
+OLLAMA_INSTALLER_MAX_BYTES = 1_000_000
 
 
 @dataclass(frozen=True)
@@ -90,4 +98,39 @@ def copy_existing_memory(old_root: Path, new_root: Path) -> bool:
         return False
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, destination)
+    destination.chmod(0o600)
     return True
+
+
+def validate_ollama_installer(script: bytes, expected_sha256: str = OLLAMA_INSTALLER_SHA256) -> None:
+    """Fail closed unless the downloaded privileged script matches the reviewed snapshot."""
+    if len(script) > OLLAMA_INSTALLER_MAX_BYTES:
+        raise ValueError("O instalador do Ollama excede o limite de tamanho.")
+    if not script.startswith(b"#!/"):
+        raise ValueError("O instalador do Ollama não tem um cabeçalho de script válido.")
+    actual = hashlib.sha256(script).hexdigest()
+    if not hmac.compare_digest(actual, expected_sha256):
+        raise ValueError("O instalador do Ollama mudou desde a revisão desta versão do Launchpad.")
+
+
+def ollama_tags_response_ready(status: int, body: bytes) -> bool:
+    """Recognize only a bounded, successful Ollama tags response from loopback."""
+    if status != 200 or len(body) > 65_536:
+        return False
+    try:
+        payload = json.loads(body)
+    except (TypeError, ValueError):
+        return False
+    return isinstance(payload, dict) and isinstance(payload.get("models"), list)
+
+
+def reject_symlinks_in_tree(root: Path) -> None:
+    """Reject symlinks before merging a managed install tree, preventing copy-through."""
+    if root.is_symlink():
+        raise ValueError("A pasta da instalação contém um link simbólico.")
+    if not root.exists():
+        return
+    for current, directories, files in os.walk(root, followlinks=False):
+        for name in (*directories, *files):
+            if (Path(current) / name).is_symlink():
+                raise ValueError("A instalação contém um link simbólico; nenhum arquivo foi copiado.")

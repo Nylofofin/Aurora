@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import http.client
 import queue
 import shutil
 import subprocess
@@ -21,17 +22,26 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk
 
 from aurora_launchpad_core import (
     MODEL_NAMES,
+    OLLAMA_INSTALLER_MAX_BYTES,
+    OLLAMA_INSTALLER_SHA256,
     assess_environment,
     copy_existing_memory,
     disk_free_bytes,
     format_size,
     missing_models,
+    ollama_tags_response_ready,
+    reject_symlinks_in_tree,
     remove_owned_models,
+    validate_ollama_installer,
 )
 
 
 APP_ID = "com.nylofofin.AuroraLaunchpad"
 INSTALLER_VERSION = "0.1.0"
+PKEXEC = "/usr/bin/pkexec"
+SYSTEMCTL = "/usr/bin/systemctl"
+DNF = "/usr/bin/dnf"
+SYSTEM_PATH = "/usr/local/bin:/usr/bin:/bin"
 PAYLOAD_CANDIDATES = (
     Path("/usr/share/aurora-launchpad/payload"),
     Path(__file__).resolve().parents[1] / "payload",
@@ -84,11 +94,16 @@ def memory_total_bytes() -> int:
 
 
 def ollama_api_ready(timeout: float = 1.0) -> bool:
+    connection = http.client.HTTPConnection("127.0.0.1", 11434, timeout=timeout)
     try:
-        with urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=timeout):
-            return True
-    except Exception:
+        connection.request("GET", "/api/tags", headers={"Host": "127.0.0.1:11434"})
+        response = connection.getresponse()
+        body = response.read(65_537)
+        return ollama_tags_response_ready(response.status, body)
+    except (OSError, http.client.HTTPException):
         return False
+    finally:
+        connection.close()
 
 
 def payload_root() -> Path:
@@ -99,10 +114,10 @@ def payload_root() -> Path:
 
 
 def is_rpm_install() -> bool:
-    launcher = shutil.which("aurora-launchpad")
+    launcher = shutil.which("aurora-launchpad", path=SYSTEM_PATH)
     if not launcher:
         return False
-    return subprocess.run(["rpm", "-qf", launcher], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+    return subprocess.run(["/usr/bin/rpm", "-qf", launcher], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
 
 
 def run_process(command: list[str], on_line=None, cwd: Path | None = None, timeout: int | None = None) -> str:
@@ -112,11 +127,23 @@ def run_process(command: list[str], on_line=None, cwd: Path | None = None, timeo
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         bufsize=1,
-        env={**os.environ, "OLLAMA_HOST": "127.0.0.1:11434", "OLLAMA_NO_CLOUD": "1"},
+        env={
+            **{key: value for key, value in os.environ.items()
+               if key not in {"PYTHONPATH", "PYTHONHOME", "LD_PRELOAD", "LD_LIBRARY_PATH"}
+               and not key.startswith("PIP_")},
+            "PATH": SYSTEM_PATH,
+            "PIP_CONFIG_FILE": os.devnull,
+            "PIP_NO_INPUT": "1",
+            "PIP_DISABLE_PIP_VERSION_CHECK": "1",
+            "OLLAMA_HOST": "127.0.0.1:11434",
+            "OLLAMA_NO_CLOUD": "1",
+        },
     )
     lines: list[str] = []
-    output_queue: queue.Queue[str | None] = queue.Queue()
+    output_queue: queue.Queue[str | None] = queue.Queue(maxsize=512)
     started = time.monotonic()
     assert proc.stdout is not None
     def read_output():
@@ -141,6 +168,8 @@ def run_process(command: list[str], on_line=None, cwd: Path | None = None, timeo
             continue
         text = line.rstrip("\r\n")
         lines.append(text)
+        if len(lines) > 2000:
+            del lines[:500]
         if on_line:
             on_line(text)
     try:
@@ -223,9 +252,11 @@ class Launchpad(Adw.Application):
         self.progress_subtitle = None
         self.install_button = None
         self.report = None
-        self.ollama = shutil.which("ollama")
+        self.ollama = shutil.which("ollama", path=SYSTEM_PATH)
         self.existing_install = (MANAGED_APP / "aurora.py").is_file()
         self.failed = False
+        self.failed_operation = "install"
+        self.last_uninstall_options = (False, False, False)
         self.lines: list[str] = []
 
     def on_activate(self, _app):
@@ -296,7 +327,7 @@ class Launchpad(Adw.Application):
             ("Sessão", f"{self.report.desktop} · {self.report.session}", self.report.supported),
             ("Memória", f"{self.report.memory_gib:.1f} GiB" if self.report.memory_gib else "não detectada", self.report.memory_gib >= 8),
             ("Espaço livre", f"{self.report.free_gib:.1f} GiB · mínimo sugerido 10 GiB", self.report.free_gib >= 10),
-            ("Ollama", "instalado" if self.ollama else "será instalado pelo assistente", bool(self.ollama or shutil.which("pkexec"))),
+            ("Ollama", "instalado" if self.ollama else "será instalado pelo assistente", bool(self.ollama or Path(PKEXEC).is_file())),
         ]
         for name, value, good in facts:
             row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
@@ -328,7 +359,7 @@ class Launchpad(Adw.Application):
             ("Aurora Desktop", "Copiar a aplicação para ~/.local/share/aurora e manter preferências existentes."),
             ("Dependências Python", "Criar um ambiente virtual privado e instalar os pacotes usados pela Aurora."),
             ("Voz local", "Baixar o modelo português Vosk (aprox. 31 MiB). Google STT e Edge TTS continuam usando internet quando chamados."),
-            ("Motor local", "Se faltar, instalar Ollama pelo instalador oficial; isso pede autenticação administrativa."),
+            ("Motor local", "Se faltar, instalar a versão auditada do script oficial. A etapa administrativa pode substituir arquivos do Ollama, criar seu usuário/serviço, ajustar grupos e instalar suporte de GPU; em alguns casos, adiciona repositório e driver NVIDIA."),
             ("Modelos Gemma", "Instalar os modelos de conversa e ferramentas. Download de até cerca de 6 GiB se ainda não estiverem disponíveis."),
             ("Inicialização", "Criar o serviço aurora.service da sua sessão, habilitá-lo e iniciar a Aurora."),
         ]
@@ -338,7 +369,7 @@ class Launchpad(Adw.Application):
             row.append(self._label(description, "subtle", True))
             panel.append(row)
         col.append(panel)
-        self.model_ack = Gtk.CheckButton(label="Entendi que o download dos modelos pode chegar a cerca de 6 GiB e que o Ollama pode pedir autenticação administrativa.")
+        self.model_ack = Gtk.CheckButton(label="Entendi que os modelos podem baixar até cerca de 6 GiB e que instalar o Ollama pode alterar pacotes, serviços, grupos e drivers do sistema após autenticação administrativa.")
         self.model_ack.set_active(False)
         col.append(self.model_ack)
         nav = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12, halign=Gtk.Align.END)
@@ -392,7 +423,7 @@ class Launchpad(Adw.Application):
             self.stack.set_visible_child_name("progress")
             self._append("Libere pelo menos 10 GiB antes de continuar.")
             return
-        if not self.ollama and not shutil.which("pkexec"):
+        if not self.ollama and not Path(PKEXEC).is_file():
             self.progress_title.set_text("Falta autenticação do sistema")
             self.stack.set_visible_child_name("progress")
             self._append("Ollama não está instalado e o utilitário pkexec não está disponível.")
@@ -422,6 +453,7 @@ class Launchpad(Adw.Application):
     def _start_install(self, *_):
         if not self.model_ack.get_active():
             return
+        self.failed_operation = "install"
         self.stack.set_visible_child_name("progress")
         self.lines.clear(); self._append("Preparando o ambiente…")
         self.cancel_button.set_sensitive(False)
@@ -444,11 +476,11 @@ class Launchpad(Adw.Application):
             run_process([str(MANAGED_APP / "run.sh"), "--setup-only"], self._stream_line, cwd=MANAGED_APP, timeout=1800)
             self._set_stage("3/7 · Preparando a voz", "Baixando o reconhecedor português Vosk.", .31)
             run_process([str(MANAGED_APP / "setup-voice.sh")], self._stream_line, cwd=MANAGED_APP, timeout=1800)
-            self.ollama = shutil.which("ollama")
+            self.ollama = shutil.which("ollama", path=SYSTEM_PATH)
             if not self.ollama:
                 self._set_stage("4/7 · Instalando Ollama", "O instalador oficial solicitará autenticação do sistema.", .43)
                 self._install_ollama()
-                self.ollama = shutil.which("ollama")
+                self.ollama = shutil.which("ollama", path=SYSTEM_PATH)
             if not self.ollama:
                 raise RuntimeError("O comando ollama não apareceu após a instalação.")
             self._wait_for_ollama()
@@ -462,15 +494,21 @@ class Launchpad(Adw.Application):
                 self._set_stage(f"6/7 · Baixando {model}", "O tamanho e a duração dependem da rede; os dados ficam no armazenamento do Ollama.", fraction)
                 run_process([self.ollama, "pull", model], self._stream_line, timeout=7200)
                 if model not in before:
-                    OWNED_MODELS.parent.mkdir(parents=True, exist_ok=True)
+                    OWNED_MODELS.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                    OWNED_MODELS.parent.chmod(0o700)
+                    if OWNED_MODELS.is_symlink():
+                        raise RuntimeError("O manifesto de modelos Aurora é um link simbólico; não vou alterá-lo.")
                     with OWNED_MODELS.open("a", encoding="utf-8") as manifest:
                         manifest.write(model + "\n")
+                    OWNED_MODELS.chmod(0o600)
             if not absent:
                 self._set_stage("Modelos encontrados", "Os dois modelos já estavam disponíveis; nenhum download foi repetido.", .89)
             self._set_stage("7/7 · Ativando a Aurora", "Configurando o serviço da sessão e iniciando a bolha.", .94)
-            subprocess.run(["systemctl", "--user", "stop", "aurora.service"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            stop_old = subprocess.run([SYSTEMCTL, "--user", "stop", "aurora.service"], capture_output=True, text=True, timeout=30)
+            if stop_old.returncode and subprocess.run([SYSTEMCTL, "--user", "is-active", "--quiet", "aurora.service"], timeout=15).returncode == 0:
+                raise RuntimeError("Não consegui parar a instalação anterior da Aurora; não vou substituir seus arquivos enquanto o serviço estiver ativo.")
             run_process([str(MANAGED_APP / "install-desktop.sh")], self._stream_line, cwd=MANAGED_APP, timeout=180)
-            active = subprocess.run(["systemctl", "--user", "is-active", "--quiet", "aurora.service"]).returncode == 0
+            active = subprocess.run([SYSTEMCTL, "--user", "is-active", "--quiet", "aurora.service"], timeout=15).returncode == 0
             if not active:
                 raise RuntimeError("O serviço foi configurado, mas não ficou ativo. Consulte journalctl --user -u aurora.service.")
             GLib.idle_add(self._finish_install)
@@ -479,14 +517,20 @@ class Launchpad(Adw.Application):
 
     def _install_payload(self, source: Path):
         ignored = {".git", ".venv", "__pycache__", ".pytest_cache", "android-client", "tests", "reports", ".github", "packaging", "launchpad"}
-        if MANAGED_APP.is_symlink():
-            raise RuntimeError("A pasta de instalação Aurora é um link simbólico; ela não será seguida por segurança.")
+        try:
+            reject_symlinks_in_tree(source)
+            reject_symlinks_in_tree(MANAGED_APP)
+        except ValueError as exc:
+            raise RuntimeError(str(exc)) from exc
         MANAGED_APP.mkdir(parents=True, exist_ok=True)
+        MANAGED_APP.chmod(0o700)
         for entry in source.iterdir():
             if entry.name in ignored or entry.name.endswith("-preview.png"):
                 continue
             dest = MANAGED_APP / entry.name
-            if dest.is_symlink():
+            if entry.is_symlink():
+                raise RuntimeError(f"O pacote contém um link simbólico inesperado: {entry.name}.")
+            if dest.exists() and dest.is_symlink():
                 raise RuntimeError(f"O destino já contém um link simbólico: {dest.name}. Ele não será sobrescrito.")
             if entry.is_dir():
                 shutil.copytree(entry, dest, dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".venv", "vosk-model"))
@@ -513,29 +557,28 @@ class Launchpad(Adw.Application):
             GLib.idle_add(self._status, None, None, None, "Memória local migrada; a cópia antiga foi preservada.")
 
     def _install_ollama(self):
-        pkexec = shutil.which("pkexec")
-        if not pkexec:
+        if not Path(PKEXEC).is_file():
             raise RuntimeError("Polkit pkexec não está disponível para autenticar o instalador do Ollama.")
         request = urllib.request.Request("https://ollama.com/install.sh", headers={"User-Agent": "Aurora-Launchpad/0.1.0"})
         with urllib.request.urlopen(request, timeout=20) as response:
-            script = response.read(1_000_001)
-        if len(script) > 1_000_000 or not script.startswith(b"#!/"):
-            raise RuntimeError("O instalador retornado pelo domínio oficial do Ollama não passou na validação básica.")
+            script = response.read(OLLAMA_INSTALLER_MAX_BYTES + 1)
+        try:
+            validate_ollama_installer(script)
+        except ValueError as exc:
+            raise RuntimeError(f"{exc} Atualize o Launchpad antes de continuar.") from exc
         with tempfile.NamedTemporaryFile(prefix="aurora-ollama-install-", suffix=".sh", delete=False) as temp:
             temp.write(script); path = Path(temp.name)
         try:
-            run_process([pkexec, "/bin/sh", str(path)], self._stream_line, timeout=900)
+            run_process([PKEXEC, "/bin/sh", str(path)], self._stream_line, timeout=900)
         finally:
             path.unlink(missing_ok=True)
 
     def _wait_for_ollama(self):
         if not ollama_api_ready():
-            pkexec = shutil.which("pkexec")
-            systemctl = shutil.which("systemctl")
-            if not pkexec or not systemctl:
+            if not Path(PKEXEC).is_file() or not Path(SYSTEMCTL).is_file():
                 raise RuntimeError("O Ollama está instalado, mas sua API não está ativa e não é possível iniciar o serviço do sistema.")
             self._set_stage("Iniciando Ollama", "O Fedora pode solicitar autenticação para iniciar ollama.service.", .48)
-            start = subprocess.run([pkexec, systemctl, "start", "ollama.service"], capture_output=True, text=True, timeout=120)
+            start = subprocess.run([PKEXEC, SYSTEMCTL, "start", "ollama.service"], capture_output=True, text=True, timeout=120)
             if start.returncode:
                 detail = (start.stderr or start.stdout or "systemctl start falhou").strip()
                 raise RuntimeError(f"Não consegui iniciar ollama.service: {detail}")
@@ -551,8 +594,12 @@ class Launchpad(Adw.Application):
         return False
 
     def _install_failed(self, message: str):
-        self.progress_title.set_text("A instalação foi interrompida")
-        self.progress_subtitle.set_text("Leia o último detalhe abaixo. Os arquivos baixados ficam disponíveis para tentar novamente.")
+        if self.failed_operation == "uninstall":
+            self.progress_title.set_text("A remoção foi interrompida")
+            self.progress_subtitle.set_text("Leia o detalhe abaixo. A nova tentativa continuará a remoção dos itens restantes.")
+        else:
+            self.progress_title.set_text("A instalação foi interrompida")
+            self.progress_subtitle.set_text("Leia o último detalhe abaixo. Os arquivos baixados ficam disponíveis para tentar novamente.")
         self._append(message)
         self.failed = True
         self.cancel_button.set_label("Tentar novamente")
@@ -564,12 +611,16 @@ class Launchpad(Adw.Application):
             self.failed = False
             self.cancel_button.set_label("Fechar janela")
             self.cancel_button.set_sensitive(False)
-            self._start_install()
+            if self.failed_operation == "uninstall":
+                self.stack.set_visible_child_name("progress")
+                threading.Thread(target=self._uninstall_worker, args=self.last_uninstall_options, daemon=True).start()
+            else:
+                self._start_install()
         else:
             self.window.close()
 
     def _show_service_status(self, *_):
-        result = subprocess.run(["systemctl", "--user", "--no-pager", "--full", "status", "aurora.service"], capture_output=True, text=True)
+        result = subprocess.run([SYSTEMCTL, "--user", "--no-pager", "--full", "status", "aurora.service"], capture_output=True, text=True, timeout=15)
         dialog = Gtk.Dialog(title="Status da Aurora", transient_for=self.window, modal=True)
         dialog.add_button("Fechar", Gtk.ResponseType.CLOSE)
         box = dialog.get_content_area()
@@ -604,6 +655,8 @@ class Launchpad(Adw.Application):
         dialog.close()
         if response != Gtk.ResponseType.ACCEPT:
             return
+        self.failed_operation = "uninstall"
+        self.last_uninstall_options = (remove_data, remove_models, remove_rpm)
         self.stack.set_visible_child_name("progress")
         self._set_stage("Removendo Aurora", "Parando o serviço e limpando os itens escolhidos.", .1)
         threading.Thread(target=self._uninstall_worker, args=(remove_data, remove_models, remove_rpm), daemon=True).start()
@@ -611,40 +664,54 @@ class Launchpad(Adw.Application):
     def _uninstall_worker(self, remove_data: bool, remove_models: bool, remove_rpm: bool):
         try:
             self._set_stage("1/4 · Parando o serviço", "Desabilitando o serviço aurora.service da sessão.", .16)
-            subprocess.run(["systemctl", "--user", "disable", "--now", "aurora.service"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             unit = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home()/".config"))) / "systemd/user/aurora.service"
+            stop = subprocess.run([SYSTEMCTL, "--user", "disable", "--now", "aurora.service"], capture_output=True, text=True, timeout=30)
+            active = subprocess.run([SYSTEMCTL, "--user", "is-active", "--quiet", "aurora.service"], timeout=15).returncode == 0
+            if active or (unit.exists() and stop.returncode != 0):
+                detail = (stop.stderr or stop.stdout or "o serviço ainda está ativo").strip()
+                raise RuntimeError(f"Não removi os arquivos porque não consegui parar aurora.service: {detail}")
+            if unit.is_symlink():
+                raise RuntimeError("O arquivo aurora.service é um link simbólico; ele foi preservado por segurança.")
             unit.unlink(missing_ok=True)
-            subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
+            subprocess.run([SYSTEMCTL, "--user", "daemon-reload"], check=True, timeout=15, capture_output=True, text=True)
             (Path.home()/".local/share/applications/aurora.desktop").unlink(missing_ok=True)
             if remove_models:
                 self._set_stage("2/4 · Removendo modelos Aurora", "Removendo somente os modelos que o Launchpad registrou como novos.", .38)
-                ollama = shutil.which("ollama")
+                ollama = shutil.which("ollama", path=SYSTEM_PATH)
                 if ollama:
                     remove_owned_models(ollama, OWNED_MODELS, lambda cmd: run_process(cmd, self._stream_line, timeout=180))
             memory_file = MANAGED_APP / "aurora-memory.json"
             if not remove_data and memory_file.is_file() and not memory_file.is_symlink():
-                PRESERVED_MEMORY.parent.mkdir(parents=True, exist_ok=True)
+                PRESERVED_MEMORY.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                PRESERVED_MEMORY.parent.chmod(0o700)
                 shutil.copy2(memory_file, PRESERVED_MEMORY)
+                PRESERVED_MEMORY.chmod(0o600)
             if MANAGED_APP.is_symlink():
                 MANAGED_APP.unlink(missing_ok=True)
-            else:
-                shutil.rmtree(MANAGED_APP, ignore_errors=True)
+            elif MANAGED_APP.exists():
+                shutil.rmtree(MANAGED_APP)
             if remove_data:
                 self._set_stage("3/4 · Removendo dados", "Apagando as configurações, a memória local e os logs conforme solicitado.", .61)
-                shutil.rmtree(Path.home()/".config/aurora", ignore_errors=True)
-                shutil.rmtree(Path.home()/".local/state/aurora", ignore_errors=True)
+                for data_path in (Path.home()/".config/aurora", Path.home()/".local/state/aurora"):
+                    if data_path.is_symlink():
+                        data_path.unlink()
+                    elif data_path.is_dir():
+                        shutil.rmtree(data_path)
+                    elif data_path.exists():
+                        data_path.unlink()
                 PRESERVED_MEMORY.unlink(missing_ok=True)
             if remove_rpm and is_rpm_install():
-                pkexec, dnf = shutil.which("pkexec"), shutil.which("dnf")
-                if not pkexec or not dnf:
+                if not Path(PKEXEC).is_file() or not Path(DNF).is_file():
                     raise RuntimeError("Não encontrei pkexec/dnf para remover o pacote RPM; os arquivos do usuário já foram removidos.")
                 self._set_stage("4/4 · Removendo pacote RPM", "O Fedora solicitará autenticação administrativa.", .78)
-                run_process([pkexec, dnf, "remove", "--setopt=clean_requirements_on_remove=False", "-y", "aurora-launchpad"], self._stream_line, timeout=600)
+                run_process([PKEXEC, DNF, "remove", "--setopt=clean_requirements_on_remove=False", "-y", "aurora-launchpad"], self._stream_line, timeout=600)
             GLib.idle_add(self._uninstall_done)
         except Exception as exc:
             GLib.idle_add(self._install_failed, str(exc))
 
     def _uninstall_done(self):
+        self.failed = False
+        self.failed_operation = "install"
         self.progress_title.set_text("Aurora removida deste usuário")
         self.progress_subtitle.set_text("O sistema pode precisar de alguns segundos para atualizar o menu de aplicativos.")
         self.progress_bar.set_fraction(1); self.progress_bar.set_text("100%")

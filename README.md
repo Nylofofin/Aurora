@@ -45,6 +45,8 @@ O asset `aurora-launchpad-0.1.0-1.fc44.noarch.rpm` desta pré-release instala o 
 
 O desinstalador do Launchpad remove o serviço e a instalação gerenciada. Preferências, memória e modelos ficam preservados por padrão; há opções explícitas para apagar dados do usuário e os modelos Gemma que o próprio Launchpad registrou como novos. O Ollama do sistema não é removido, pois pode ser compartilhado por outros aplicativos. O Launchpad é experimental e recusa ambientes diferentes de Fedora Workstation/GNOME/Wayland.
 
+Quando o Ollama falta, o Launchpad aceita apenas a cópia do instalador upstream cujo SHA-256 foi revisado e fixado nesta versão. Essa etapa administrativa pode criar o serviço e a conta do Ollama, ajustar grupos e instalar dependências de GPU; dependendo do hardware e do estado do sistema, o instalador upstream pode adicionar o repositório e o driver NVIDIA. A tela de revisão informa esses possíveis efeitos antes da confirmação.
+
 ### Instalação manual
 
 Aurora também pode ser instalada por scripts versionados, sem instalar arquivos do app em diretórios globais.
