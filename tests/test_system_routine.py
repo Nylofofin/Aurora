@@ -167,6 +167,43 @@ def test_proactive_health_summary_omits_failed_probes_as_pending_items():
     ]
 
 
+def test_spoken_health_report_distinguishes_clean_findings_from_unavailable_checks():
+    clean = {
+        'rpm': {'ok': True, 'packages': [], 'security_count': 0},
+        'flatpak': {'ok': True, 'apps': [], 'available': True},
+        'firmware': {'ok': True, 'devices': [], 'available': True},
+        'warnings': [],
+    }
+    text = routine.format_health_response(clean)
+    assert 'não encontrei atualizações' in text
+    assert 'não consegui consultar' not in text
+
+    unavailable = {
+        'rpm': {'ok': False, 'packages': [], 'security_count': 0},
+        'flatpak': {'ok': False, 'apps': [], 'available': True},
+        'firmware': {'ok': False, 'devices': [], 'available': True},
+        'warnings': [],
+    }
+    text = routine.format_health_response(unavailable)
+    assert 'Não consegui consultar atualizações RPM.' in text
+    assert 'Flatpak.' in text and 'firmware.' in text
+    assert 'tudo está atualizado' not in text
+
+
+def test_spoken_health_report_counts_updates_without_claiming_they_were_installed():
+    report = {
+        'rpm': {'ok': True, 'packages': ['pkg-a', 'pkg-b'], 'security_count': 1},
+        'flatpak': {'ok': True, 'apps': ['org.example.App'], 'available': True},
+        'firmware': {'ok': True, 'devices': ['1.2'], 'available': True},
+        'warnings': ['pouco espaço livre: 4 GB'],
+    }
+    text = routine.format_health_response(report)
+    assert 'RPM: 2 atualizações, 1 de segurança.' in text
+    assert 'Flatpak: 1 aplicativo com atualização disponível.' in text
+    assert 'Firmware: 1 atualização disponível; nenhuma foi instalada.' in text
+    assert 'pouco espaço livre: 4 GB' in text
+
+
 def test_update_worker_never_disables_package_signature_checks(monkeypatch):
     calls = []
 

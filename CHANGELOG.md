@@ -6,6 +6,7 @@
 - Mantém a consulta de Flatpak do usuário e do sistema sequencial para evitar concorrência em seus serviços locais.
 - Preserva resultados parciais quando uma fonte local falha; a rotina não instala nem altera nada durante a checagem.
 - Permite pedir ao agente uma checagem local e somente de leitura do estado do sistema; resultados e indisponibilidades são entregues estruturados, sem afirmar que o PC está atualizado quando uma fonte falhar.
+- A checagem falada usa uma resposta direta baseada nos dados locais em vez de uma segunda inferência Gemma, reduzindo latência e evitando paráfrases que possam distorcer estados ou contagens.
 - Não é estável; mede a responsividade da rotina no Fedora real antes da próxima promoção.
 
 ## Aurora Desktop 1.6.0 — Bellatrix Stability Baseline, 2026-10-24 (release estável)

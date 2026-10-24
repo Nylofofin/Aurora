@@ -158,6 +158,38 @@ def test_screenshot_action_returns_without_a_second_model_turn(monkeypatch):
     assert len(requests) == 1
 
 
+def test_system_health_result_returns_without_a_second_model_turn(monkeypatch):
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *_args): pass
+        def __iter__(self):
+            yield json.dumps({"message": {"tool_calls": [{"function": {
+                "name": "check_system_health", "arguments": {}
+            }}]}}).encode()
+
+    requests = []
+    monkeypatch.setattr(inference_module.urllib.request, "urlopen",
+                        lambda request, **_kwargs: requests.append(request) or Response())
+    cfg = {
+        "endpoint": "http://localhost:11434", "model": "gemma4:test",
+        "keep_alive": "5m", "num_ctx": 1024, "agent_num_ctx": 1024,
+        "agent_num_predict": 96, "num_thread": 4, "num_gpu": 99,
+    }
+    worker = inference_module.Inference(cfg, "Meu computador está atualizado?", use_tools=True)
+    spoken, results = [], []
+    worker.sentence.connect(spoken.append)
+    worker.result.connect(results.append)
+    monkeypatch.setattr(worker, "execute_tool", lambda *_args: (
+        "Verificação local concluída. RPM: não encontrei atualizações nas fontes consultadas."
+    ))
+
+    worker.run()
+
+    assert len(requests) == 1
+    assert spoken == ["Verificação local concluída.", "RPM: não encontrei atualizações nas fontes consultadas."]
+    assert results == ["Verificação local concluída. RPM: não encontrei atualizações nas fontes consultadas."]
+
+
 def test_cancel_before_tool_dispatch_prevents_local_side_effect(monkeypatch):
     class Response:
         def __enter__(self): return self

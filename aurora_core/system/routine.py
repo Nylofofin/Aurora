@@ -189,6 +189,51 @@ def summarize_health(report, *, include_unavailable=True):
     return parts
 
 
+def format_health_response(report):
+    """Return a concise, evidence-bound spoken report for the local health probe."""
+    parts=[]
+    rpm=report.get('rpm',{})
+    if rpm.get('ok'):
+        packages=rpm.get('packages',[])
+        if packages:
+            security=int(rpm.get('security_count',0))
+            parts.append(f"RPM: {len(packages)} atualizações, {security} de segurança.")
+        else:
+            parts.append('RPM: não encontrei atualizações nas fontes consultadas.')
+    else:
+        parts.append('Não consegui consultar atualizações RPM.')
+
+    flatpak=report.get('flatpak',{})
+    if not flatpak.get('available') and flatpak.get('ok'):
+        parts.append('O verificador Flatpak não está instalado; não foi verificado.')
+    elif not flatpak.get('ok'):
+        parts.append('Não consegui consultar atualizações Flatpak.')
+    elif flatpak.get('apps'):
+        count=len(flatpak['apps'])
+        noun='aplicativo' if count==1 else 'aplicativos'
+        parts.append(f"Flatpak: {count} {noun} com atualização disponível.")
+    else:
+        parts.append('Flatpak: não encontrei atualizações nas fontes consultadas.')
+
+    firmware=report.get('firmware',{})
+    if not firmware.get('available') and firmware.get('ok'):
+        parts.append('O verificador de firmware não está instalado; firmware não foi verificado.')
+    elif not firmware.get('ok'):
+        parts.append('Não consegui consultar atualizações de firmware.')
+    elif firmware.get('devices'):
+        count=len(firmware['devices'])
+        noun='atualização' if count==1 else 'atualizações'
+        availability='disponível' if count==1 else 'disponíveis'
+        parts.append(f"Firmware: {count} {noun} {availability}; nenhuma foi instalada.")
+    else:
+        parts.append('Firmware: não encontrei atualizações nas fontes consultadas.')
+
+    warnings=[str(item).strip() for item in report.get('warnings',[]) if str(item).strip()]
+    if warnings:
+        parts.append('Alertas locais: ' + '; '.join(warnings[:4]) + '.')
+    return 'Verificação local concluída. ' + ' '.join(parts)
+
+
 class SystemRoutineCheck(QThread):
     completed=Signal(object)
 

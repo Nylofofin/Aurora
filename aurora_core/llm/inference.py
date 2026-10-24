@@ -24,6 +24,10 @@ ACTION_TOOL_NAMES = {
     'agenda_add', 'agenda_cancel', 'agenda_clear', 'agenda_list', 'agenda_nearest',
 }
 
+# These inspections return deterministic local findings; a second model turn
+# only adds latency and can distort an already verified system status.
+DIRECT_RESULT_TOOL_NAMES = {'check_system_health'}
+
 
 def _agenda_add_needs_followup(result):
     """Let the model clarify a failed agenda request instead of speaking a fixed prompt."""
@@ -153,7 +157,10 @@ class Inference(QThread):
                     finally: self.active_response=None
                 log_voice_timing('llm_turn',elapsed_ms(turn_started))
                 call_names=[call.get('function',{}).get('name','') for call in calls]
-                action_only_turn=bool(call_names) and all(name in ACTION_TOOL_NAMES for name in call_names)
+                action_only_turn=bool(call_names) and all(
+                    name in ACTION_TOOL_NAMES or name in DIRECT_RESULT_TOOL_NAMES
+                    for name in call_names
+                )
                 final_action_turn=not calls and bool(action_results) and not other_tool_used
                 if not action_only_turn and not final_action_turn:
                     for item,needs_translation in deferred_sentences:
@@ -164,7 +171,7 @@ class Inference(QThread):
                 outputs=self._execute_tool_batch(calls)
                 if outputs is None: return
                 for call,name,output in outputs:
-                    if name in ACTION_TOOL_NAMES:
+                    if name in ACTION_TOOL_NAMES or name in DIRECT_RESULT_TOOL_NAMES:
                         action_results.append(str(output))
                         # A failed agenda creation needs another model turn so
                         # it can ask for the missing/invalid date naturally.
@@ -175,10 +182,9 @@ class Inference(QThread):
                     msgs.append({'role':'tool','tool_name':name,'content':output})
                     if self.cancelled: return
                 if self.cancelled: return
-                # A local action already has an authoritative result. Do not
-                # spend another (potentially slow) Gemma turn paraphrasing it:
-                # that second request can leave the orb in "thinking" after
-                # the screenshot or other action has completed.
+                # Local actions and deterministic inspections already have an
+                # authoritative result. Avoid a slow paraphrase turn that can
+                # leave the orb thinking or alter a verified status.
                 if action_only_turn and not other_tool_used:
                     break
             if not (action_results and not other_tool_used):

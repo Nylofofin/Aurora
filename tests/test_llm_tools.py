@@ -2,7 +2,6 @@
 from aurora_core.llm.inference import ACTION_TOOL_NAMES, Inference, _tool_progress_label
 import aurora_core.llm.tools as tools_module
 from aurora_core.llm.tools import TOOLS
-import json
 
 
 def test_screen_injection_tools_are_not_exposed_on_wayland_build():
@@ -26,14 +25,12 @@ def test_system_health_tool_is_read_only_and_returns_structured_report(monkeypat
     }
     seen = []
     monkeypatch.setattr(tools_module, "check_system_health", lambda cfg: seen.append(cfg) or report)
-    monkeypatch.setattr(tools_module, "summarize_health", lambda value: ["1 atualização de segurança"])
+    monkeypatch.setattr(tools_module, "format_health_response", lambda value: "RPM: 1 atualização de segurança.")
 
     result = tools_module.execute_local_tool("check_system_health", {}, {"model": "local-test"})
 
-    payload = json.loads(result)
     assert seen == [{"model": "local-test"}]
-    assert payload["report"] == report
-    assert payload["summary"] == ["1 atualização de segurança"]
+    assert result == "RPM: 1 atualização de segurança."
     assert "check_system_health" not in ACTION_TOOL_NAMES
 
 

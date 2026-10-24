@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-only
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 from ..memory import user_memory_update
@@ -13,7 +12,7 @@ from ..system.windows import manage_window
 from ..system.accessibility import inspect_accessible_windows
 from ..system.audit import audit_action
 from ..system.agenda import agenda_add, agenda_cancel, agenda_clear, agenda_list, agenda_nearest, parse_datetime
-from ..system.routine import check_system_health, summarize_health
+from ..system.routine import check_system_health, format_health_response
 
 TOOLS=[
  {'type':'function','function':{'name':'search_files','description':'Procurar arquivos pelo nome na pasta pessoal, sem ler o conteúdo.','parameters':{'type':'object','properties':{'query':{'type':'string'}},'required':['query']}}},
@@ -49,7 +48,7 @@ def _execute_local_tool(name,args,cfg=None):
     if name=='get_system_info': return system_hardware_summary()
     if name=='check_system_health':
         report=check_system_health(cfg or {})
-        return json.dumps({'report':report,'summary':summarize_health(report)},ensure_ascii=False,sort_keys=True)
+        return format_health_response(report)
     if name=='volume_control': return control_volume(args.get('action','status'),args.get('value',5))
     if name=='manage_window' and args.get('action')!='close': return manage_window(args.get('action',''),args.get('target',''))
     if name=='open_application': return launch_application(args.get('command',''))
