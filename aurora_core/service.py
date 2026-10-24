@@ -713,7 +713,7 @@ class AuroraService(QObject):
     def _arm_action_clarification(self,prompt,answer):
         if getattr(self,'companion_request',None): return
         normalized=normalize_words(prompt)
-        action=re.search(r'\b(abra|abrir|abre|acesse|acessar|inicie|iniciar|execute|executar|rode|rodar|clique|clicar|digite|digitar|crie|criar|salve|salvar|lembre|lembrar|esqueca|esquecer|feche|fechar|encerre|encerrar|minimize|minimizar|maximize|maximizar|aumente|aumentar|diminua|diminuir|coloque|colocar|pesquise|pesquisar|busque|buscar|procure|procurar|atualize|atualizar)\b',normalized)
+        action=re.search(r'\b(abra|abrir|abre|acesse|acessar|inicie|iniciar|execute|executar|rode|rodar|clique|clicar|digite|digitar|crie|criar|agende|agendar|marque|marcar|salve|salvar|lembre|lembrar|esqueca|esquecer|feche|fechar|encerre|encerrar|minimize|minimizar|maximize|maximizar|aumente|aumentar|diminua|diminuir|coloque|colocar|pesquise|pesquisar|busque|buscar|procure|procurar|atualize|atualizar)\b',normalized)
         if (getattr(self,'pending_clarification',None) or not action
                 or not str(answer).strip().endswith('?')):
             return
@@ -985,7 +985,9 @@ class AuroraService(QObject):
         if not self.speaker.active and self.speaker.q.empty() and not model_busy:
             self.voice.speaking=request_busy
             if request_busy: self.orb.set_mode('thinking')
-        if self.inf and self.inf.model!=self.cfg['model']: self.start_warmup()
+        # Keep both configured models resident (Ollama allows two); warming
+        # both again after every agent call only queues extra requests ahead
+        # of the user's next prompt.
     def request_approval(self,name,detail):
         explicit=bool(detail.get('direct') or detail.get('explicit_user_request'))
         if getattr(self,'companion_request',None) and requires_user_approval(name,detail.get('args',{}),explicit_user_request=explicit):

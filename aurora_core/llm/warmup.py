@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QThread
-import json, threading, urllib.request
+import json, urllib.request
 from .prompts import assistant_system_prompt
 
 class ModelWarmup(QThread):
@@ -10,9 +10,9 @@ class ModelWarmup(QThread):
 
     Loading both models during startup means the first user request that
     triggers the agent (gemma4:e2b-it-q4_K_M) does not pay the 30-40 s
-    cold-start penalty of loading 4.6 GB from disk.  The two warm-up
-    requests run concurrently so they do not extend the total startup time
-    significantly when the machine has enough RAM (≥6 GB free).
+    cold-start penalty of loading 4.6 GB from disk. Warm the conversation
+    model first so ordinary questions become available sooner. Requests are
+    sequential because Aurora's Ollama service allows one inference at a time.
     """
 
     def __init__(self, cfg): super().__init__(); self.cfg = cfg
@@ -54,11 +54,6 @@ class ModelWarmup(QThread):
         conv_ctx = int(self.cfg.get('num_ctx', 1024))
         agent_ctx = max(conv_ctx, int(self.cfg.get('agent_num_ctx', 2048)))
 
-        threads = [threading.Thread(target=self._warmup_one, args=(conv_model, conv_ctx), daemon=True)]
+        self._warmup_one(conv_model, conv_ctx)
         if agent_model and agent_model != conv_model:
-            threads.append(threading.Thread(target=self._warmup_one, args=(agent_model, agent_ctx), daemon=True))
-
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join(timeout=150)
+            self._warmup_one(agent_model, agent_ctx)

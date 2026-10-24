@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import time
@@ -33,7 +34,24 @@ def _load() -> list[dict]:
     try:
         data = json.loads(_state_path().read_text(encoding='utf-8'))
         if isinstance(data, list):
-            return data
+            valid = []
+            for event in data:
+                if not isinstance(event, dict):
+                    continue
+                try:
+                    event_id = int(event['id'])
+                    when = float(event['when'])
+                    created = float(event.get('created', 0))
+                except (KeyError, TypeError, ValueError, OverflowError):
+                    continue
+                title = event.get('title')
+                if (event_id < 1 or not math.isfinite(when) or not math.isfinite(created)
+                        or not isinstance(title, str)
+                        or not title.strip()):
+                    continue
+                valid.append({'id': event_id, 'when': when, 'created': created,
+                              'title': title[:200], 'notes': str(event.get('notes', ''))[:500]})
+            return valid
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         pass
     return []
@@ -72,6 +90,18 @@ def parse_datetime(text: str) -> Optional[float]:
     text_norm = normalize_words(text)
     now = datetime.now().astimezone()
 
+    def make_datetime(year, month, day, hour, minute=0, *, roll_year=False):
+        if not 0 <= hour <= 23 or not 0 <= minute <= 59:
+            return None
+        try:
+            result = now.replace(year=year, month=month, day=day, hour=hour,
+                                 minute=minute, second=0, microsecond=0)
+            if roll_year and result <= now:
+                result = result.replace(year=result.year + 1)
+            return result.timestamp()
+        except (ValueError, OverflowError):
+            return None
+
     # Full ISO-like: 25/12/2026 18:30 or 25/12 18:30
     m = re.search(
         r'(\d{1,2})[/\-](\d{1,2})(?:[/\-](\d{4}))?\s+(?:as\s+)?(\d{1,2})(?:[h:h](\d{0,2}))?',
@@ -82,13 +112,7 @@ def parse_datetime(text: str) -> Optional[float]:
         year = int(m.group(3)) if m.group(3) else now.year
         hour = int(m.group(4))
         minute = int(m.group(5)) if m.group(5) else 0
-        try:
-            dt = now.replace(year=year, month=month, day=day, hour=hour, minute=minute, second=0, microsecond=0)
-            if dt < now:
-                dt = dt.replace(year=dt.year + 1)
-            return dt.timestamp()
-        except ValueError:
-            pass
+        return make_datetime(year, month, day, hour, minute, roll_year=m.group(3) is None)
 
     # "dia 5 de novembro às 18h"
     m = re.search(
@@ -100,43 +124,41 @@ def parse_datetime(text: str) -> Optional[float]:
         month = _MONTHS[m.group(2)]
         hour = int(m.group(3))
         minute = int(m.group(4)) if m.group(4) else 0
-        try:
-            dt = now.replace(month=month, day=day, hour=hour, minute=minute, second=0, microsecond=0)
-            if dt < now:
-                dt = dt.replace(year=dt.year + 1)
-            return dt.timestamp()
-        except ValueError:
-            pass
+        return make_datetime(now.year, month, day, hour, minute, roll_year=True)
 
     # "amanhã às 15h30"
-    m = re.search(r'\bamanha\b.*?(\d{1,2})(?:[h:](\d{0,2}))?', text_norm)
+    m = re.search(r'\bamanha\b(.*)', text_norm)
     if m:
-        hour = int(m.group(1))
-        minute = int(m.group(2)) if m.group(2) else 0
-        dt = (now + timedelta(days=1)).replace(hour=hour, minute=minute, second=0, microsecond=0)
-        return dt.timestamp()
+        tm = re.search(r'\bas\s+(\d{1,2})(?:\s*(?:h|:)\s*(\d{1,2})?)?\b|\b(\d{1,2})\s*h\s*(\d{1,2})?\b', m.group(1))
+        if tm:
+            hour = int(tm.group(1) or tm.group(3))
+            minute = int(tm.group(2) or tm.group(4) or 0)
+            tomorrow = now + timedelta(days=1)
+            return make_datetime(tomorrow.year, tomorrow.month, tomorrow.day, hour, minute)
 
     # "hoje às 15h"
-    m = re.search(r'\bhoje\b.*?(\d{1,2})(?:[h:](\d{0,2}))?', text_norm)
+    m = re.search(r'\bhoje\b(.*)', text_norm)
     if m:
-        hour = int(m.group(1))
-        minute = int(m.group(2)) if m.group(2) else 0
-        dt = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-        if dt > now:
-            return dt.timestamp()
+        tm = re.search(r'\bas\s+(\d{1,2})(?:\s*(?:h|:)\s*(\d{1,2})?)?\b|\b(\d{1,2})\s*h\s*(\d{1,2})?\b', m.group(1))
+        if tm:
+            hour = int(tm.group(1) or tm.group(3))
+            minute = int(tm.group(2) or tm.group(4) or 0)
+            ts = make_datetime(now.year, now.month, now.day, hour, minute)
+            if ts and ts > now.timestamp():
+                return ts
 
     # "sexta às 9h" / "próxima quinta às 8h"
     for day_name, weekday_num in sorted(_WEEKDAYS.items(), key=lambda x: -len(x[0])):
         if day_name in text_norm:
-            m = re.search(r'(\d{1,2})(?:[h:](\d{0,2}))?', text_norm)
+            weekday_pos = text_norm.find(day_name)
+            after_weekday = text_norm[weekday_pos + len(day_name):]
+            m = re.search(r'\bas\s+(\d{1,2})(?:\s*(?:h|:)(\d{1,2})?)?\b|\b(\d{1,2})\s*h\s*(\d{1,2})?\b', after_weekday)
             if m:
-                hour = int(m.group(1))
-                minute = int(m.group(2)) if m.group(2) else 0
+                hour = int(m.group(1) or m.group(3))
+                minute = int(m.group(2) or m.group(4) or 0)
                 days_ahead = (weekday_num - now.weekday()) % 7 or 7
-                dt = (now + timedelta(days=days_ahead)).replace(
-                    hour=hour, minute=minute, second=0, microsecond=0
-                )
-                return dt.timestamp()
+                day = now + timedelta(days=days_ahead)
+                return make_datetime(day.year, day.month, day.day, hour, minute)
             break
 
     return None
@@ -146,16 +168,20 @@ def parse_datetime(text: str) -> Optional[float]:
 
 def agenda_add(title: str, when_ts: float, notes: str = '') -> str:
     """Add a new event. Returns a human-readable confirmation."""
-    if not title.strip():
+    if not isinstance(title, str) or not title.strip():
         return 'Precisa de um título para o compromisso.'
-    if not when_ts or when_ts < time.time() - 60:
+    try:
+        when_ts = float(when_ts)
+    except (TypeError, ValueError, OverflowError):
+        when_ts = 0
+    if not math.isfinite(when_ts) or when_ts < time.time() - 60:
         return 'A data ou hora do compromisso não foi reconhecida ou já passou.'
     events = _load()
     event = {
         'id': _next_id(events),
         'title': title.strip()[:200],
         'when': when_ts,
-        'notes': notes.strip()[:500],
+        'notes': str(notes).strip()[:500],
         'created': time.time(),
     }
     events.append(event)
@@ -166,6 +192,10 @@ def agenda_add(title: str, when_ts: float, notes: str = '') -> str:
 
 def agenda_list(days: int = 7) -> str:
     """List upcoming events in the next *days* days."""
+    try:
+        days = max(1, min(365, int(days)))
+    except (TypeError, ValueError, OverflowError):
+        days = 7
     events = _load()
     now = time.time()
     cutoff = now + days * 86400
@@ -182,16 +212,16 @@ def agenda_list(days: int = 7) -> str:
 
 
 def agenda_cancel(event_id: Optional[int] = None) -> str:
-    """Remove an event by id, or all past events if id is None."""
-    events = _load()
+    """Remove one event by id. Bulk cleanup is a separate confirmed action."""
     if event_id is None:
-        now = time.time()
-        kept = [e for e in events if e.get('when', 0) >= now - 60]
-        removed = len(events) - len(kept)
-        if not removed:
-            return 'Não havia compromissos passados para remover.'
-        _save(kept)
-        return f'Removi {removed} compromisso(s) já passado(s).'
+        return 'Informe o número do compromisso que deseja remover.'
+    try:
+        event_id = int(event_id)
+    except (TypeError, ValueError, OverflowError):
+        return 'O identificador do compromisso é inválido.'
+    if event_id < 1:
+        return 'O identificador do compromisso é inválido.'
+    events = _load()
     remaining = [e for e in events if e.get('id') != event_id]
     if len(remaining) == len(events):
         return f'Não encontrei o compromisso {event_id}.'

@@ -10,7 +10,7 @@ from ..system.volume import control_volume
 from ..system.windows import manage_window
 from ..system.accessibility import inspect_accessible_windows
 from ..system.audit import audit_action
-from ..system.agenda import agenda_add, agenda_cancel, agenda_list, agenda_nearest, parse_datetime
+from ..system.agenda import agenda_add, agenda_cancel, agenda_clear, agenda_list, agenda_nearest, parse_datetime
 import os
 
 TOOLS=[
@@ -34,7 +34,8 @@ TOOLS=[
  {'type':'function','function':{'name':'forget_preference','description':'Apagar da memória local uma preferência específica que o usuário pediu para esquecer.','parameters':{'type':'object','properties':{'preference':{'type':'string'}},'required':['preference']}}},
  {'type':'function','function':{'name':'agenda_add','description':'Adicionar um compromisso na agenda pessoal. Use quando o usuário pedir para agendar, marcar ou criar um compromisso com título e data/hora.','parameters':{'type':'object','properties':{'title':{'type':'string','description':'Título do compromisso, ex: "Reunião com cliente"'},'when':{'type':'string','description':'Data e hora em linguagem natural, ex: "amanhã às 15h", "sexta às 9h30", "dia 5 de novembro às 18h"'},'notes':{'type':'string','description':'Anotações opcionais sobre o compromisso'}},'required':['title','when']}}},
  {'type':'function','function':{'name':'agenda_list','description':'Listar compromissos futuros na agenda pessoal.','parameters':{'type':'object','properties':{'days':{'type':'integer','description':'Número de dias à frente para listar. Padrão: 7'}},'required':[]}}},
- {'type':'function','function':{'name':'agenda_cancel','description':'Cancelar/remover um compromisso da agenda pelo número de ID, ou limpar compromissos passados se o ID não for informado.','parameters':{'type':'object','properties':{'event_id':{'type':'integer','description':'ID do compromisso a remover. Omitir para limpar os passados'}},'required':[]}}},
+ {'type':'function','function':{'name':'agenda_cancel','description':'Cancelar/remover um único compromisso da agenda. É obrigatório informar o ID mostrado ao listar a agenda; nunca use esta ferramenta para apagar vários compromissos.','parameters':{'type':'object','properties':{'event_id':{'type':'integer','description':'ID exato do compromisso a remover'}},'required':['event_id']}}},
+ {'type':'function','function':{'name':'agenda_clear','description':'Apagar todos os compromissos da agenda. Esta ação exige confirmação na bolha. Use somente quando o usuário pedir explicitamente para limpar todos os compromissos.','parameters':{'type':'object','properties':{},'required':[]}}},
  {'type':'function','function':{'name':'agenda_nearest','description':'Informar o próximo compromisso agendado.','parameters':{'type':'object','properties':{},'required':[]}}},
 ]
 
@@ -56,6 +57,7 @@ def _execute_local_tool(name,args,cfg=None):
         return agenda_add(str(args.get('title', '')), ts or 0, str(args.get('notes', '')))
     if name=='agenda_list': return agenda_list(int(args.get('days', 7)))
     if name=='agenda_cancel': return agenda_cancel(args.get('event_id'))
+    if name=='agenda_clear': return agenda_clear()
     if name=='agenda_nearest': return agenda_nearest()
     if name=='search_files':
         query=str(args.get('query','')).lower().strip()

@@ -21,8 +21,14 @@ ACTION_TOOL_NAMES = {
     'inspect_accessible_windows', 'focus_accessible_window',
     'type_accessible_text', 'volume_control', 'get_system_info',
     'create_file', 'remember_preference', 'forget_preference',
-    'agenda_add', 'agenda_cancel', 'agenda_list', 'agenda_nearest',
+    'agenda_add', 'agenda_cancel', 'agenda_clear', 'agenda_list', 'agenda_nearest',
 }
+
+
+def _agenda_add_needs_followup(result):
+    """Let the model clarify a failed agenda request instead of speaking a fixed prompt."""
+    text = str(result).strip()
+    return text.startswith(('Precisa de um título', 'A data ou hora do compromisso'))
 
 class Inference(QThread):
     phrase=Signal(str); sentence=Signal(str); state=Signal(str); approval=Signal(str,object); result=Signal(str); error=Signal(str); search=Signal(str,str); progress=Signal(object)
@@ -141,6 +147,10 @@ class Inference(QThread):
                 for call,name,output in outputs:
                     if name in ACTION_TOOL_NAMES:
                         action_results.append(str(output))
+                        # A failed agenda creation needs another model turn so
+                        # it can ask for the missing/invalid date naturally.
+                        if name == 'agenda_add' and _agenda_add_needs_followup(output):
+                            other_tool_used=True
                     else:
                         other_tool_used=True
                     msgs.append({'role':'tool','tool_name':name,'content':output})
@@ -257,7 +267,7 @@ class Inference(QThread):
             except Exception as exc: output=f'Busca não concluída: {exc}'
             self.search.emit(query,output)
             return output
-        if name not in ('close_application','manage_window','open_url','take_screenshot','spotify_play','obs_record','focus_accessible_window','type_accessible_text'): return 'Ferramenta indisponível.'
+        if name not in ('close_application','manage_window','open_url','take_screenshot','spotify_play','obs_record','focus_accessible_window','type_accessible_text','agenda_clear'): return 'Ferramenta indisponível.'
         parsed_request=parse_local_command(self.prompt)
         explicit_request=bool(parsed_request and parsed_request[0]==name)
         if name=='obs_record' and explicit_request:

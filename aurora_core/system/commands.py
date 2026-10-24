@@ -16,12 +16,16 @@ def _parse_agenda_command(text: str, original: str):
     Returns an action tuple or None if the text is not an agenda request.
     """
     # "lista compromissos", "agenda de hoje", "quais são meus compromissos"
-    if re.search(r'\b(agenda|compromisso(?:s)?|evento(?:s)?|reuniao(?:oes)?)\b', text):
+    if re.search(r'\b(agenda|compromisso(?:s)?|evento(?:s)?|reuni(?:ao|oes))\b', text):
         if re.search(r'\b(cancele|cancelar|cancela|remova|remover|apague|apagar|exclua|excluir|limpe|limpar)\b', text):
             if re.search(r'\b(todos|todas|tudo|geral|gerais)\b', text):
                 return ('agenda_clear', {})
-            m = re.search(r'\b(?:compromisso|evento|item)?\s*(?:numero\s*)?(\d+)\b', text)
-            event_id = int(m.group(1)) if m else None
+            # Require an explicit ID marker: otherwise a time such as "sexta
+            # às 9h" could be mistaken for event ID 9 and cancel the wrong item.
+            m = re.search(r'\b(?:id|numero|n\s*[oº]?|compromisso|evento|item)\s*(?:numero\s*)?(\d+)\b', text)
+            if not m:
+                return None
+            event_id = int(m.group(1))
             return ('agenda_cancel', {'event_id': event_id})
         if re.search(r'\b(proximo|proximos|proximo|próximo|próximos)\b', text):
             return ('agenda_nearest', {})

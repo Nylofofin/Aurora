@@ -12,6 +12,7 @@ def requires_user_approval(name: str, args: dict | None = None,
     args = args if isinstance(args, dict) else {}
     return (
         name == "close_application"
+        or name in {"agenda_clear"}
         or (name == "manage_window" and args.get("action") == "close")
         or (name == "obs_record" and (
             args.get("action") == "start" or not explicit_user_request))
