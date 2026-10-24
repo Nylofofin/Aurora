@@ -96,6 +96,8 @@ O JSONL registra decisão de busca, latência total, tentativas por provedor, co
 
 ### Desenvolver e diagnosticar
 
+**Ferramenta principal de desenvolvimento:** por decisão do mantenedor, o Codex será o ambiente de IA prioritário para implementar, revisar e manter o código da Aurora. O mantenedor define os objetivos e valida as mudanças no computador; o Codex auxilia no trabalho técnico. Esta diretriz vale para o desenvolvimento daqui em diante e não altera a autoria histórica do repositório.
+
 - Suíte completa: `./.venv/bin/python -m pytest -q`.
 - Compilação: `./.venv/bin/python -m compileall -q aurora.py aurora_core aurora_fx.py aurora_integrations.py scripts`.
 - Checagem reproduzível antes de release: `scripts/check-desktop-release.sh` (compilação, suíte completa e sintaxe Bash). O GitHub Actions roda a mesma checagem em pushes e pull requests; ela não publica releases.
