@@ -599,6 +599,33 @@ class Launchpad(Adw.Application):
         self.release_options = options
         self.launchpad_update = update
         self.new_aurora_releases = tuple(newer or ())
+        # An installed Aurora opens the maintenance dashboard, which does not
+        # create the fresh-install release widgets. Keep that path isolated so
+        # an older Launchpad can still present its self-update action instead
+        # of crashing while dereferencing ``releases_box``.
+        if self.existing_install:
+            if error:
+                self.update_status.set_text("Não consegui consultar as atualizações agora. Tente novamente.")
+                self.maintenance_updates_status.set_text("Não foi possível consultar builds novas agora.")
+                return False
+            if update:
+                version = update["asset"]["name"].split("aurora-launchpad-", 1)[1].split("-", 1)[0]
+                self.update_status.set_text(
+                    f"Esta cópia é {INSTALLER_VERSION}; a versão {version} está disponível. Atualize antes de continuar."
+                )
+                self.update_button.set_visible(True)
+                self.maintenance_updates_status.set_text("Atualize o Launchpad para consultar e instalar builds da Aurora.")
+                self.maintenance_updates_button.set_visible(False)
+                return False
+            self.update_status.set_text(f"Launchpad {INSTALLER_VERSION} está atualizado.")
+            if self.new_aurora_releases:
+                count = len(self.new_aurora_releases)
+                self.maintenance_updates_status.set_text(f"{count} build(s) nova(s) acima da versão {self.installed_aurora_version}.")
+                self.maintenance_updates_button.set_visible(True)
+            else:
+                self.maintenance_updates_status.set_text("Nenhuma build nova foi publicada desde a versão instalada.")
+            self._refresh_maintenance_status()
+            return False
         self.release_cards.clear()
         while self.releases_box.get_first_child():
             self.releases_box.remove(self.releases_box.get_first_child())
@@ -617,15 +644,6 @@ class Launchpad(Adw.Application):
             self.release_status.set_text("Atualização obrigatória do Launchpad disponível.")
             return False
         self.update_status.set_text(f"Launchpad {INSTALLER_VERSION} está atualizado.")
-        if self.existing_install:
-            if self.new_aurora_releases:
-                count = len(self.new_aurora_releases)
-                self.maintenance_updates_status.set_text(f"{count} build(s) nova(s) acima da versão {self.installed_aurora_version}.")
-                self.maintenance_updates_button.set_visible(True)
-            else:
-                self.maintenance_updates_status.set_text("Nenhuma build nova foi publicada desde a versão instalada.")
-            self._refresh_maintenance_status()
-            return False
         if not options:
             self.release_status.set_text("O GitHub não retornou releases publicadas válidas.")
             return False
