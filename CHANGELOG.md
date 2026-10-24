@@ -14,6 +14,7 @@
 - Interrompe uma prévia anterior antes de iniciar outra, evitando fila de áudio acumulada.
 - Mantém o fluxo limitado às três vozes brasileiras suportadas e valida o nome de ativação no vocabulário do Vosk.
 - Corrige o auto-update do Launchpad para aceitar o redirecionamento oficial de assets do GitHub, mantendo a verificação SHA-256.
+- Adiciona treinamento local opcional de wake word para nomes ausentes no vocabulário do Vosk, com quatro amostras acústicas e armazenamento sem áudio bruto.
 
 ## Aurora Desktop 1.7.2 — Andromeda First Light, 2026-10-24 (release estável)
 

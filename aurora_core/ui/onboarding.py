@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 
 from ..config import VOSK_PATH
 from ..voice.wake import wake_name_supported, wake_name_words
+from ..voice.profile import enroll as enroll_wake_profile
 
 
 SUPPORTED_VOICES = (
@@ -171,7 +172,7 @@ class _VoiceCatalog(QThread):
 
 
 class _NameCheck(QThread):
-    checked = Signal(str, bool, str)
+    checked = Signal(str, bool, str, bool)
 
     def __init__(self, name):
         super().__init__()
@@ -180,7 +181,7 @@ class _NameCheck(QThread):
     def run(self):
         words = wake_name_words(self.name)
         if not words:
-            self.checked.emit(self.name, False, "Use um nome de até quatro palavras.")
+            self.checked.emit(self.name, False, "Use um nome de até quatro palavras.", False)
             return
         try:
             import vosk
@@ -189,14 +190,28 @@ class _NameCheck(QThread):
             if missing:
                 self.checked.emit(self.name, False,
                                   "O modelo de voz não reconhece: " + ", ".join(missing) +
-                                  ". Escolha outro nome ou marque “Prefiro Aurora”.")
+                                  ". Vamos criar um perfil local com sua voz.", True)
                 return
-            self.checked.emit(self.name, True, "Nome compatível com o vocabulário do Vosk.")
+            self.checked.emit(self.name, True, "Nome compatível com o vocabulário do Vosk.", False)
         except Exception as exc:
             if self.isInterruptionRequested():
                 return
             self.checked.emit(self.name, False,
-                              f"Não consegui validar esse nome no modelo de voz ({type(exc).__name__}).")
+                              f"Não consegui validar o modelo ({type(exc).__name__}). Vamos criar um perfil local.", True)
+
+
+class _WakeCapture(QThread):
+    captured = Signal(object)
+    failed = Signal(str)
+
+    def run(self):
+        try:
+            import sounddevice as sd
+            audio = sd.rec(int(16_000 * 1.6), samplerate=16_000, channels=1, dtype="int16")
+            sd.wait()
+            self.captured.emit(audio.tobytes())
+        except Exception as exc:
+            self.failed.emit(f"Não consegui acessar o microfone ({type(exc).__name__}).")
 
 
 class PersonalizationWizard(QDialog):
@@ -211,6 +226,10 @@ class PersonalizationWizard(QDialog):
         if self._selected_style not in {"boreal", "emerald", "crimson"}:
             self._selected_style = "boreal"
         self._name_worker = None
+        self._wake_worker = None
+        self._wake_recordings = []
+        self._wake_profile = None
+        self._needs_training = False
         self._sfx = {}
         self.setWindowTitle("Personalizar a Aurora")
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
@@ -241,6 +260,7 @@ class PersonalizationWizard(QDialog):
         self.stack.setGraphicsEffect(QGraphicsOpacityEffect(self.stack))
         self._build_welcome()
         self._build_profile()
+        self._build_wake_training()
         self._build_bubble()
         self._build_voice()
         self._build_loading()
@@ -377,10 +397,36 @@ class PersonalizationWizard(QDialog):
         self.assistant_name.textChanged.connect(self._update_preview_phrase)
         self.assistant_name.setHidden(self.default_name.isChecked())
         layout.addWidget(self.default_name)
-        self.name_note = QLabel("O nome será adicionado à gramática dinâmica do Vosk. Para funcionar bem, cada palavra precisa existir no vocabulário do modelo instalado.")
+        self.name_note = QLabel("O nome será validado no Vosk. Se alguma palavra não existir, a Aurora oferecerá um treinamento local curto.")
         self.name_note.setWordWrap(True)
         self.name_note.setStyleSheet("color:#746d7d;font-size:12px")
         layout.addWidget(self.name_note)
+        self.stack.addWidget(frame)
+
+    def _build_wake_training(self):
+        frame, layout = self._panel(
+            "Vamos reconhecer seu nome",
+            "O vocabulário atual não contém esse nome. Grave quatro amostras curtas para criar um perfil local privado.",
+        )
+        self.wake_training_hint = QLabel(
+            "Clique em gravar e diga apenas o nome da assistente. Repita quatro vezes em um tom natural."
+        )
+        self.wake_training_hint.setObjectName("subtitle")
+        self.wake_training_hint.setWordWrap(True)
+        layout.addWidget(self.wake_training_hint)
+        self.wake_training_status = QLabel("Nenhuma amostra gravada · 0 de 4")
+        self.wake_training_status.setObjectName("cardDetail")
+        layout.addWidget(self.wake_training_status)
+        self.wake_training_button = QPushButton("Gravar amostra 1 de 4")
+        self.wake_training_button.setObjectName("primary")
+        self.wake_training_button.clicked.connect(self._capture_wake_sample)
+        layout.addWidget(self.wake_training_button, 0, Qt.AlignmentFlag.AlignHCenter)
+        self.wake_training_note = QLabel(
+            "O áudio não é salvo: apenas características acústicas são mantidas nas configurações locais."
+        )
+        self.wake_training_note.setObjectName("cardDetail")
+        self.wake_training_note.setWordWrap(True)
+        layout.addWidget(self.wake_training_note)
         self.stack.addWidget(frame)
 
     def _build_bubble(self):
@@ -500,7 +546,7 @@ class PersonalizationWizard(QDialog):
         self._apply_system_theme()
 
     def done(self, result):
-        for worker in (getattr(self, "_voice_worker", None), getattr(self, "_name_worker", None)):
+        for worker in (getattr(self, "_voice_worker", None), getattr(self, "_name_worker", None), getattr(self, "_wake_worker", None)):
             if worker is not None and worker.isRunning():
                 worker.requestInterruption()
                 worker.wait(2500)
@@ -510,11 +556,13 @@ class PersonalizationWizard(QDialog):
         previous = self._current_page
         self._current_page = page
         self.stack.setCurrentIndex(page)
-        self.back_button.setVisible(page > 0 and page < 4)
-        labels = ("Boas-vindas · 1 de 4", "Seu perfil · 2 de 4", "Sua Bolha · 3 de 4", "Sua voz · 4 de 4", "")
+        self.back_button.setVisible(page > 0 and page < 5)
+        labels = (("Boas-vindas · 1 de 5", "Seu perfil · 2 de 5", "Ativação · 3 de 5", "Sua Bolha · 4 de 5", "Sua voz · 5 de 5", "")
+                  if self._needs_training else
+                  ("Boas-vindas · 1 de 4", "Seu perfil · 2 de 4", "", "Sua Bolha · 3 de 4", "Sua voz · 4 de 4", ""))
         self.step_label.setText(labels[page])
-        self.next_button.setVisible(page < 4)
-        self.next_button.setText(("Começar", "Próximo", "Próximo", "Finalizar", "")[page])
+        self.next_button.setVisible(page < 5)
+        self.next_button.setText(("Começar", "Próximo", "Próximo", "Próximo", "Finalizar", "")[page])
         if animated:
             effect = self.stack.graphicsEffect()
             effect.setOpacity(0.0)
@@ -539,11 +587,49 @@ class PersonalizationWizard(QDialog):
             group.start()
             self._play_sfx("step")
 
-    def _set_name_checked(self, name, ok, message):
+    def _set_name_checked(self, name, ok, message, needs_training=False):
         self.next_button.setEnabled(True)
         self.name_note.setText(message)
         if ok and name == self.assistant_name.text().strip():
+            self._needs_training = False
+            self._set_page(3)
+        elif needs_training and name == self.assistant_name.text().strip():
+            self._needs_training = True
             self._set_page(2)
+
+    def _capture_wake_sample(self):
+        if self._wake_worker is not None and self._wake_worker.isRunning():
+            return
+        if len(self._wake_recordings) >= 4:
+            return
+        self.wake_training_button.setEnabled(False)
+        self.wake_training_status.setText(f'Diga “{self._preview_name()}” agora…')
+        self._play_sfx("select")
+        self._wake_worker = _WakeCapture(self)
+        self._wake_worker.captured.connect(self._wake_sample_captured)
+        self._wake_worker.failed.connect(self._wake_capture_failed)
+        self._wake_worker.start()
+
+    def _wake_sample_captured(self, pcm):
+        self._wake_recordings.append(bytes(pcm))
+        count = len(self._wake_recordings)
+        if count >= 4:
+            try:
+                self._wake_profile = enroll_wake_profile(self._preview_name(), self._wake_recordings)
+                self.wake_training_status.setText("Perfil local criado · 4 de 4 amostras válidas")
+                self.wake_training_button.setText("Amostras concluídas ✓")
+                self.next_button.setEnabled(True)
+            except ValueError as exc:
+                self.wake_training_status.setText(str(exc))
+                self.wake_training_button.setEnabled(True)
+        else:
+            self.wake_training_status.setText(f"Amostra {count} de 4 concluída")
+            self.wake_training_button.setText(f"Gravar amostra {count + 1} de 4")
+            self.wake_training_button.setEnabled(True)
+
+    def _wake_capture_failed(self, message):
+        self.wake_training_status.setText(message)
+        self.wake_training_button.setEnabled(True)
 
     def next(self):
         if self._current_page == 1 and not self.user_name.text().strip():
@@ -560,11 +646,19 @@ class PersonalizationWizard(QDialog):
             self._name_worker.checked.connect(self._set_name_checked)
             self._name_worker.start()
             return
-        if self._current_page < 3:
-            if self._current_page == 2 and not self._selected_style:
+        if self._current_page == 1 and self.default_name.isChecked():
+            self._needs_training = False
+            self._set_page(3)
+        elif self._current_page == 2:
+            if not self._wake_profile:
+                self.wake_training_status.setText("Grave as quatro amostras antes de continuar.")
+                return
+            self._set_page(3)
+        elif self._current_page < 4:
+            if self._current_page == 3 and not self._selected_style:
                 return
             self._set_page(self._current_page + 1)
-        elif self._current_page == 3:
+        elif self._current_page == 4:
             if not getattr(self, "_selected_voice", None):
                 self.voice_status.setText("Escolha uma voz para continuar.")
                 return
@@ -572,7 +666,10 @@ class PersonalizationWizard(QDialog):
 
     def back(self):
         if self._current_page > 0:
-            self._set_page(self._current_page - 1)
+            previous = self._current_page - 1
+            if previous == 2 and not self._needs_training:
+                previous = 1
+            self._set_page(previous)
 
     def _apply(self):
         voice = getattr(self, "_selected_voice", str(self.cfg.get("tts_voice", SUPPORTED_VOICES[0][0])))
@@ -580,12 +677,13 @@ class PersonalizationWizard(QDialog):
             "user_name": " ".join(self.user_name.text().split())[:80],
             "profile_configured": True,
             "assistant_name": "Aurora" if self.default_name.isChecked() else " ".join(self.assistant_name.text().split())[:80],
+            "wake_profile": self._wake_profile if self._needs_training else None,
             "bubble_style": self._selected_style,
             "tts_voice": voice or self.cfg.get("tts_voice", "pt-BR-ThalitaMultilingualNeural"),
             "onboarding_pending": False,
             "onboarding_boot_id": "",
         }
-        self._set_page(4)
+        self._set_page(5)
         self._play_sfx("success")
         self._loading_pulse.start()
         self.back_button.setVisible(False)

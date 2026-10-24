@@ -9,6 +9,7 @@ from concurrent.futures import Future, TimeoutError as FutureTimeout
 from ..config import VOSK_PATH
 from ..system.files import normalize_words
 from ..system.text import strip_wake_word
+from .profile import matches as profile_matches
 
 SAMPLE_RATE=16000
 MIC_BLOCK_FRAMES=1600  # 100 ms: lower orb feedback latency while preserving audio windows.
@@ -127,6 +128,7 @@ class LocalVoice(QThread):
             # fallback and still require an exact final phrase below.
             wake_fallback_rec = None if normalize_words(assistant_name) == 'aurora' else KaldiRecognizer(model,16000)
             if wake_fallback_rec is not None: wake_fallback_rec.SetWords(False)
+            wake_profile = self.cfg.get('wake_profile') if normalize_words(assistant_name) != 'aurora' else None
             cancel_rec=KaldiRecognizer(model,16000,'["para", "pare", "parar", "cancele", "cancela", "cancelar", "interrompa", "interrompe", "interromper", "chega", "espera", "calma", "calma para", "pera", "pera aí", "deixa", "deixa pra lá", "para agora", "para com isso", "não", "não para", "não calma para", "não espera", "corta"]'); cancel_rec.SetWords(False)
             self.recognizer=sr.Recognizer(); self.recognizer.operation_timeout=2.0
             while self.running:
@@ -144,7 +146,7 @@ class LocalVoice(QThread):
                         except (queue.Empty,queue.Full): pass
                 with sd.RawInputStream(samplerate=SAMPLE_RATE,blocksize=MIC_BLOCK_FRAMES,dtype='int16',channels=1,callback=callback):
                     self.status.emit('hidden')
-                    active=False; started=0.0; buffer=[]; wake_audio=[]
+                    active=False; started=0.0; buffer=[]; wake_audio=[]; profile_checked_at=0.0
                     while self.running and not self.mobile_owned.is_set():
                         try: block=q.get(timeout=.25)
                         except queue.Empty: continue
@@ -171,6 +173,21 @@ class LocalVoice(QThread):
                         if not active:
                             wake_audio.append(block)
                             if len(wake_audio)>176: wake_audio=wake_audio[-176:]
+                            if (wake_profile and len(wake_audio) >= 12
+                                    and len(wake_audio) % 8 == 0
+                                    and time.monotonic() - profile_checked_at >= .45):
+                                profile_checked_at = time.monotonic()
+                                try:
+                                    profile_pcm = b''.join(wake_audio[-12:])
+                                    profile_hit = profile_matches(wake_profile, profile_pcm)
+                                except Exception:
+                                    profile_hit = False
+                                if profile_hit:
+                                    self.begin_request()
+                                    self.wake.emit(); self.status.emit('listening')
+                                    active=True; buffer=list(wake_audio); wake_audio=[]
+                                    started=time.monotonic(); rec.Reset(); wake_rec.Reset()
+                                    continue
                             if self.one_shot.is_set():
                                 self.one_shot.clear(); active=True; buffer=[]; wake_audio=[]; started=time.monotonic(); self.status.emit('listening'); rec.Reset(); wake_rec.Reset(); continue
                         else:

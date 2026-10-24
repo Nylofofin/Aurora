@@ -26,6 +26,7 @@ DEFAULTS = {
     'user_name':'',
     'profile_configured':False,
     'assistant_name':'Aurora',
+    'wake_profile':None,
     'bubble_style':'boreal',
     'onboarding_pending':False,
     'onboarding_boot_id':'',
