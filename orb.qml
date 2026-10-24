@@ -15,6 +15,7 @@ Item {
     property real inputLevel: 0.0
     property real speechPulse: 0.0
     property real completionPulse: 0.0
+    property real hoverEnergy: 0.0
     property real pressX: 0
     property real pressY: 0
     property real windowStartX: 0
@@ -59,6 +60,7 @@ Item {
     Behavior on inputLevel { SmoothedAnimation { velocity: 3.2; duration: 90; maximumEasingTime: 90 } }
     Behavior on speechPulse { NumberAnimation { duration: 82; easing.type: Easing.OutCubic } }
     Behavior on completionPulse { NumberAnimation { duration: 105; easing.type: Easing.OutCubic } }
+    Behavior on hoverEnergy { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
 
     // Motion stays on the glass surface: a slow breath plus a moving internal
     // light field. No detached rings, particles or changing silhouette.
@@ -69,7 +71,8 @@ Item {
         property real breathing: 0.0
         property real sheenTravel: 0.0
         property real sway: 0.0
-        scale: 0.99 + breathing * 0.012 + root.activeEnergy * 0.026
+        property real surfaceFlow: 0.0
+        scale: 0.99 + breathing * 0.012 + root.activeEnergy * 0.026 + root.hoverEnergy * 0.008
         // A restrained tilt and counter-tilt sell a living glass surface while
         // keeping the silhouette perfectly round to the eye.
         rotation: sway * 1.15 + root.activeEnergy * 1.4
@@ -114,12 +117,18 @@ Item {
             NumberAnimation { from: -1; to: 1; duration: 3900; easing.type: Easing.InOutSine }
             NumberAnimation { from: 1; to: -1; duration: 4300; easing.type: Easing.InOutSine }
         }
+        SequentialAnimation on surfaceFlow {
+            running: root.motionEnabled
+            loops: Animation.Infinite
+            NumberAnimation { from: 0; to: 1; duration: root.mode === "searching" ? 1900 : 3200; easing.type: Easing.InOutSine }
+            NumberAnimation { from: 1; to: 0; duration: root.mode === "searching" ? 2200 : 3600; easing.type: Easing.InOutSine }
+        }
 
         // Pearlescent shell with a style-specific tonal gradient.
         Shape {
             anchors.fill: parent
             ShapePath {
-                strokeColor: "#70FFFFFF"; strokeWidth: 1.0
+                strokeColor: Qt.rgba(root.stateColor.r, root.stateColor.g, root.stateColor.b, 0.42); strokeWidth: 1.0
                 fillGradient: LinearGradient {
                     x1: 22; y1: 4; x2: 95; y2: 112
                     GradientStop { position: 0.00; color: "#FFFDFC" }
@@ -141,7 +150,7 @@ Item {
                 strokeColor: "transparent"; strokeWidth: 0
                 fillGradient: RadialGradient {
                     centerX: 54 + sphere.sheenTravel * 13 + root.voiceEnergy * 6
-                    centerY: 58 + sphere.breathing * 5
+                    centerY: 58 + sphere.breathing * 5 + sphere.surfaceFlow * 8
                     centerRadius: 66
                     focalX: 30 + sphere.sheenTravel * 10 - root.outputEnergy * 5
                     focalY: 24 + root.voiceEnergy * 3
@@ -156,8 +165,8 @@ Item {
 
         // A soft pearl highlight moves slowly; voice energy gently lifts it.
         Shape {
-            x: 13 + sphere.sheenTravel * 4 + root.voiceEnergy * 3
-            y: 5 + sphere.breathing * 2 - root.completionPulse * 2
+            x: 13 + sphere.sheenTravel * 4 + sphere.surfaceFlow * 5 + root.voiceEnergy * 3
+            y: 5 + sphere.breathing * 2 + sphere.surfaceFlow * 2 - root.completionPulse * 2
             width: 88; height: 70
             opacity: Math.min(0.94, 0.68 + root.activeEnergy * 0.22)
             scale: 1.0 + root.activeEnergy * 0.035
@@ -191,6 +200,8 @@ Item {
             root.pressX = mouse.x; root.pressY = mouse.y
             root.windowStartX = root.windowX; root.windowStartY = root.windowY
         }
+        onEntered: root.hoverEnergy = 1.0
+        onExited: root.hoverEnergy = 0.0
         onPositionChanged: function(mouse) {
             if (!(mouse.buttons & Qt.LeftButton)) return
             const dx = mouse.x - root.pressX
