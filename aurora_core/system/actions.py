@@ -35,7 +35,6 @@ def execute_action(self,name,args):
     if name=='timer_start': return self.timer_manager.start(args.get('seconds',0))
     if name=='timer_cancel': return self.timer_manager.cancel(args.get('timer_id'))
     if name=='timer_list': return self.timer_manager.list_active()
-    if name=='timer_missing_duration': return 'Qual duração você quer para o timer?'
     if name=='create_file':
         try: return create_user_file(args.get('filename',''),args.get('location',''),args.get('content',''))
         except Exception as exc: return f'Não criei o arquivo: {exc}'
@@ -47,11 +46,6 @@ def execute_action(self,name,args):
         opened=QDesktopServices.openUrl(QUrl(url))
         aurora_integrations._append_action_log('open_website','opened' if opened else 'failed')
         return 'Abri o site no navegador padrão.' if opened else 'Não consegui abrir o site no navegador padrão.'
-    if name=='clarify_open_target':
-        target=str(args.get('target','')).strip()
-        if re.search(r'\b(site|pagina|link|url|endereco)\b',target):
-            return 'Qual é o domínio ou endereço completo do site?'
-        return f'Você quer abrir o aplicativo “{target}” ou o site dele?'
     if name=='take_screenshot':
         self.orb.set_mode('controlling')
         QApplication.processEvents()

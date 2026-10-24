@@ -716,7 +716,6 @@ class AuroraService(QObject):
         pending=self.pending_clarification
         if not pending: return False
         answer=' '.join(str(prompt).split()).strip(' .,!?:;')
-        normalized=normalize_words(answer)
         if pending.get('kind')=='agent':
             self.pending_clarification=None
             self.clarification_listening=False
@@ -725,50 +724,16 @@ class AuroraService(QObject):
                           f'a resposta do usuário é “{answer}”. Conclua a solicitação.')
             route_request(self,continuation)
             return True
-        target=pending.get('target','').strip()
-        is_app=bool(re.search(r'\b(app|aplicativo|programa)\b',normalized))
-        is_site=bool(re.search(r'\b(site|pagina|link|endereco|dominio|web)\b',normalized))
-        url=aurora_integrations.site_url_from_request(f'abra o site {answer}')
-        if url:
-            self.pending_clarification=None
-            self.clarification_listening=False
-            self._run_clarified_action('open_url',{'url':url},f'Abra o site {url}')
-            return True
-        if pending.get('kind')=='site_domain':
-            self.complete_direct_action('Diga o domínio completo do site, por exemplo, exemplo.com.')
-            return True
-        if is_app:
-            self.pending_clarification=None
-            self.clarification_listening=False
-            self._run_clarified_action('open_application',{'command':target},f'Abra o aplicativo {target}')
-            return True
-        if is_site:
-            url=aurora_integrations.site_url_from_request(f'abra o site {target}')
-            if url:
-                self.pending_clarification=None
-                self.clarification_listening=False
-                self._run_clarified_action('open_url',{'url':url},f'Abra o site {url}')
-            else:
-                pending['kind']='site_domain'
-                self.complete_direct_action('Qual é o domínio ou endereço completo do site?')
-            return True
-        self.complete_direct_action(f'Você quer abrir o aplicativo “{target}” ou o site dele?')
-        return True
-    def _run_clarified_action(self,name,args,prompt):
-        self.activity_generation+=1; self.request_generation+=1
-        self.response_finished=False; self.current_prompt=prompt
-        self.run_local_action(name,args)
+        # Retire stale legacy clarification state; future questions are model-generated.
+        self.pending_clarification=None
+        self.clarification_listening=False
+        return False
     def queue_sentence(self,text,generation):
         if (not getattr(self,'companion_request',None) and not self._mobile_audio_owned()
                 and generation==self.request_generation and self.voice.request_active.is_set()):
             self.speaker.say(text)
     def run_local_action(self,name,args):
         self.orb.set_mode('thinking')
-        if name=='clarify_open_target' and not getattr(self,'companion_request',None):
-            target=str(args.get('target','')).strip()
-            normalized=normalize_words(target)
-            kind='site_domain' if re.search(r'\b(site|pagina|link|url|endereco)\b',normalized) else 'open_target'
-            self.pending_clarification={'kind':kind,'target':target}
         if requires_user_approval(name,args,explicit_user_request=True):
             if getattr(self,'companion_request',None):
                 self.complete_direct_action('Essa ação exige confirmação na bolha do computador. Não a executei pelo celular.')

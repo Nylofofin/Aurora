@@ -42,10 +42,6 @@ def parse_local_command(prompt):
         return ('obs_record',{'action':'stop'})
     if re.search(r'\b(?:grave|grava|gravar|gravacao|inicie|iniciar|comece|comecar)\b.*\b(?:tela|screen|gravacao|gravando|video)\b',text):
         return ('obs_record',{'action':'start'})
-    if re.match(r'^\s*(?:por favor\s+)?(?:abra|abrir|abre|acesse|acessar)\s+(?:(?:o|a)\s+)?(?:site|pagina|link|url|endereco)\b',text):
-        target=text.split(maxsplit=1)[-1]
-        target=re.sub(r'^(?:o|a)\s+','',target)
-        return ('clarify_open_target',{'target':target})
     if 'volume' in text or re.search(r'\b(mudo|sem som|mute)\b',text) or ('som' in text and re.search(r'\b(silencie|silencia|ative|reative|aumente|aumentar|diminua|diminuir|baixe|baixar|volume)\b',text)):
         if re.search(r'\b(qual|quanto|mostre|verifique|consulta|consultar)\b',text) and not re.search(r'\b(aument|diminu|baix|sub|defin|coloc|ajust|silenci|mudo|reativ)',text): return ('volume_control',{'action':'status','value':0})
         if re.search(r'\b(silencie|silenciar|silencia|mudo|sem som|mute)\b',text) and ('volume' in text or 'som' in text or re.search(r'\b(mudo|sem som|mute)\b',text)): return ('volume_control',{'action':'mute','value':0})
@@ -80,6 +76,6 @@ def parse_local_command(prompt):
         if target and not re.search(r'\b(site|link|url|endereco)\b',target):
             explicit_app=bool(re.search(r'\b(?:app|aplicativo|programa)\b',text))
             if not explicit_app and not find_desktop_app(target):
-                return ('clarify_open_target',{'target':target})
+                return None
             return ('open_application',{'command':target})
     return None

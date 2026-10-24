@@ -82,7 +82,10 @@ def parse_timer_command(prompt: str):
     # Any remaining explicit timer reference is a request to inspect it. This
     # keeps short questions such as "tem timer?" out of the language model.
     if re.search(r'\b(coloque|coloca|crie|cria|inicie|inicia|defina|define|configure|configura|programe|programa|arme|armar)\b', text):
-        return ('timer_missing_duration', {})
+        # Let the language agent ask for the missing detail in context. A
+        # canned timer question loses the user's wording and cannot resume a
+        # broader request such as scheduling an event.
+        return None
     return ('timer_list', {})
 
 

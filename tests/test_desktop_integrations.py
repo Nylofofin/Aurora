@@ -223,12 +223,8 @@ def test_site_opening_is_separate_from_application_opening():
         "open_url", {"url": "https://example.com"}
     )
     assert aurora.parse_local_command("abra o aplicativo Firefox")[0] == "open_application"
-    assert aurora.parse_local_command("abra qzxvplm-token") == (
-        "clarify_open_target", {"target": "qzxvplm-token"}
-    )
-    assert aurora.parse_local_command("abra o site youtube") == (
-        "clarify_open_target", {"target": "site youtube"}
-    )
+    assert aurora.parse_local_command("abra qzxvplm-token") is None
+    assert aurora.parse_local_command("abra o site youtube") is None
 
 
 def test_site_opening_rejects_non_web_schemes_and_ambiguous_names():

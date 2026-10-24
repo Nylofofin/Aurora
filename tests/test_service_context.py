@@ -482,7 +482,7 @@ def test_clarification_keeps_the_one_shot_session_listening_until_reply(monkeypa
     class ServiceStub:
         activity_generation = 2
         response_finished = True
-        pending_clarification = {"kind": "open_target", "target": "ChatGPT"}
+        pending_clarification = {"kind": "agent", "prompt": "Abra o ChatGPT", "question": "Você quer o aplicativo ou o site?"}
         clarification_listening = False
         voice = Voice()
         speaker = Speaker()
@@ -502,57 +502,15 @@ def test_clarification_keeps_the_one_shot_session_listening_until_reply(monkeypa
     assert stub.voice.requested == 1
 
 
-def test_open_target_clarification_turns_spoken_app_choice_into_action(monkeypatch):
-    calls = []
-
+def test_legacy_app_site_clarification_does_not_emit_a_canned_question():
     class ServiceStub:
         pending_clarification = {"kind": "open_target", "target": "ChatGPT"}
         clarification_listening = True
-        activity_generation = 4
-        request_generation = 7
-        response_finished = True
-        def run_local_action(self, name, args): calls.append((name, args))
-        def _run_clarified_action(self, name, args, prompt):
-            self.activity_generation += 1
-            self.request_generation += 1
-            self.current_prompt = prompt
-            self.run_local_action(name, args)
 
     stub = ServiceStub()
-    service_module.AuroraService._handle_clarification_reply(stub, "Ah, aplicativo")
-
+    assert service_module.AuroraService._handle_clarification_reply(stub, "o aplicativo") is False
     assert stub.pending_clarification is None
     assert not stub.clarification_listening
-    assert calls == [("open_application", {"command": "ChatGPT"})]
-
-
-def test_site_choice_requests_domain_then_opens_only_validated_http_url(monkeypatch):
-    calls = []
-
-    class ServiceStub:
-        pending_clarification = {"kind": "open_target", "target": "ChatGPT"}
-        clarification_listening = True
-        activity_generation = 4
-        request_generation = 7
-        response_finished = True
-        def run_local_action(self, name, args): calls.append((name, args))
-        def complete_direct_action(self, text): self.question = text
-        def _run_clarified_action(self, name, args, prompt):
-            self.activity_generation += 1
-            self.request_generation += 1
-            self.current_prompt = prompt
-            self.run_local_action(name, args)
-
-    stub = ServiceStub()
-    service_module.AuroraService._handle_clarification_reply(stub, "o site")
-    assert stub.pending_clarification["kind"] == "site_domain"
-    assert stub.question == "Qual é o domínio ou endereço completo do site?"
-
-    monkeypatch.setattr(service_module.aurora_integrations, "site_url_from_request",
-                        lambda text: "https://chatgpt.com" if "chatgpt.com" in text else None)
-    service_module.AuroraService._handle_clarification_reply(stub, "chatgpt.com")
-    assert stub.pending_clarification is None
-    assert calls == [("open_url", {"url": "https://chatgpt.com"})]
 
 
 def test_agent_action_question_uses_user_answer_as_contextual_followup(monkeypatch):

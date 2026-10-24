@@ -32,7 +32,10 @@ def test_timer_commands_are_local_and_support_start_cancel_and_list():
     assert parse_local_command("quais timers estão ativos?") == ("timer_list", {})
     assert parse_local_command("quanto tempo falta no temporizador?") == ("timer_list", {})
     assert parse_local_command("Aurora, tem timer?") == ("timer_list", {})
-    assert parse_local_command("Aurora, coloque um timer") == ("timer_missing_duration", {})
+    assert parse_local_command("Aurora, coloque um timer") is None
+    assert parse_timer_command(
+        'Continuando a solicitação “coloque um timer”. A resposta é “dez minutos”.'
+    ) == ("timer_start", {"seconds": 600})
 
 
 def test_timer_manager_handles_multiple_start_cancel_list_and_completion(tmp_path):
@@ -126,7 +129,6 @@ def test_timer_actions_use_the_local_manager_without_the_model():
     assert actions.execute_action(service, "timer_start", {"seconds": 30}) == "started 30"
     assert actions.execute_action(service, "timer_cancel", {"timer_id": 2}) == "cancelled 2"
     assert actions.execute_action(service, "timer_list", {}) == "active timers"
-    assert actions.execute_action(service, "timer_missing_duration", {}) == "Qual duração você quer para o timer?"
 
 
 def test_timer_completion_announces_locally_and_does_not_reset_an_active_request():
