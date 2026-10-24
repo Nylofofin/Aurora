@@ -3,7 +3,7 @@
 **Versão:** `1.5.7` (PC) · `1.2.3` (Android, arquivada) · **Build:** `aurora-desktop-1.5.7-altair-routine-reliability`
 **Release:** **Aurora Desktop 1.5.7 — Altair Routine & Reliability** — pré-release experimental, não estável.
 
-> **Pré-release experimental — não é estável.** A Aurora é um projeto experimental para Linux desktop. Esta build acrescenta rotina após desbloqueio, timers persistentes, ajustes de voz e relatórios locais de erro. Busca web, voz, OBS, portais GNOME/Wayland e automação variam conforme serviços, permissões e ambiente. O Launchpad é distribuído separadamente e baixa a release publicada mais recente do GitHub (inclusive pré-releases) somente após confirmação explícita; não atualiza automaticamente uma Aurora já instalada.
+> **Pré-release experimental — não é estável.** A Aurora é um projeto experimental para Linux desktop. Esta build acrescenta rotina após desbloqueio, timers persistentes, ajustes de voz e relatórios locais de erro. Busca web, voz, OBS, portais GNOME/Wayland e automação variam conforme serviços, permissões e ambiente. O Launchpad é distribuído separadamente e baixa a release publicada mais recente do GitHub (inclusive pré-releases) somente após confirmação explícita; não atualiza automaticamente uma Aurora já instalada. O instalador também prepara a pasta de dados do serviço Ollama quando ela está ausente.
 
 As releases seguem o formato **Aurora Desktop `<versão>` — `<codinome>`**. O codinome descreve a mudança principal daquela versão; o identificador técnico usa `aurora-desktop-<versão>-<codinome>`, sem siglas ambíguas. A tag SemVer (`vMAJOR.MINOR.PATCH`) continua sendo a referência exata do código. Nomes anteriores permanecem no changelog como registro histórico.
 

@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import os
+import grp
 from pathlib import Path
 import http.client
+import pwd
 import queue
 import shutil
 import subprocess
@@ -37,6 +39,7 @@ from aurora_launchpad_core import (
     reject_symlinks_in_tree,
     remove_owned_models,
     select_latest_release,
+    ollama_storage_creation_command,
     validate_ollama_installer,
     GITHUB_REPOSITORY,
     MAX_RELEASE_ARCHIVE_BYTES,
@@ -44,7 +47,7 @@ from aurora_launchpad_core import (
 
 
 APP_ID = "com.nylofofin.AuroraLaunchpad"
-INSTALLER_VERSION = "0.2.0"
+INSTALLER_VERSION = "0.2.1"
 PKEXEC = "/usr/bin/pkexec"
 SYSTEMCTL = "/usr/bin/systemctl"
 DNF = "/usr/bin/dnf"
@@ -643,6 +646,7 @@ class Launchpad(Adw.Application):
         if not ollama_api_ready():
             if not Path(PKEXEC).is_file() or not Path(SYSTEMCTL).is_file():
                 raise RuntimeError("O Ollama está instalado, mas sua API não está ativa e não é possível iniciar o serviço do sistema.")
+            self._prepare_ollama_storage()
             self._set_stage("Iniciando Ollama", "O Fedora pode solicitar autenticação para iniciar ollama.service.", .48)
             start = subprocess.run([PKEXEC, SYSTEMCTL, "start", "ollama.service"], capture_output=True, text=True, timeout=120)
             if start.returncode:
@@ -653,6 +657,22 @@ class Launchpad(Adw.Application):
                 return
             time.sleep(1)
         raise RuntimeError("O serviço Ollama não respondeu em 60 segundos. Confira systemctl status ollama.")
+
+    def _prepare_ollama_storage(self):
+        try:
+            service_user = pwd.getpwnam("ollama")
+            service_group = grp.getgrnam("ollama")
+            command = ollama_storage_creation_command(
+                Path("/usr/share/ollama"),
+                service_uid=service_user.pw_uid,
+                service_gid=service_group.gr_gid,
+            )
+        except (KeyError, OSError, ValueError) as exc:
+            raise RuntimeError(f"Não consegui validar a pasta de dados do Ollama: {exc}") from exc
+        if command is None:
+            return
+        self._set_stage("Preparando o Ollama", "Criando a pasta de dados com o proprietário do serviço.", .46)
+        run_process([PKEXEC, *command], self._stream_line, timeout=60)
 
     def _finish_install(self):
         self.progress_bar.set_fraction(1.0); self.progress_bar.set_text("100%")

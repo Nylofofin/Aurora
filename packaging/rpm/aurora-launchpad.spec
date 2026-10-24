@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-only
 Name:           aurora-launchpad
-Version:        0.2.0
+Version:        0.2.1
 Release:        1%{?dist}
 Summary:        Animated Fedora installer and setup assistant for Aurora Desktop
 License:        GPL-3.0-only
@@ -48,3 +48,6 @@ install -Dpm0644 launchpad/aurora-launchpad.desktop %{buildroot}%{_datadir}/appl
 %changelog
 * Fri Oct 23 2026 Aurora Project <nylofofin@localhost> - 0.1.0-1
 - First experimental Fedora Workstation installer.
+* Fri Oct 23 2026 Aurora Project <nylofofin@localhost> - 0.2.1-1
+- Download the newest published Aurora release instead of bundling the application.
+- Create the Ollama service data directory with the service account before startup.

@@ -10,7 +10,7 @@ Because the newest published release is selected across both channels, this inst
 
 The wizard checks Fedora Workstation, GNOME/Wayland, available RAM and disk space before enabling the install flow. It explains the planned downloads and requires acknowledgement before model downloads or privileged Ollama installation.
 
-The installer prepares a private Python environment, downloads the Portuguese Vosk model, installs Ollama if needed, downloads the configured Gemma models, migrates existing local memory without deleting its source, then configures and starts aurora.service. The privileged Ollama script is accepted only when its SHA-256 matches the reviewed version pinned in the wizard.
+The installer prepares a private Python environment, downloads the Portuguese Vosk model, installs Ollama if needed, creates /usr/share/ollama for the ollama service account when missing, downloads the configured Gemma models, migrates existing local memory without deleting its source, then configures and starts aurora.service. The privileged Ollama script is accepted only when its SHA-256 matches the reviewed version pinned in the wizard.
 
 ## Removal
 

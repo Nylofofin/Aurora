@@ -210,6 +210,26 @@ def ollama_tags_response_ready(status: int, body: bytes) -> bool:
     return isinstance(payload, dict) and isinstance(payload.get("models"), list)
 
 
+def ollama_storage_creation_command(
+    path: Path, *, service_uid: int, service_gid: int
+) -> list[str] | None:
+    """Return a narrowly scoped mkdir command, or fail on unsafe existing paths."""
+    path = Path(path)
+    if path.is_symlink():
+        raise ValueError("A pasta de dados do Ollama é um link simbólico; não vou alterá-la.")
+    if path.exists():
+        if not path.is_dir():
+            raise ValueError("O caminho de dados do Ollama existe, mas não é uma pasta.")
+        details = path.stat()
+        if details.st_uid != service_uid or details.st_gid != service_gid:
+            raise ValueError("A pasta de dados do Ollama tem proprietário inesperado; verifique-a manualmente.")
+        return None
+    return [
+        "/usr/bin/install", "-d", "-o", str(service_uid), "-g", str(service_gid),
+        "-m", "0755", str(path),
+    ]
+
+
 def reject_symlinks_in_tree(root: Path) -> None:
     """Reject symlinks before merging a managed install tree, preventing copy-through."""
     if root.is_symlink():

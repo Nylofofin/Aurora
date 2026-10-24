@@ -15,6 +15,7 @@ from launchpad.aurora_launchpad_core import (
     format_size,
     missing_models,
     ollama_tags_response_ready,
+    ollama_storage_creation_command,
     parse_ollama_models,
     reject_symlinks_in_tree,
     remove_owned_models,
@@ -114,6 +115,32 @@ def test_ollama_readiness_requires_success_bounded_json_tags_payload():
     assert not ollama_tags_response_ready(200, b'{"models":')
     assert not ollama_tags_response_ready(200, b'{"models": {}}')
     assert not ollama_tags_response_ready(200, b" " * 65_537)
+
+
+def test_ollama_storage_command_creates_missing_directory_with_service_owner(tmp_path: Path):
+    path = tmp_path / "ollama"
+    assert ollama_storage_creation_command(path, service_uid=991, service_gid=991) == [
+        "/usr/bin/install", "-d", "-o", "991", "-g", "991", "-m", "0755", str(path)
+    ]
+
+
+def test_ollama_storage_existing_directory_must_have_expected_owner(tmp_path: Path):
+    path = tmp_path / "ollama"
+    path.mkdir()
+    if path.stat().st_uid == 12345 or path.stat().st_gid == 12345:
+        pytest.skip("Test owner coincides with host account.")
+    with pytest.raises(ValueError, match="proprietário inesperado"):
+        ollama_storage_creation_command(path, service_uid=12345, service_gid=12345)
+    assert ollama_storage_creation_command(
+        path, service_uid=path.stat().st_uid, service_gid=path.stat().st_gid
+    ) is None
+
+
+def test_ollama_storage_rejects_symlink(tmp_path: Path):
+    path = tmp_path / "ollama"
+    path.symlink_to(tmp_path)
+    with pytest.raises(ValueError, match="link simbólico"):
+        ollama_storage_creation_command(path, service_uid=0, service_gid=0)
 
 
 def test_install_tree_rejects_nested_symlinks(tmp_path: Path):
