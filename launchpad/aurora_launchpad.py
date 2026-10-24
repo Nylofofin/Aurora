@@ -43,6 +43,7 @@ from aurora_launchpad_core import (
     validate_ollama_installer,
     GITHUB_REPOSITORY,
     MAX_RELEASE_ARCHIVE_BYTES,
+    prepare_first_boot_onboarding,
 )
 
 
@@ -278,6 +279,7 @@ class Launchpad(Adw.Application):
         self.loading_releases = False
         self.ollama = shutil.which("ollama", path=SYSTEM_PATH)
         self.existing_install = (MANAGED_APP / "aurora.py").is_file()
+        self.onboarding_scheduled = not self.existing_install
         self.failed = False
         self.failed_operation = "install"
         self.last_uninstall_options = (False, False, False)
@@ -530,10 +532,16 @@ class Launchpad(Adw.Application):
     def _done_page(self) -> Gtk.Widget:
         col = self._column()
         col.append(self._label("Aurora pronta para despertar.", "title-1"))
-        col.append(self._label("A instalação terminou e o serviço da sua sessão foi iniciado. Não é necessário reiniciar o computador; teste dizendo “Aurora”.", "subtle", True))
+        detail = ("A instalação terminou. Reinicie o computador para carregar todos os componentes. No próximo login, a Aurora abrirá o assistente de personalização."
+                  if self.onboarding_scheduled else
+                  "A instalação terminou. Reinicie o computador para carregar todos os componentes e testar a Aurora.")
+        col.append(self._label(detail, "subtle", True))
+        self.reboot_status = self._label("Você também pode reiniciar mais tarde.", "subtle", True)
+        col.append(self.reboot_status)
         buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12, halign=Gtk.Align.END)
         buttons.append(self._button("Abrir status do serviço", self._show_service_status))
-        buttons.append(self._button("Concluir", lambda *_: self.window.close(), suggested=True))
+        buttons.append(self._button("Reiniciar depois", lambda *_: self.window.close()))
+        buttons.append(self._button("Reiniciar agora", self._request_reboot, suggested=True))
         col.append(buttons)
         return self._page(col)
 
@@ -623,6 +631,15 @@ class Launchpad(Adw.Application):
             if not absent:
                 self._set_stage("Modelos encontrados", "Os dois modelos já estavam disponíveis; nenhum download foi repetido.", .89)
             self._set_stage("7/7 · Ativando a Aurora", "Configurando o serviço da sessão e iniciando a bolha.", .94)
+            if not self.existing_install:
+                config_root = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home()/".config")))
+                boot_id_path = Path("/proc/sys/kernel/random/boot_id")
+                try:
+                    boot_id = boot_id_path.read_text(encoding="utf-8").strip()
+                except OSError as exc:
+                    raise RuntimeError("Não consegui identificar o boot atual para agendar a personalização inicial.") from exc
+                prepare_first_boot_onboarding(config_root/"aurora"/"aurora-settings.json", boot_id,
+                                              existing_install=False)
             stop_old = subprocess.run([SYSTEMCTL, "--user", "stop", "aurora.service"], capture_output=True, text=True, timeout=30)
             if stop_old.returncode and subprocess.run([SYSTEMCTL, "--user", "is-active", "--quiet", "aurora.service"], timeout=15).returncode == 0:
                 raise RuntimeError("Não consegui parar a instalação anterior da Aurora; não vou substituir seus arquivos enquanto o serviço estiver ativo.")
@@ -727,6 +744,22 @@ class Launchpad(Adw.Application):
     def _finish_install(self):
         self.progress_bar.set_fraction(1.0); self.progress_bar.set_text("100%")
         self.stack.set_visible_child_name("done")
+        return False
+
+    def _request_reboot(self, *_):
+        self.reboot_status.set_text("Solicitando a reinicialização do sistema…")
+        def worker():
+            try:
+                result = subprocess.run([SYSTEMCTL, "reboot"], capture_output=True, text=True, timeout=30)
+                if result.returncode:
+                    detail = (result.stderr or result.stdout or "o sistema recusou a reinicialização").strip()
+                    message = f"Não consegui reiniciar automaticamente: {detail} Reinicie pelo menu do sistema."
+                else:
+                    message = "Reinicialização solicitada. A personalização aparecerá no próximo login." if self.onboarding_scheduled else "Reinicialização solicitada."
+            except (OSError, subprocess.SubprocessError) as exc:
+                message = f"Não consegui solicitar a reinicialização ({type(exc).__name__}). Reinicie pelo menu do sistema."
+            GLib.idle_add(self.reboot_status.set_text, message)
+        threading.Thread(target=worker, daemon=True).start()
         return False
 
     def _install_failed(self, message: str):

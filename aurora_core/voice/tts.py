@@ -9,7 +9,11 @@ class Speaker(QThread):
     def __init__(self,cfg): super().__init__(); self.cfg=cfg; self.q=queue.Queue(); self.running=True; self.active=False; self.playing=False; self.current_player=None; self.stream_loop=None; self.stream_task=None; self.cancel_generation=0; self.engine=shutil.which('ffplay')
     def say(self,text):
         text=self.clean(text)
-        if text: self.q.put((text[:1800],time.perf_counter()))
+        if text: self.q.put((text[:1800],time.perf_counter(),None))
+    def say_with_voice(self,text,voice):
+        """Queue a short speech preview without changing the saved voice."""
+        text=self.clean(text); voice=str(voice or '').strip()
+        if text and voice: self.q.put((text[:500],time.perf_counter(),voice))
     @staticmethod
     def clean(text):
         text=str(text)
@@ -24,7 +28,7 @@ class Speaker(QThread):
     def word_boundary_pulse(text):
         letters=sum(char.isalnum() for char in str(text))
         return min(.88,.28+min(letters,12)*.045) if letters else .18
-    async def _stream_edge(self,text,generation):
+    async def _stream_edge(self,text,generation,voice=None):
         import asyncio
         import edge_tts
         from .telemetry import elapsed_ms, log_voice_timing
@@ -34,7 +38,8 @@ class Speaker(QThread):
         try:
             player=await asyncio.create_subprocess_exec(self.engine,'-nodisp','-autoexit','-loglevel','quiet','-f','mp3','-i','pipe:0',stdin=asyncio.subprocess.PIPE,stdout=asyncio.subprocess.DEVNULL,stderr=asyncio.subprocess.DEVNULL)
             self.current_player=player; started=time.perf_counter()
-            async for packet in edge_tts.Communicate(text,self.cfg.get('tts_voice','pt-BR-ThalitaMultilingualNeural'),rate='+8%',connect_timeout=20,receive_timeout=120).stream():
+            selected_voice=voice or self.cfg.get('tts_voice','pt-BR-ThalitaMultilingualNeural')
+            async for packet in edge_tts.Communicate(text,selected_voice,rate='+8%',connect_timeout=20,receive_timeout=120).stream():
                 if generation!=self.cancel_generation: raise RuntimeError('speech interrupted')
                 if packet.get('type')=='audio' and packet.get('data'):
                     player.stdin.write(packet['data']); await player.stdin.drain()
@@ -63,10 +68,10 @@ class Speaker(QThread):
             self.speech_level.emit(0.0)
             if player is not None and self.current_player is player: self.current_player=None
             if self.stream_task is task: self.stream_task=None; self.stream_loop=None
-    async def _stream_edge_retry(self,text,generation):
+    async def _stream_edge_retry(self,text,generation,voice=None):
         """Retry a transient Edge failure; never silently switch to another voice."""
         try:
-            await self._stream_edge(text,generation)
+            await self._stream_edge(text,generation,voice)
         except Exception as first_error:
             if generation!=self.cancel_generation or not self.running:
                 raise
@@ -75,7 +80,7 @@ class Speaker(QThread):
             print(f'[voice] Edge TTS attempt failed ({type(first_error).__name__}); retrying once', flush=True)
             await asyncio.sleep(.2)
             try:
-                await self._stream_edge(text,generation)
+                await self._stream_edge(text,generation,voice)
             except Exception as retry_error:
                 print(f'[voice] Edge TTS retry failed ({type(retry_error).__name__}); no alternate voice will be used', flush=True)
                 raise
@@ -83,7 +88,9 @@ class Speaker(QThread):
         while self.running:
             try: item=self.q.get(timeout=.3)
             except queue.Empty: continue
-            if isinstance(item,tuple) and len(item)==2: text,queued_at=item
+            voice=None
+            if isinstance(item,tuple) and len(item)==3: text,queued_at,voice=item
+            elif isinstance(item,tuple) and len(item)==2: text,queued_at=item
             else: text,queued_at=item,time.perf_counter()
             from .telemetry import elapsed_ms, log_voice_timing
             generation=self.cancel_generation
@@ -98,7 +105,7 @@ class Speaker(QThread):
             try:
                 if self.engine:
                     import asyncio
-                    asyncio.run(self._stream_edge_retry(text,generation))
+                    asyncio.run(self._stream_edge_retry(text,generation,voice))
             except asyncio.CancelledError:
                 outcome='interrupted'
             except Exception:

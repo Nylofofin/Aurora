@@ -13,6 +13,25 @@ from ..system.text import strip_wake_word
 SAMPLE_RATE=16000
 MIC_BLOCK_FRAMES=1600  # 100 ms: lower orb feedback latency while preserving audio windows.
 
+def wake_name_words(name):
+    value=' '.join(str(name or '').split())
+    if not re.fullmatch(r"[^\W\d_]+(?:\s+[^\W\d_]+){0,3}",value,flags=re.UNICODE):
+        return ()
+    words=re.findall(r"[^\W\d_]+",value,flags=re.UNICODE)
+    if not 1<=len(words)<=4:
+        return ()
+    return tuple(word.casefold() for word in words)
+
+def wake_name_supported(name,model):
+    """Check a custom wake phrase against a Vosk small-model vocabulary."""
+    words=wake_name_words(name)
+    find_word=getattr(model,'vosk_model_find_word',None)
+    return bool(words and callable(find_word) and all(find_word(word) for word in words))
+
+def wake_grammar_phrases(name):
+    value=' '.join(str(name or 'Aurora').split()) or 'Aurora'
+    return [value,f'ei {value}',f'olá {value}']
+
 class LocalVoice(QThread):
     transcript=Signal(str); status=Signal(str); unavailable=Signal(str); wake=Signal(); cancel_control=Signal(); audio_level=Signal(float)
     def __init__(self,cfg):
@@ -36,13 +55,14 @@ class LocalVoice(QThread):
         """Map 16-bit microphone RMS to a quiet-safe 0..1 orb signal."""
         return min(1.0,max(0.0,(cls.pcm_level(block)-180.0)/7600.0))
     @staticmethod
-    def strip_wake_word(text):
-        return strip_wake_word(text)
+    def strip_wake_word(text,assistant_name='Aurora'):
+        return strip_wake_word(text,assistant_name)
     @staticmethod
-    def is_final_wake_phrase(text,finalized):
+    def is_final_wake_phrase(text,finalized,assistant_name='Aurora'):
         """Accept only a completed Vosk result containing the wake phrase alone."""
         if not finalized: return False
-        return bool(re.fullmatch(r'(?:ei\s+|ola\s+)?aurora',normalize_words(text)))
+        name=normalize_words(assistant_name or 'Aurora') or 'aurora'
+        return bool(re.fullmatch(r'(?:ei\s+|ola\s+)?'+re.escape(name),normalize_words(text)))
     @staticmethod
     def is_final_cancel_phrase(text,finalized):
         return finalized and normalize_words(text) in {
@@ -58,8 +78,8 @@ class LocalVoice(QThread):
         except Exception:
             command=fallback; outcome='local_fallback'
         log_voice_timing('stt',elapsed_ms(started),outcome)
-        command=self.strip_wake_word(command)
-        if not command: command=self.strip_wake_word(fallback)
+        command=self.strip_wake_word(command,self.cfg.get('assistant_name','Aurora'))
+        if not command: command=self.strip_wake_word(fallback,self.cfg.get('assistant_name','Aurora'))
         return command
     def feed_mobile_audio(self,block,timeout=1.5):
         """Feed a short PCM frame from the paired phone to the existing local wake model."""
@@ -81,7 +101,7 @@ class LocalVoice(QThread):
                 if finalized:
                     text=json.loads(wake_rec.Result()).get('text','').strip()
                     wake_rec.Reset()
-                    detected=self.is_final_wake_phrase(text,True)
+                    detected=self.is_final_wake_phrase(text,True,self.cfg.get('assistant_name','Aurora'))
                 result.set_result(detected)
                 if detected:
                     self.status.emit('listening')
@@ -98,7 +118,8 @@ class LocalVoice(QThread):
             import speech_recognition as sr
             if not VOSK_PATH.exists(): raise RuntimeError(f'Modelo Vosk local não encontrado em {VOSK_PATH}')
             model=Model(str(VOSK_PATH)); rec=KaldiRecognizer(model,16000); rec.SetWords(False)
-            wake_rec=KaldiRecognizer(model,16000,'["aurora", "ei aurora", "olá aurora"]'); wake_rec.SetWords(False)
+            wake_phrases=wake_grammar_phrases(self.cfg.get('assistant_name','Aurora'))
+            wake_rec=KaldiRecognizer(model,16000,json.dumps(wake_phrases,ensure_ascii=False)); wake_rec.SetWords(False)
             cancel_rec=KaldiRecognizer(model,16000,'["para", "pare", "parar", "cancele", "cancela", "cancelar", "interrompa", "interrompe", "interromper", "chega", "espera", "calma", "calma para", "pera", "pera aí", "deixa", "deixa pra lá", "para agora", "para com isso", "não", "não para", "não calma para", "não espera", "corta"]'); cancel_rec.SetWords(False)
             self.recognizer=sr.Recognizer(); self.recognizer.operation_timeout=2.0
             while self.running:
@@ -167,7 +188,7 @@ class LocalVoice(QThread):
                             elif time.monotonic()-started>22:
                                 active=False; buffer=[]; wake_audio=[]; rec.Reset(); wake_rec.Reset(); self.end_request(); self.status.emit('hidden')
                         elif text:
-                            if self.is_final_wake_phrase(text,finalized):
+                            if self.is_final_wake_phrase(text,finalized,self.cfg.get('assistant_name','Aurora')):
                                 self.begin_request()
                                 self.wake.emit(); self.status.emit('listening')
                                 active=True; buffer=list(wake_audio); wake_audio=[]; started=time.monotonic(); rec.Reset(); wake_rec.Reset()

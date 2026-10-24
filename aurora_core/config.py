@@ -23,6 +23,12 @@ DEFAULTS = {
     'num_gpu':99,
     'keep_alive':-1,
     'tts_voice':'pt-BR-ThalitaMultilingualNeural',
+    'user_name':'',
+    'profile_configured':False,
+    'assistant_name':'Aurora',
+    'bubble_style':'boreal',
+    'onboarding_pending':False,
+    'onboarding_boot_id':'',
     'bubble_position':None,
     'agent_num_ctx':2048,
     'agent_num_predict':384,
@@ -36,6 +42,21 @@ DEFAULTS = {
     'companion_port':8765,
     'system_routine_enabled':True,
 }
+
+def current_boot_id():
+    """Return this Linux boot's unique ID, or an empty string if unavailable."""
+    try: return Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+    except OSError: return ''
+
+def onboarding_state(settings, boot_id=None):
+    """Return (wait_for_reboot, show_wizard) for an onboarding marker."""
+    if not isinstance(settings,dict) or not settings.get('onboarding_pending'):
+        return False,False
+    current=current_boot_id() if boot_id is None else str(boot_id)
+    installed=str(settings.get('onboarding_boot_id') or '')
+    if not current:
+        return False,True
+    return installed==current, installed!=current
 
 def settings_load():
     try:

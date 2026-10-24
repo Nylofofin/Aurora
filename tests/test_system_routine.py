@@ -11,6 +11,10 @@ def test_greeting_uses_local_time_and_pc_username():
     assert routine.greeting_for(datetime(2026, 1, 1, 22), 'ana') == 'Boa noite, ana.'
 
 
+def test_explicitly_empty_profile_name_does_not_fall_back_to_desktop_username():
+    assert routine.greeting_for(datetime(2026, 1, 1, 8), '') == 'Bom dia.'
+
+
 def test_voice_confirmation_accepts_only_clear_yes_or_no():
     assert routine.confirmation_intent('sim') is True
     assert routine.confirmation_intent('pode instalar') is True

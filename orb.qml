@@ -9,6 +9,7 @@ Item {
     transformOrigin: Item.Center
 
     property string mode: "idle"
+    property string bubbleStyle: "boreal"
     property bool motionEnabled: false
     property real revealScale: 1.0
     property real inputLevel: 0.0
@@ -22,11 +23,20 @@ Item {
     property int windowY: 0
     property bool dragging: false
 
-    readonly property color stateColor: ({
+    readonly property var statePalette: bubbleStyle === "prisma" ? ({
+        listening: "#9DD7E9", thinking: "#B4A9DB", searching: "#9BC9E4",
+        weather: "#A7D4E4", preparing: "#C5B7E7", speaking: "#D7CCE8",
+        approval: "#E4CC9B", controlling: "#BDB0DF", error: "#E1ADB8", idle: "#BEDCE9"
+    }) : bubbleStyle === "violeta" ? ({
+        listening: "#80BAE6", thinking: "#AE8BE4", searching: "#719FE0",
+        weather: "#85B3E0", preparing: "#B28CE8", speaking: "#C3A8EB",
+        approval: "#D7B776", controlling: "#A58BDE", error: "#D88FA8", idle: "#9C78DC"
+    }) : ({
         listening: "#8DDBF4", thinking: "#AF9BE8", searching: "#82C6EE",
         weather: "#91CDE7", preparing: "#BAA5ED", speaking: "#D6C4F5",
         approval: "#E8C889", controlling: "#B2A0E2", error: "#E7A2B2", idle: "#A99AD8"
-    })[mode] || "#A99AD8"
+    })
+    readonly property color stateColor: statePalette[mode] || statePalette.idle
     property color animatedStateColor: stateColor
     property real tintStrength: mode === "listening" ? 0.34
         : mode === "speaking" ? 0.34

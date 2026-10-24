@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import json
 import os
+import tempfile
 from pathlib import Path
 import re
 import shutil
@@ -25,6 +26,37 @@ GITHUB_REPOSITORY = "Nylofofin/Aurora"
 MAX_RELEASE_ARCHIVE_BYTES = 256 * 1024 * 1024
 MAX_EXTRACTED_BYTES = 768 * 1024 * 1024
 MAX_ARCHIVE_MEMBERS = 20_000
+
+
+def prepare_first_boot_onboarding(config_path: Path, boot_id: str, *, existing_install: bool) -> bool:
+    """Mark a fresh install for onboarding after the next machine reboot."""
+    if existing_install or not boot_id:
+        return False
+    path = Path(config_path)
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if path.parent.is_symlink():
+        raise ValueError("A pasta de configurações é um link simbólico.")
+    path.parent.chmod(0o700)
+    if path.is_symlink():
+        raise ValueError("O arquivo de configurações é um link simbólico.")
+    try:
+        settings = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError("Não consegui ler as configurações existentes da Aurora.") from exc
+    if not isinstance(settings, dict):
+        raise ValueError("O arquivo de configurações não contém um objeto JSON.")
+    settings["onboarding_pending"] = True
+    settings["onboarding_boot_id"] = str(boot_id)
+    fd, temporary_name = tempfile.mkstemp(prefix=".aurora-settings-", suffix=".tmp", dir=path.parent)
+    temporary = Path(temporary_name)
+    with os.fdopen(fd, "w", encoding="utf-8") as stream:
+        json.dump(settings, stream, ensure_ascii=False, indent=2)
+        stream.write("\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, path)
+    path.chmod(0o600)
+    return True
 
 
 @dataclass(frozen=True)

@@ -128,7 +128,7 @@ def route_request(self,prompt):
     # and generic factual-question routes yield to action language so a local
     # request such as "Como abro o terminal?" is not sent to search first.
     if not query and not agent_intent and ((freshness and not needs_context_search) or ((factual_web_intent(prompt) or research_request_intent(prompt)) and not is_followup)):
-        query=LocalVoice.strip_wake_word(prompt).strip(' \t,.:;!?')
+        query=LocalVoice.strip_wake_word(prompt,self.cfg.get('assistant_name','Aurora')).strip(' \t,.:;!?')
     if query:
         generation=self.request_generation
         request=SearchRequest(query,freshness,news_search_intent(prompt))

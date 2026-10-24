@@ -17,11 +17,34 @@ from launchpad.aurora_launchpad_core import (
     ollama_tags_response_ready,
     ollama_storage_creation_command,
     parse_ollama_models,
+    prepare_first_boot_onboarding,
     reject_symlinks_in_tree,
     recommend_releases,
     remove_owned_models,
     validate_ollama_installer,
 )
+
+
+def test_first_install_onboarding_marker_preserves_private_user_settings(tmp_path):
+    config = tmp_path / "config" / "aurora" / "aurora-settings.json"
+    config.parent.mkdir(parents=True)
+    config.write_text('{"tts_voice":"pt-BR-ThalitaMultilingualNeural","num_ctx":2048}\n')
+
+    assert prepare_first_boot_onboarding(config, "boot-1", existing_install=False)
+
+    saved = __import__("json").loads(config.read_text())
+    assert saved["tts_voice"] == "pt-BR-ThalitaMultilingualNeural"
+    assert saved["num_ctx"] == 2048
+    assert saved["onboarding_pending"] is True
+    assert saved["onboarding_boot_id"] == "boot-1"
+    assert config.stat().st_mode & 0o777 == 0o600
+
+
+def test_updating_existing_install_does_not_reschedule_first_run_wizard(tmp_path):
+    config = tmp_path / "settings.json"
+    config.write_text('{"keep":true}')
+    assert not prepare_first_boot_onboarding(config, "boot-1", existing_install=True)
+    assert __import__("json").loads(config.read_text()) == {"keep": True}
 
 
 def test_environment_accepts_only_fedora_workstation_gnome_wayland():

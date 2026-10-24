@@ -111,7 +111,9 @@ class Inference(QThread):
     def run(self):
         ep=self.cfg['endpoint'].rstrip('/')
         if not local_endpoint(ep): self.error.emit('O endpoint precisa ser localhost.'); return
-        system=self.system_prompt or assistant_system_prompt(self.use_tools,self.response_language)
+        system=self.system_prompt or assistant_system_prompt(
+            self.use_tools,self.response_language,self.cfg.get('assistant_name','Aurora'),
+            self.cfg.get('user_name',''))
         msgs=[{'role':'system','content':system}]
         msgs.extend({'role':item['role'],'content':str(item['content'])[:900]} for item in self.history if item.get('role') in ('user','assistant'))
         msgs.append({'role':'user','content':self.prompt})

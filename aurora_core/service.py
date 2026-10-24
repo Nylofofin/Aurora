@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 import json, os, re, sys, threading, time, traceback, urllib.error, urllib.request
 import aurora_fx
 import aurora_integrations
-from .config import APP_CONFIG, APP_DIR, hardware_profile, local_endpoint, settings_load, settings_save
+from .config import APP_CONFIG, APP_DIR, hardware_profile, local_endpoint, onboarding_state, settings_load, settings_save
 from .companion.server import CompanionServer, discover_private_address
 from .llm.inference import Inference
 from .llm.warmup import ModelWarmup
@@ -34,6 +34,7 @@ from .system.volume import control_volume
 from .system.windows import manage_window
 from .ui.orb import AuroraOrb
 from .ui.research_card import ResearchCard
+from .ui.onboarding import PersonalizationWizard
 from .voice.tts import Speaker
 from .voice.wake import LocalVoice
 from .web.freshness import _independent_recent_source_count
@@ -44,6 +45,9 @@ from .web.requests import FXRequest, SearchRequest, WeatherRequest
 from .web.pipeline import _version_source_consensus
 
 APPROVAL_TIMEOUT_SECONDS=90
+
+def _preferred_user_name(cfg):
+    return cfg.get('user_name') if isinstance(cfg,dict) and cfg.get('profile_configured') else None
 
 def _has_corroborated_version_pages(items):
     pages=[]
@@ -153,6 +157,7 @@ class AuroraService(QObject):
         # the feedback sound played, while the orb window was never mapped.
         super().__init__(app)
         self.app=app; self.cfg=settings_load(); self.hw=hardware_profile(); self.pending=None; self.inf=None; self.inferences=[]; self.action_workers=[]; self.obs_details={}; self.action_cancel_event=threading.Event(); self.companion_request=None; self.companion_server=None; self.screen_stream=DesktopScreenStream()
+        self.onboarding_waiting_reboot,self.onboarding_due=onboarding_state(self.cfg)
         self._critical_error=None
         self._previous_excepthook=sys.excepthook
         self._previous_thread_excepthook=threading.excepthook
@@ -196,18 +201,23 @@ class AuroraService(QObject):
         self.voice.unavailable.connect(self.voice_error,Qt.ConnectionType.QueuedConnection)
         self.voice.wake.connect(self.wake,Qt.ConnectionType.QueuedConnection)
         self.voice.cancel_control.connect(self.stop_conversation,Qt.ConnectionType.QueuedConnection)
-        self.voice.start()
+        if not self.onboarding_waiting_reboot and not self.onboarding_due:
+            self.voice.start()
         self.companion_message_requested.connect(self._handle_companion_message,Qt.ConnectionType.QueuedConnection)
         self.companion_cancel_requested.connect(self._cancel_companion_request,Qt.ConnectionType.QueuedConnection)
         self.companion_control_requested.connect(self._set_companion_control,Qt.ConnectionType.QueuedConnection)
         self._start_companion_server()
-        self.orb.hide(); self.check_ollama()
+        self.orb.hide()
+        if not self.onboarding_waiting_reboot and not self.onboarding_due:
+            self.check_ollama()
         self.session_unlock_monitor=SessionUnlockMonitor(self)
         self.session_unlock_monitor.unlocked.connect(self.on_session_unlocked,Qt.ConnectionType.QueuedConnection)
         self.session_unlock_monitor.locked.connect(self.on_session_locked,Qt.ConnectionType.QueuedConnection)
         self.speaker.drained.connect(self._system_routine_speech_drained,Qt.ConnectionType.QueuedConnection)
         sys.excepthook=self._aurora_excepthook
         threading.excepthook=self._aurora_thread_excepthook
+        if self.onboarding_due:
+            QTimer.singleShot(0,self._show_personalization_wizard)
 
     def _start_companion_server(self):
         if not self.cfg.get('companion_enabled',False): return
@@ -225,6 +235,22 @@ class AuroraService(QObject):
         except Exception as exc:
             self.companion_server=None
             print(f'[companion] servidor LAN indisponível ({type(exc).__name__}): {exc}',file=sys.stderr,flush=True)
+
+    def _show_personalization_wizard(self):
+        if not self.onboarding_due:
+            return
+        wizard=PersonalizationWizard(self.cfg,self.speaker)
+        self._personalization_wizard=wizard
+        if wizard.exec()!=wizard.DialogCode.Accepted or not wizard.result_settings:
+            return
+        self.cfg.update(wizard.result_settings)
+        settings_save(self.cfg)
+        self.orb.root.setProperty('bubbleStyle',self.cfg.get('bubble_style','boreal'))
+        self.onboarding_due=False
+        self.onboarding_waiting_reboot=False
+        print('[onboarding] perfil, nome de ativação, estilo da bolha e voz salvos em aurora-settings.json',file=sys.stderr,flush=True)
+        self.voice.start()
+        self.check_ollama()
 
     def _uncaught_exception(self,exc_type,exc_value,tb):
         if issubclass(exc_type,(KeyboardInterrupt,SystemExit)):
@@ -472,7 +498,7 @@ class AuroraService(QObject):
         self.exit_feedback.play()
     @Slot()
     def on_session_unlocked(self):
-        if not self.cfg.get('system_routine_enabled',True) or self._mobile_audio_owned(): return
+        if self.onboarding_due or self.onboarding_waiting_reboot or not self.cfg.get('system_routine_enabled',True) or self._mobile_audio_owned(): return
         self.system_routine_generation+=1
         generation=self.system_routine_generation
         QTimer.singleShot(1200,lambda g=generation:self._begin_system_routine(g))
@@ -497,7 +523,7 @@ class AuroraService(QObject):
         self.response_language='Português brasileiro'; self.response_finished=False
         self.system_routine_after_speech=('check',generation)
         self.orb.reveal('speaking')
-        self.speaker.say(greeting_for())
+        self.speaker.say(greeting_for(username=_preferred_user_name(getattr(self,'cfg',{}))))
     def _say_system_routine(self,text,after,generation=None):
         generation=self.system_routine_generation if generation is None else generation
         self.response_finished=False
@@ -791,7 +817,7 @@ class AuroraService(QObject):
         for event in agenda_take_due():
             when=datetime.fromtimestamp(event['when']).astimezone()
             moment=when.strftime('%d/%m às %H:%M')
-            announcement=f'{greeting_for()} Passando para lembrar: {event["title"]}, marcado para {moment}.'
+            announcement=f'{greeting_for(username=_preferred_user_name(getattr(self,"cfg",{})))} Passando para lembrar: {event["title"]}, marcado para {moment}.'
             self.activity_generation+=1
             self.response_finished=True
             self.response_summary=f'Lembrete: {event["title"]}, {moment}.'

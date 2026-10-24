@@ -23,7 +23,7 @@ def greeting_for(moment=None, username=None):
     moment=moment or datetime.now().astimezone()
     hour=moment.hour
     greeting='Bom dia' if 5<=hour<12 else 'Boa tarde' if 12<=hour<18 else 'Boa noite'
-    name=' '.join(str(username or getpass.getuser()).split())
+    name=' '.join(str(getpass.getuser() if username is None else username).split())
     return f'{greeting}, {name}.' if name else f'{greeting}.'
 
 

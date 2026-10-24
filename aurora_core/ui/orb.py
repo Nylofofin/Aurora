@@ -27,6 +27,7 @@ class AuroraOrb(QObject):
             details='; '.join(error.toString() for error in self.view.errors())
             raise RuntimeError('Falha ao carregar a orb Qt Quick: '+details)
         self.root=self.view.rootObject()
+        self.root.setProperty('bubbleStyle',str(self.cfg.get('bubble_style','boreal')))
         self.error_notice=QDialog(self.view,Qt.WindowType.Tool|Qt.WindowType.FramelessWindowHint|Qt.WindowType.WindowStaysOnTopHint)
         self.error_notice.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.error_notice.setFixedSize(276,104)

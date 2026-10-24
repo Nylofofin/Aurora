@@ -59,6 +59,21 @@ def test_companion_server_is_disabled_for_new_default_settings():
     assert config.DEFAULTS["companion_enabled"] is False
 
 
+def test_first_run_settings_have_custom_identity_and_bubble_defaults():
+    assert config.DEFAULTS["assistant_name"] == "Aurora"
+    assert config.DEFAULTS["user_name"] == ""
+    assert config.DEFAULTS["profile_configured"] is False
+    assert config.DEFAULTS["bubble_style"] == "boreal"
+    assert config.DEFAULTS["onboarding_pending"] is False
+
+
+def test_onboarding_waits_until_a_different_boot_then_shows_once():
+    pending = {"onboarding_pending": True, "onboarding_boot_id": "boot-a"}
+    assert config.onboarding_state(pending, "boot-a") == (True, False)
+    assert config.onboarding_state(pending, "boot-b") == (False, True)
+    assert config.onboarding_state({"onboarding_pending": False}, "boot-b") == (False, False)
+
+
 def test_concurrent_settings_saves_do_not_race_on_shared_temporary_file(monkeypatch, tmp_path):
     private_dir = tmp_path / "config" / "aurora"
     monkeypatch.setattr(config, "APP_CONFIG", private_dir / "aurora-settings.json")

@@ -229,6 +229,8 @@ def test_response_language_can_be_switched_and_reset_in_portuguese():
 
 def test_system_and_search_prompts_use_selected_response_language():
     assert "Responda em English" in aurora.assistant_system_prompt(response_language="English")
+    assert "Você é Luna" in aurora.assistant_system_prompt(assistant_name="Luna")
+    assert "prefere o nome Nylo" in aurora.assistant_system_prompt(user_name="Nylo")
     prompt, system = aurora.search_answer_prompts(
         "latest world news", "world news", ["International briefing"], response_language="English"
     )

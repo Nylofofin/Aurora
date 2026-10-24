@@ -28,6 +28,31 @@ def test_wake_word_is_removed_before_command_routing():
     assert strip_wake_word("Ei Aurora: abre o navegador") == "abre o navegador"
 
 
+def test_custom_wake_name_is_used_for_exact_detection_and_stripping():
+    from aurora_core.system.text import strip_wake_word
+
+    assert LocalVoice.is_final_wake_phrase("ei luna", True, "Luna")
+    assert LocalVoice.is_final_wake_phrase("olá nova aurora", True, "Nova Aurora")
+    assert not LocalVoice.is_final_wake_phrase("luna talvez", True, "Luna")
+    assert strip_wake_word("Ei Luna, abra o terminal", "Luna") == "abra o terminal"
+    assert strip_wake_word("Olá Nova Aurora: abra o terminal", "Nova Aurora") == "abra o terminal"
+
+
+def test_custom_wake_name_grammar_checks_model_vocabulary():
+    from aurora_core.voice.wake import wake_grammar_phrases, wake_name_supported, wake_name_words
+
+    class Model:
+        def vosk_model_find_word(self, word):
+            return word in {"luna", "nova", "aurora"}
+
+    assert wake_name_words("Nova Aurora") == ("nova", "aurora")
+    assert wake_name_supported("Nova Aurora", Model())
+    assert not wake_name_supported("Nebrya", Model())
+    assert not wake_name_supported("Name 123", Model())
+    assert not wake_name_words("Luna, Nova")
+    assert wake_grammar_phrases("Luna") == ["Luna", "ei Luna", "olá Luna"]
+
+
 def test_microphone_energy_is_normalized_for_voice_reactive_orb():
     from array import array
 
@@ -150,6 +175,15 @@ def test_speaker_interrupt_discards_queued_speech():
     speaker.interrupt()
 
     assert speaker.q.empty()
+
+
+def test_voice_preview_queues_selected_voice_without_changing_saved_voice():
+    speaker = aurora.Speaker({"tts_voice": "pt-BR-ThalitaMultilingualNeural"})
+    speaker.say_with_voice("Olá!", "en-US-AriaNeural")
+    text, _queued_at, voice = speaker.q.get_nowait()
+    assert text == "Olá!"
+    assert voice == "en-US-AriaNeural"
+    assert speaker.cfg["tts_voice"] == "pt-BR-ThalitaMultilingualNeural"
 
 
 def test_speaker_interrupt_cancels_stalled_edge_stream(monkeypatch):
