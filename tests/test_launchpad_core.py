@@ -18,8 +18,8 @@ from launchpad.aurora_launchpad_core import (
     ollama_storage_creation_command,
     parse_ollama_models,
     reject_symlinks_in_tree,
+    recommend_releases,
     remove_owned_models,
-    select_latest_release,
     validate_ollama_installer,
 )
 
@@ -152,11 +152,34 @@ def test_install_tree_rejects_nested_symlinks(tmp_path: Path):
         reject_symlinks_in_tree(tree)
 
 
-def test_latest_release_selects_newest_published_including_prereleases():
-    stable = {"tag_name": "v1.5.0", "published_at": "2026-10-20T10:00:00Z", "draft": False, "prerelease": False}
-    preview = {"tag_name": "v1.5.7", "published_at": "2026-10-23T20:00:00Z", "draft": False, "prerelease": True}
-    draft = {"tag_name": "v9.0.0", "published_at": "2026-10-24T20:00:00Z", "draft": True}
-    assert select_latest_release([stable, draft, preview]) is preview
+def test_release_recommendations_offer_latest_and_previous_prerelease_then_latest_stable():
+    releases = [
+        {"tag_name": "v1.5.7", "name": "Altair", "published_at": "2026-10-23T20:00:00Z", "draft": False, "prerelease": True},
+        {"tag_name": "v1.5.6", "name": "Altair RC", "published_at": "2026-10-22T20:00:00Z", "draft": False, "prerelease": True},
+        {"tag_name": "v1.4.0", "name": "Stable", "published_at": "2026-10-20T20:00:00Z", "draft": False, "prerelease": False},
+        {"tag_name": "v9.0.0", "published_at": "2026-10-24T20:00:00Z", "draft": True, "prerelease": False},
+    ]
+
+    recommendations = recommend_releases(releases)
+
+    assert [(item.channel, item.release["tag_name"]) for item in recommendations] == [
+        ("latest_prerelease", "v1.5.7"),
+        ("previous_prerelease", "v1.5.6"),
+        ("latest_stable", "v1.4.0"),
+    ]
+
+
+def test_release_recommendations_return_only_available_channels_without_duplicates():
+    releases = [
+        {"tag_name": "v2.0.0", "published_at": "2026-10-24T12:00:00Z", "draft": False, "prerelease": False},
+        {"tag_name": "bad-date", "published_at": "not-a-date", "draft": False, "prerelease": True},
+    ]
+
+    recommendations = recommend_releases(releases)
+
+    assert [(item.channel, item.release["tag_name"]) for item in recommendations] == [
+        ("latest_stable", "v2.0.0"),
+    ]
 
 
 def _make_tarball(path: Path, *, member_name="project/aurora.py", symlink=False):

@@ -38,6 +38,14 @@ class EnvironmentReport:
     warnings: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class ReleaseRecommendation:
+    """A release chosen for a clearly described installer channel."""
+
+    channel: str
+    release: dict
+
+
 def assess_environment(
     os_release: dict[str, str],
     env: dict[str, str],
@@ -80,9 +88,9 @@ def format_size(num_bytes: int) -> str:
     return f"{value:.1f} TiB"
 
 
-def select_latest_release(releases):
-    """Return the newest published release, stable or prerelease; never a draft."""
-    candidates = []
+def recommend_releases(releases) -> tuple[ReleaseRecommendation, ...]:
+    """Recommend newest prerelease, its preceding prerelease, and newest stable."""
+    candidates: dict[str, tuple[datetime, dict]] = {}
     for release in releases if isinstance(releases, list) else ():
         if not isinstance(release, dict) or release.get("draft"):
             continue
@@ -90,7 +98,7 @@ def select_latest_release(releases):
         published = release.get("published_at")
         if not isinstance(tag, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,99}", tag):
             continue
-        if not isinstance(published, str):
+        if not isinstance(published, str) or not isinstance(release.get("prerelease"), bool):
             continue
         try:
             timestamp = datetime.fromisoformat(published.replace("Z", "+00:00"))
@@ -98,10 +106,28 @@ def select_latest_release(releases):
             continue
         if timestamp.tzinfo is None:
             continue
-        candidates.append((timestamp, release))
-    if not candidates:
-        raise ValueError("Não encontrei uma release publicada válida no GitHub.")
-    return max(candidates, key=lambda item: item[0])[1]
+        previous = candidates.get(tag)
+        if previous is None or timestamp > previous[0]:
+            candidates[tag] = (timestamp, release)
+
+    prereleases = sorted(
+        (item for item in candidates.values() if item[1]["prerelease"]),
+        key=lambda item: (item[0], item[1]["tag_name"]),
+        reverse=True,
+    )
+    stable = sorted(
+        (item for item in candidates.values() if not item[1]["prerelease"]),
+        key=lambda item: (item[0], item[1]["tag_name"]),
+        reverse=True,
+    )
+    result = []
+    if prereleases:
+        result.append(ReleaseRecommendation("latest_prerelease", prereleases[0][1]))
+        if len(prereleases) > 1:
+            result.append(ReleaseRecommendation("previous_prerelease", prereleases[1][1]))
+    if stable:
+        result.append(ReleaseRecommendation("latest_stable", stable[0][1]))
+    return tuple(result)
 
 
 def extract_release_tarball(archive: Path, destination: Path) -> Path:

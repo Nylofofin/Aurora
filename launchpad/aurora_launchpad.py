@@ -16,11 +16,11 @@ import threading
 import time
 import json
 import re
+from datetime import datetime
 from urllib.parse import quote, urlsplit
 import urllib.request
 
 import gi
-import cairo
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk
@@ -38,7 +38,7 @@ from aurora_launchpad_core import (
     ollama_tags_response_ready,
     reject_symlinks_in_tree,
     remove_owned_models,
-    select_latest_release,
+    recommend_releases,
     ollama_storage_creation_command,
     validate_ollama_installer,
     GITHUB_REPOSITORY,
@@ -47,7 +47,7 @@ from aurora_launchpad_core import (
 
 
 APP_ID = "com.nylofofin.AuroraLaunchpad"
-INSTALLER_VERSION = "0.2.1"
+INSTALLER_VERSION = "0.3.0"
 PKEXEC = "/usr/bin/pkexec"
 SYSTEMCTL = "/usr/bin/systemctl"
 DNF = "/usr/bin/dnf"
@@ -56,23 +56,26 @@ MANAGED_APP = Path.home() / ".local/share/aurora"
 OWNED_MODELS = Path.home() / ".local/share/aurora-launchpad/owned-models.txt"
 PRESERVED_MEMORY = Path.home() / ".local/share/aurora-launchpad/aurora-memory.json"
 CSS = """
-window.launchpad { background: #0c1020; color: #f4f4ff; }
-.hero { background: linear-gradient(145deg, #171a34, #20234a 60%, #161d3b); border: 1px solid alpha(#b5b8ff, .14); border-radius: 28px; padding: 26px; }
-.panel { background: alpha(#202641, .90); border: 1px solid alpha(#c3c8ff, .13); border-radius: 20px; padding: 20px; }
-.subtle { color: #b4bad5; }
-.caption { color: #9ba4c7; font-size: 11px; letter-spacing: .12em; font-weight: 700; }
-.title-1 { font-size: 31px; font-weight: 750; letter-spacing: -.035em; }
-.title-2 { font-size: 20px; font-weight: 700; }
-.status-good { color: #8de8cf; }
-.status-bad { color: #ffb3bd; }
-.status-warn { color: #f5d995; }
-.step { color: #d8ddf6; font-size: 13px; }
-.log { font-family: monospace; font-size: 11px; color: #b7c2e2; }
-progressbar trough { min-height: 10px; border-radius: 99px; background: #292e4b; }
-progressbar progress { min-height: 10px; border-radius: 99px; background: linear-gradient(90deg, #8274ff, #69c9ff); }
-button.suggested-action { background: linear-gradient(100deg, #786aff, #6bbdff); color: #10152b; font-weight: 750; }
+window.launchpad { background: #f5f5fa; color: #1b1b22; }
+.hero { background: #eeebf8; border-radius: 26px; padding: 24px; }
+.panel { background: #ffffff; border: 1px solid #e5e3eb; border-radius: 22px; padding: 20px; }
+.release-card { background: #ffffff; border: 1px solid #e2e0e8; border-radius: 20px; padding: 17px; }
+button.release-card:hover { background: #f8f7fc; }
+button.release-card.selected { background: #f0edfa; border: 2px solid #6750a4; }
+.subtle { color: #5f5d66; }
+.caption { color: #625b71; font-size: 11px; letter-spacing: .08em; font-weight: 700; }
+.title-1 { font-size: 30px; font-weight: 700; letter-spacing: -.025em; }
+.title-2 { font-size: 19px; font-weight: 700; }
+.status-good { color: #146c51; }
+.status-bad { color: #b3261e; }
+.status-warn { color: #805b00; }
+.step { color: #49454f; font-size: 13px; }
+.log { font-family: monospace; font-size: 11px; color: #49454f; }
+progressbar trough { min-height: 9px; border-radius: 99px; background: #e7e4ed; }
+progressbar progress { min-height: 9px; border-radius: 99px; background: #6750a4; }
+button.suggested-action { background: #6750a4; color: #ffffff; font-weight: 700; }
 button.pill { border-radius: 999px; }
-checkbutton { color: #e3e8ff; }
+checkbutton { color: #27252d; }
 """
 
 
@@ -129,15 +132,26 @@ def _github_json(url: str, *, maximum: int = 4 * 1024 * 1024) -> dict | list:
         raise RuntimeError("O GitHub retornou metadados inválidos.") from exc
 
 
-def download_latest_release_payload(workspace: Path, on_status=None) -> tuple[Path, dict]:
-    """Fetch the newest published release and extract its immutable commit archive."""
+def fetch_release_recommendations():
+    """Fetch and classify the three release choices shown by Launchpad."""
     api = f"https://api.github.com/repos/{GITHUB_REPOSITORY}"
     releases = _github_json(api + "/releases?per_page=100")
-    release = select_latest_release(releases)
-    tag = release["tag_name"]
+    return recommend_releases(releases)
+
+
+def download_release_payload(workspace: Path, release: dict, on_status=None) -> tuple[Path, dict]:
+    """Fetch the user-selected release through its immutable commit archive."""
+    if not isinstance(release, dict) or release.get("draft"):
+        raise RuntimeError("A release escolhida não é válida ou ainda não foi publicada.")
+    tag = release.get("tag_name")
+    if not isinstance(tag, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,99}", tag):
+        raise RuntimeError("A tag da release escolhida não é válida.")
+    if not isinstance(release.get("prerelease"), bool):
+        raise RuntimeError("O canal da release escolhida não é válido.")
+    api = f"https://api.github.com/repos/{GITHUB_REPOSITORY}"
     if on_status:
         channel = "pré-release" if release.get("prerelease") else "release"
-        on_status(f"Release mais recente: {tag} ({channel}). Resolvendo commit…")
+        on_status(f"Versão escolhida: {tag} ({channel}). Resolvendo commit…")
     commit = _github_json(api + "/commits/" + quote(tag, safe=""))
     sha = commit.get("sha") if isinstance(commit, dict) else None
     if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", sha):
@@ -244,62 +258,6 @@ def run_process(command: list[str], on_line=None, cwd: Path | None = None, timeo
     return output
 
 
-class Orb(Gtk.DrawingArea):
-    """Lightweight Cairo orb with continuous, interpolated internal motion."""
-
-    def __init__(self, size: int = 176):
-        super().__init__(width_request=size, height_request=size)
-        self.phase = 0.0
-        self.set_draw_func(self._draw)
-        GLib.timeout_add(16, self._tick)
-
-    def _tick(self) -> bool:
-        self.phase = (self.phase + 0.018) % (2 * 3.14159)
-        self.queue_draw()
-        return True
-
-    def _draw(self, area, cr, width, height):
-        import math
-        size = min(width, height) * 0.88
-        x, y = width / 2, height / 2
-        radius = size / 2
-        pulse = 1.0 + 0.018 * math.sin(self.phase * 1.35)
-        r = radius * pulse
-        glow = cairo.RadialGradient(x, y, r * .72, x, y, r * 1.65)
-        glow.add_color_stop_rgba(0, .42, .37, 1.0, .12)
-        glow.add_color_stop_rgba(1, .42, .37, 1.0, 0)
-        cr.set_source(glow); cr.arc(x, y, r * 1.65, 0, 2 * math.pi); cr.fill()
-        cr.save(); cr.arc(x, y, r, 0, 2 * math.pi); cr.clip()
-        base = cairo.LinearGradient(x - r*.7, y - r, x + r*.6, y + r)
-        base.add_color_stop_rgb(0, .96, .98, 1.0)
-        base.add_color_stop_rgb(.37, .78, .79, 1.0)
-        base.add_color_stop_rgb(.72, .48, .44, .94)
-        base.add_color_stop_rgb(1, .21, .49, .92)
-        cr.set_source(base); cr.paint()
-        # Slow luminous color fields move within the sphere, not around it.
-        for index, (dx, dy, color, speed) in enumerate([
-            (-.35, .37, (.15, .63, 1.0), 1.0),
-            (.39, .29, (.58, .31, 1.0), -.76),
-            (.03, -.37, (.94, .92, 1.0), .53),
-        ]):
-            angle = self.phase * speed + index * 2.1
-            bx = x + r * (dx + .13 * math.sin(angle))
-            by = y + r * (dy + .12 * math.cos(angle * .83))
-            blob = cairo.RadialGradient(bx, by, 1, bx, by, r * .72)
-            blob.add_color_stop_rgba(0, *color, .48)
-            blob.add_color_stop_rgba(1, *color, 0)
-            cr.set_source(blob); cr.arc(bx, by, r*.72, 0, 2*math.pi); cr.fill()
-        # Glass reflection and a very soft lower shadow.
-        cr.set_source_rgba(1, 1, 1, .35)
-        cr.save(); cr.translate(x - r*.24, y - r*.48); cr.scale(1.0, .29)
-        cr.arc(0, 0, r*.62, 0, 2*math.pi); cr.fill(); cr.restore()
-        cr.set_source_rgba(.08, .19, .62, .13)
-        cr.rectangle(x-r, y+r*.35, 2*r, r*.65); cr.fill()
-        cr.restore()
-        cr.set_source_rgba(.80, .84, 1.0, .34)
-        cr.set_line_width(1.2); cr.arc(x, y, r, 0, 2*math.pi); cr.stroke()
-
-
 class Launchpad(Adw.Application):
     def __init__(self):
         super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
@@ -310,8 +268,14 @@ class Launchpad(Adw.Application):
         self.progress_bar = None
         self.progress_title = None
         self.progress_subtitle = None
-        self.install_button = None
         self.report = None
+        self.releases_box = None
+        self.release_status = None
+        self.release_options = ()
+        self.release_cards = []
+        self.selected_release = None
+        self.install_acknowledged = False
+        self.loading_releases = False
         self.ollama = shutil.which("ollama", path=SYSTEM_PATH)
         self.existing_install = (MANAGED_APP / "aurora.py").is_file()
         self.failed = False
@@ -323,12 +287,12 @@ class Launchpad(Adw.Application):
         if self.window:
             self.window.present()
             return
-        Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
+        Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.PREFER_LIGHT)
         provider = Gtk.CssProvider()
         provider.load_from_data(CSS.encode())
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self.report = assess_environment(read_os_release(), dict(os.environ), memory_total_bytes(), disk_free_bytes(Path.home()))
-        self.window = Adw.ApplicationWindow(application=self, title="Aurora Launchpad", default_width=930, default_height=720)
+        self.window = Adw.ApplicationWindow(application=self, title="Aurora Launchpad", default_width=1040, default_height=800)
         self.window.add_css_class("launchpad")
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         header = Adw.HeaderBar()
@@ -337,12 +301,12 @@ class Launchpad(Adw.Application):
         outer.append(header)
         self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE, transition_duration=240)
         self.stack.add_named(self._welcome_page(), "welcome")
-        self.stack.add_named(self._review_page(), "review")
         self.stack.add_named(self._progress_page(), "progress")
         self.stack.add_named(self._done_page(), "done")
         outer.append(self.stack)
         self.window.set_content(outer)
         self.window.present()
+        self._load_releases()
 
     def _page(self, child: Gtk.Widget) -> Gtk.Widget:
         scroll = Gtk.ScrolledWindow(hexpand=True, vexpand=True)
@@ -369,19 +333,16 @@ class Launchpad(Adw.Application):
 
     def _welcome_page(self) -> Gtk.Widget:
         col = self._column()
-        hero = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=24)
+        hero = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         hero.add_css_class("hero")
-        orb = Orb()
-        hero.append(orb)
-        text_col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=11, valign=Gtk.Align.CENTER, hexpand=True)
-        text_col.append(self._label("FEDORA WORKSTATION · GNOME · WAYLAND", "caption"))
-        text_col.append(self._label("Um primeiro despertar\npara a Aurora.", "title-1", True))
-        text_col.append(self._label("O Launchpad prepara os componentes, configura o serviço da sua sessão e mostra cada etapa. Você acompanha tudo antes de confirmar.", "subtle", True))
-        hero.append(text_col); col.append(hero)
+        hero.append(self._label("AURORA DESKTOP · FEDORA WORKSTATION", "caption"))
+        hero.append(self._label("Escolha sua versão da Aurora", "title-1"))
+        hero.append(self._label("Compare as versões recomendadas. A instalação só começa depois que você escolher e confirmar.", "subtle", True))
+        col.append(hero)
 
         status = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         status.add_css_class("panel")
-        status.append(self._label("VERIFICAÇÃO DO AMBIENTE", "caption"))
+        status.append(self._label("COMPATIBILIDADE DO COMPUTADOR", "caption"))
         facts = [
             ("Sistema", self.report.distro, self.report.supported),
             ("Sessão", f"{self.report.desktop} · {self.report.session}", self.report.supported),
@@ -399,47 +360,151 @@ class Launchpad(Adw.Application):
         for warning in self.report.warnings:
             status.append(self._label("⚠  " + warning, "status-warn", True))
         if not self.report.supported:
-            status.append(self._label("Este alpha instala somente no Fedora Workstation com GNOME em Wayland.", "status-bad", True))
+            status.append(self._label("Disponível somente no Fedora Workstation com GNOME em Wayland.", "status-bad", True))
+        if not self.ollama and not Path(PKEXEC).is_file():
+            status.append(self._label("Ollama não está instalado e pkexec não está disponível para instalá-lo.", "status-bad", True))
         col.append(status)
+
+        section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        section.append(self._label("Versões recomendadas", "title-2"))
+        self.release_status = self._label("Buscando versões no GitHub…", "subtle", True)
+        section.append(self.release_status)
+        self.releases_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        section.append(self.releases_box)
+        col.append(section)
+
         actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12, halign=Gtk.Align.END)
         if self.existing_install:
             actions.append(self._button("Remover Aurora…", self._confirm_uninstall))
-        actions.append(self._button("Revisar instalação", self._show_review, suggested=True))
         col.append(actions)
-        col.append(self._label("A Aurora pode usar vários gigabytes para os modelos Gemma. Nenhum download começa antes de você confirmar o plano.", "subtle", True))
+        col.append(self._label("Clique em uma versão para revisar e confirmar a instalação. Pré-releases são experimentais e podem conter falhas.", "subtle", True))
         return self._page(col)
 
-    def _review_page(self) -> Gtk.Widget:
-        col = self._column()
-        col.append(self._label("Seu plano de instalação", "title-1"))
-        col.append(self._label("Confira o que será feito neste usuário e no sistema antes de iniciar.", "subtle", True))
-        panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
-        panel.add_css_class("panel")
-        items = [
-            ("Aurora Desktop", "Baixar do GitHub a release publicada mais recente, incluindo pré-releases, e instalar em ~/.local/share/aurora. Preferências existentes serão preservadas."),
-            ("Dependências Python", "Criar um ambiente virtual privado e instalar os pacotes usados pela Aurora."),
-            ("Voz local", "Baixar o modelo português Vosk (aprox. 31 MiB). Google STT e Edge TTS continuam usando internet quando chamados."),
-            ("Motor local", "Se faltar, instalar a versão auditada do script oficial. A etapa administrativa pode substituir arquivos do Ollama, criar seu usuário/serviço, ajustar grupos e instalar suporte de GPU; em alguns casos, adiciona repositório e driver NVIDIA."),
-            ("Modelos Gemma", "Instalar os modelos de conversa e ferramentas. Download de até cerca de 6 GiB se ainda não estiverem disponíveis."),
-            ("Inicialização", "Criar o serviço aurora.service da sua sessão, habilitá-lo e iniciar a Aurora."),
-        ]
-        for title, description in items:
-            row = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
-            row.append(self._label("✓  " + title, "title-2"))
-            row.append(self._label(description, "subtle", True))
-            panel.append(row)
-        col.append(panel)
-        self.model_ack = Gtk.CheckButton(label="Entendi que os modelos podem baixar até cerca de 6 GiB e que instalar o Ollama pode alterar pacotes, serviços, grupos e drivers do sistema após autenticação administrativa.")
-        self.model_ack.set_active(False)
-        col.append(self.model_ack)
-        nav = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12, halign=Gtk.Align.END)
-        nav.append(self._button("Voltar", lambda *_: self.stack.set_visible_child_name("welcome")))
-        self.install_button = self._button("Instalar Aurora", self._start_install, suggested=True)
-        self.install_button.set_sensitive(False)
-        self.model_ack.connect("toggled", lambda button: self.install_button.set_sensitive(button.get_active() and self.report.supported and self.report.free_gib >= 10))
-        nav.append(self.install_button); col.append(nav)
-        col.append(self._label("Se já existir uma instalação, o serviço será apontado para a cópia gerenciada pelo Launchpad. A pasta antiga não será apagada.", "subtle", True))
-        return self._page(col)
+    def _load_releases(self):
+        if self.loading_releases:
+            return
+        self.loading_releases = True
+        if self.release_status:
+            self.release_status.set_text("Buscando versões no GitHub…")
+        threading.Thread(target=self._load_releases_worker, daemon=True).start()
+
+    def _load_releases_worker(self):
+        try:
+            options = fetch_release_recommendations()
+            GLib.idle_add(self._show_release_options, options, None)
+        except Exception as exc:
+            GLib.idle_add(self._show_release_options, (), str(exc))
+
+    def _show_release_options(self, options, error):
+        self.loading_releases = False
+        self.release_options = options
+        self.release_cards.clear()
+        while self.releases_box.get_first_child():
+            self.releases_box.remove(self.releases_box.get_first_child())
+        if error:
+            self.release_status.set_text("Não consegui consultar as versões agora. Confira a conexão e tente novamente.")
+            retry = self._button("Tentar novamente", lambda *_: self._load_releases())
+            self.releases_box.append(retry)
+            return False
+        if not options:
+            self.release_status.set_text("O GitHub não retornou releases publicadas válidas.")
+            return False
+
+        self.release_status.set_text("Escolha uma versão. Datas e canais vêm das releases publicadas no GitHub.")
+        grid = Gtk.Grid(column_spacing=12, row_spacing=12)
+        grid.set_column_homogeneous(True)
+        self.releases_box.append(grid)
+        for index, option in enumerate(options):
+            button = Gtk.Button()
+            button.add_css_class("release-card")
+            button.set_valign(Gtk.Align.FILL)
+            button.set_hexpand(True)
+            button.set_sensitive(
+                self.report.supported
+                and self.report.free_gib >= 10
+                and bool(self.ollama or Path(PKEXEC).is_file())
+            )
+            card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, halign=Gtk.Align.FILL)
+            channel_title, description = self._channel_copy(option.channel)
+            card.append(self._label(channel_title, "caption", True))
+            release = option.release
+            title = release.get("name")
+            if not isinstance(title, str) or not title.strip():
+                title = release["tag_name"]
+            name_label = self._label(title.strip(), "title-2", True)
+            name_label.set_valign(Gtk.Align.START)
+            card.append(name_label)
+            card.append(self._label(release["tag_name"], "subtle", True))
+            card.append(self._label(self._format_release_date(release.get("published_at")), "subtle", True))
+            card.append(self._label(description, "subtle", True))
+            button.set_child(card)
+            button.connect("clicked", self._choose_release, option)
+            grid.attach(button, index, 0, 1, 1)
+            self.release_cards.append((button, option))
+
+        return False
+
+    @staticmethod
+    def _channel_copy(channel: str) -> tuple[str, str]:
+        if channel == "latest_prerelease":
+            return "PRÉ-RELEASE · MAIS RECENTE", "A versão de testes mais nova. Pode mudar e conter falhas."
+        if channel == "previous_prerelease":
+            return "PRÉ-RELEASE · ANTERIOR", "Publicação anterior à mais recente. Isso não garante mais estabilidade; confira o nome e as notas."
+        return "RELEASE · ESTÁVEL MAIS RECENTE", "A versão estável publicada mais recentemente."
+
+    @staticmethod
+    def _format_release_date(value) -> str:
+        if not isinstance(value, str):
+            return "Data de publicação indisponível"
+        try:
+            published = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return "Publicada em " + published.astimezone().strftime("%d/%m/%Y")
+        except ValueError:
+            return "Data de publicação indisponível"
+
+    def _choose_release(self, button, option):
+        self.selected_release = option.release
+        for card_button, _ in self.release_cards:
+            card_button.remove_css_class("selected")
+        button.add_css_class("selected")
+        self._confirm_install()
+
+    def _confirm_install(self, *_):
+        if not self.selected_release:
+            return
+        if not self.report.supported or self.report.free_gib < 10 or not (self.ollama or Path(PKEXEC).is_file()):
+            return
+        release = self.selected_release
+        channel, channel_detail = self._channel_copy(
+            next((item.channel for item in self.release_options if item.release is release), "latest_stable")
+        )
+        dialog = Gtk.Dialog(title="Confirmar instalação", transient_for=self.window, modal=True)
+        dialog.add_button("Voltar", Gtk.ResponseType.CANCEL)
+        confirm = dialog.add_button("Confirmar e instalar", Gtk.ResponseType.ACCEPT)
+        confirm.set_sensitive(False)
+        content = dialog.get_content_area()
+        content.set_spacing(12)
+        content.set_margin_top(20); content.set_margin_bottom(20)
+        content.set_margin_start(22); content.set_margin_end(22)
+        content.append(self._label("A versão escolhida", "title-2"))
+        content.append(self._label(f"{release.get('name') or release['tag_name']} · {release['tag_name']}", wrap=True))
+        content.append(self._label(f"{channel}\n{channel_detail}", "subtle", True))
+        content.append(self._label(
+            "O Launchpad baixará essa versão do GitHub, instalará dependências Python e o modelo de voz, baixará os modelos Gemma que faltarem e configurará o serviço da Aurora. Se o Ollama estiver ausente, a instalação poderá solicitar autenticação e alterar componentes do sistema, incluindo serviços e drivers.",
+            "subtle", True,
+        ))
+        acknowledgement = Gtk.CheckButton(label="Entendi os downloads e as possíveis alterações do Ollama no sistema.")
+        acknowledgement.connect("toggled", lambda check: confirm.set_sensitive(check.get_active()))
+        content.append(acknowledgement)
+        dialog.connect("response", self._install_confirmation_response, acknowledgement)
+        dialog.present()
+
+    def _install_confirmation_response(self, dialog, response, acknowledgement):
+        accepted = response == Gtk.ResponseType.ACCEPT and acknowledgement.get_active()
+        dialog.close()
+        if accepted:
+            self.install_acknowledged = True
+            self._start_install()
 
     def _progress_page(self) -> Gtk.Widget:
         col = self._column()
@@ -472,24 +537,6 @@ class Launchpad(Adw.Application):
         col.append(buttons)
         return self._page(col)
 
-    def _show_review(self, *_):
-        if not self.report.supported:
-            self.progress_title.set_text("Ambiente ainda não suportado")
-            self.stack.set_visible_child_name("progress")
-            self._append("Use Fedora Workstation em GNOME/Wayland.")
-            return
-        if self.report.free_gib < 10:
-            self.progress_title.set_text("Falta espaço livre")
-            self.stack.set_visible_child_name("progress")
-            self._append("Libere pelo menos 10 GiB antes de continuar.")
-            return
-        if not self.ollama and not Path(PKEXEC).is_file():
-            self.progress_title.set_text("Falta autenticação do sistema")
-            self.stack.set_visible_child_name("progress")
-            self._append("Ollama não está instalado e o utilitário pkexec não está disponível.")
-            return
-        self.stack.set_visible_child_name("review")
-
     def _append(self, message: str):
         if not message:
             return
@@ -511,13 +558,15 @@ class Launchpad(Adw.Application):
         return False
 
     def _start_install(self, *_):
-        if not self.model_ack.get_active():
+        if not self.install_acknowledged or not self.selected_release:
+            return
+        if not self.report.supported or self.report.free_gib < 10:
             return
         self.failed_operation = "install"
         self.stack.set_visible_child_name("progress")
         self.lines.clear(); self._append("Preparando o ambiente…")
         self.cancel_button.set_sensitive(False)
-        threading.Thread(target=self._install_worker, daemon=True).start()
+        threading.Thread(target=self._install_worker, args=(self.selected_release,), daemon=True).start()
 
     def _set_stage(self, title: str, detail: str, fraction: float):
         GLib.idle_add(self._status, title, detail, fraction, title)
@@ -526,12 +575,13 @@ class Launchpad(Adw.Application):
         if line.strip():
             GLib.idle_add(self._status, None, None, None, line)
 
-    def _install_worker(self):
+    def _install_worker(self, selected_release: dict):
         try:
-            self._set_stage("1/7 · Baixando a Aurora", "Buscando a release publicada mais recente no GitHub.", .03)
+            self._set_stage("1/7 · Baixando a Aurora", f"Preparando a versão escolhida {selected_release['tag_name']}.", .03)
             with tempfile.TemporaryDirectory(prefix="aurora-release-") as workspace:
-                source, release = download_latest_release_payload(
+                source, release = download_release_payload(
                     Path(workspace),
+                    selected_release,
                     on_status=lambda message: self._stream_line(message),
                 )
                 self._set_stage(

@@ -2,9 +2,9 @@
 
 Aurora Launchpad is an experimental graphical installer for Fedora Workstation with GNOME on Wayland. The RPM contains only the GTK/libadwaita wizard and its license. It no longer bundles Aurora's application payload.
 
-After the user reviews and confirms the installation plan, Launchpad selects the most recently published GitHub release, whether stable or pre-release. It resolves the release tag to a commit SHA, downloads the archive for that immutable commit over HTTPS, checks the final host, enforces download and extraction limits, rejects links and unsafe archive paths, and verifies that the expected desktop files exist before copying them to the user's application directory.
+Launchpad recommends up to three published GitHub releases: the newest pre-release, the preceding pre-release, and the newest stable release. It labels experimental channels and dates separately. The user selects a card, reviews the exact tag and installation effects, and confirms before any release payload is downloaded. The chosen tag is resolved to a commit SHA; Launchpad downloads that immutable commit archive over HTTPS, checks the final host, enforces download and extraction limits, rejects links and unsafe archive paths, and verifies the expected desktop files before copying them to the user's application directory.
 
-Because the newest published release is selected across both channels, this installer may install experimental pre-releases. The selected tag and channel are shown during installation. GitHub access is required.
+The preceding pre-release is only an earlier build and is not guaranteed stable. A release channel is omitted if GitHub has no valid published candidate for it. GitHub access is required to load the recommendations and download the selected version.
 
 ## Installation
 
