@@ -87,6 +87,20 @@ def test_firmware_probe_does_not_refresh_metadata(monkeypatch):
     assert calls == [['/usr/bin/fwupdmgr', 'get-updates', '--no-metadata-check']]
 
 
+def test_logind_session_selection_and_lock_transitions():
+    sessions = '''3 1000 nylofofin - 1192 manager - no -
+2 1000 nylofofin seat0 1164 user tty2 no -
+4 1001 another seat0 2210 user tty3 no -
+'''
+    assert routine.SessionUnlockMonitor._session_id(sessions, 1000) == '2'
+    assert routine.SessionUnlockMonitor._session_id(sessions, 1002) == ''
+    transition = routine.SessionUnlockMonitor._transition
+    assert transition(True, False) == 'unlocked'
+    assert transition(False, True) == 'locked'
+    assert transition(False, False) is None
+    assert transition(None, True) is None
+
+
 def test_health_summary_only_reports_actionable_findings():
     report = {
         'rpm': {'ok': True, 'packages': ['pkg-1', 'pkg-2'], 'security_count': 1},

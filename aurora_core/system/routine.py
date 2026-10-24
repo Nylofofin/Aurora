@@ -214,25 +214,89 @@ class SystemUpdateRequest(QThread):
 class SessionUnlockMonitor(QObject):
     unlocked=Signal()
     locked=Signal()
-    SERVICE='org.gnome.ScreenSaver'
-    PATH='/org/gnome/ScreenSaver'
-    INTERFACE='org.gnome.ScreenSaver'
+    SERVICE='org.freedesktop.login1'
+    MANAGER_PATH='/org/freedesktop/login1'
+    MANAGER_INTERFACE='org.freedesktop.login1.Manager'
+    SESSION_INTERFACE='org.freedesktop.login1.Session'
+    PROPERTIES_INTERFACE='org.freedesktop.DBus.Properties'
+
+    @staticmethod
+    def _session_id(output,uid):
+        for line in str(output or '').splitlines():
+            fields=line.split()
+            if len(fields)>=5 and fields[1]==str(uid) and fields[3]!='-':
+                return fields[0]
+        return ''
+
+    @staticmethod
+    def _transition(previous,locked):
+        if locked and previous is False: return 'locked'
+        if not locked and previous is not False: return 'unlocked'
+        return None
 
     def __init__(self,parent=None):
         super().__init__(parent)
-        self.bus=QDBusConnection.sessionBus()
-        self.interface=QDBusInterface(self.SERVICE,self.PATH,self.INTERFACE,self.bus,self)
+        self.bus=QDBusConnection.systemBus()
         self.active=None
-        self.slot=SLOT('_active_changed(bool)')
+        self.session_path=''
+        self.connected=False
+        self._attach_logind()
         self.startup_timer=QTimer(self)
         self.startup_timer.setSingleShot(True)
         self.startup_timer.timeout.connect(self._startup_unlocked)
-        self.connected=self.bus.connect(self.SERVICE,self.PATH,self.INTERFACE,'ActiveChanged',self,self.slot)
-        if not self.connected: return
-        reply=self.interface.call('GetActive')
+        if self.active is False: self.startup_timer.start(1500)
+
+    def _attach_logind(self):
+        if not self.bus.isConnected(): return
+        session_id=os.environ.get('XDG_SESSION_ID','')
+        if not session_id:
+            loginctl=shutil.which('loginctl')
+            result=_run([loginctl,'list-sessions','--no-legend'],3) if loginctl else None
+            if result is not None and result.returncode==0:
+                session_id=self._session_id(result.stdout,os.getuid())
+        if not session_id: return
+        manager=QDBusInterface(self.SERVICE,self.MANAGER_PATH,self.MANAGER_INTERFACE,self.bus,self)
+        reply=manager.call('GetSession',session_id)
         if reply.type()==QDBusMessage.MessageType.ErrorMessage or not reply.arguments(): return
-        self.active=bool(reply.arguments()[0])
-        if not self.active: self.startup_timer.start(1500)
+        self.session_path=reply.arguments()[0].path()
+        props=QDBusInterface(self.SERVICE,self.session_path,self.PROPERTIES_INTERFACE,self.bus,self)
+        type_reply=props.call('Get',self.SESSION_INTERFACE,'Type')
+        locked_reply=props.call('Get',self.SESSION_INTERFACE,'LockedHint')
+        if (type_reply.type()==QDBusMessage.MessageType.ErrorMessage or not type_reply.arguments()
+                or type_reply.arguments()[0].variant() not in {'wayland','x11'}
+                or locked_reply.type()==QDBusMessage.MessageType.ErrorMessage or not locked_reply.arguments()):
+            self.session_path=''
+            return
+        self.active=bool(locked_reply.arguments()[0].variant())
+        self.connected=self.bus.connect(
+            self.SERVICE,self.session_path,self.PROPERTIES_INTERFACE,'PropertiesChanged',
+            self,SLOT('_properties_changed(QString,QVariantMap,QStringList)'))
+        self.bus.connect(self.SERVICE,self.session_path,self.SESSION_INTERFACE,'Lock',self,SLOT('_lock_signal()'))
+        self.bus.connect(self.SERVICE,self.session_path,self.SESSION_INTERFACE,'Unlock',self,SLOT('_unlock_signal()'))
+
+    @Slot(str,'QVariantMap','QStringList')
+    def _properties_changed(self,interface,changed,invalidated):
+        if interface!=self.SESSION_INTERFACE or 'LockedHint' not in changed: return
+        value=changed['LockedHint']
+        if hasattr(value,'variant'): value=value.variant()
+        self._set_locked(bool(value))
+
+    @Slot()
+    def _lock_signal(self): self._set_locked(True)
+
+    @Slot()
+    def _unlock_signal(self): self._set_locked(False)
+
+    def _set_locked(self,locked):
+        previous=self.active
+        self.active=bool(locked)
+        transition=self._transition(previous,self.active)
+        if self.active:
+            self.startup_timer.stop()
+            if transition=='locked': self.locked.emit()
+        elif transition=='unlocked':
+            self.startup_timer.stop()
+            self.unlocked.emit()
 
     @Slot()
     def _startup_unlocked(self):
@@ -240,18 +304,12 @@ class SessionUnlockMonitor(QObject):
 
     @Slot(bool)
     def _active_changed(self,active):
-        active=bool(active)
-        previous=self.active
-        self.active=active
-        if active:
-            self.startup_timer.stop()
-            if previous is False: self.locked.emit()
-        elif previous is not False:
-            self.startup_timer.stop()
-            self.unlocked.emit()
+        self._set_locked(bool(active))
 
     def close(self):
         self.startup_timer.stop()
-        if self.connected:
-            self.bus.disconnect(self.SERVICE,self.PATH,self.INTERFACE,'ActiveChanged',self,self.slot)
+        if self.connected and self.session_path:
+            self.bus.disconnect(self.SERVICE,self.session_path,self.PROPERTIES_INTERFACE,'PropertiesChanged',self,SLOT('_properties_changed(QString,QVariantMap,QStringList)'))
+            self.bus.disconnect(self.SERVICE,self.session_path,self.SESSION_INTERFACE,'Lock',self,SLOT('_lock_signal()'))
+            self.bus.disconnect(self.SERVICE,self.session_path,self.SESSION_INTERFACE,'Unlock',self,SLOT('_unlock_signal()'))
             self.connected=False
