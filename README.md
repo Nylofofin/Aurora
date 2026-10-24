@@ -1,9 +1,9 @@
 # Aurora Desktop
 
-**Versão:** `1.8.0` (PC) · `1.2.3` (Android, arquivada) · **Build:** `aurora-desktop-1.8.0-sagittarius`
-**Release:** **Aurora Desktop 1.8.0 — Sagittarius** — release estável.
+**Versão:** `1.8.1` (PC) · `1.2.3` (Android, arquivada) · **Build:** `aurora-desktop-1.8.1-sirius-wake-profile`
+**Release:** **Aurora Desktop 1.8.1 — Sirius Wake Profile** — patch estável.
 
-> **Release estável.** Esta rodada consolida a personalização de primeira execução após uma instalação nova: nome de saudação, nome de ativação compatível com o vocabulário Vosk, acabamentos animados da bolha e três vozes Edge TTS em português do Brasil. Destina-se ao Fedora Workstation com GNOME/Wayland e Ollama local. Provedores externos, periféricos, portais do GNOME e integrações opcionais continuam sujeitos à rede, permissões e configuração local. A Aurora não instala atualizações sem confirmação. O Launchpad consulta metadados públicos do GitHub e só baixa a versão escolhida após confirmação explícita; se uma versão nova do próprio Launchpad estiver publicada, ele exige a atualização verificada antes de continuar. O instalador também prepara a pasta de dados do serviço Ollama quando ela está ausente.
+> **Release estável 1.8.1 — Sirius Wake Profile.** Esta rodada consolida a personalização de primeira execução após uma instalação nova: nome de saudação, nome de ativação com treinamento local opcional, acabamentos animados da bolha e três vozes Edge TTS em português do Brasil. Destina-se ao Fedora Workstation com GNOME/Wayland e Ollama local. Provedores externos, periféricos, portais do GNOME e integrações opcionais continuam sujeitos à rede, permissões e configuração local. A Aurora não instala atualizações sem confirmação. O Launchpad consulta metadados públicos do GitHub e só baixa a versão escolhida após confirmação explícita; se uma versão nova do próprio Launchpad estiver publicada, ele exige a atualização verificada antes de continuar. O instalador também prepara a pasta de dados do serviço Ollama quando ela está ausente.
 
 As releases seguem o formato **Aurora Desktop `<versão>` — `<codinome>`**. O codinome descreve a mudança principal daquela versão; o identificador técnico usa `aurora-desktop-<versão>-<codinome>`, sem siglas ambíguas. A tag SemVer (`vMAJOR.MINOR.PATCH`) continua sendo a referência exata do código. Nomes anteriores permanecem no changelog como registro histórico.
 
