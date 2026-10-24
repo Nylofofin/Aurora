@@ -182,6 +182,40 @@ def test_mobile_small_talk_uses_conversation_model_without_tools(monkeypatch):
     assert service.started.kwargs["use_tools"] is False
 
 
+def test_agent_search_results_are_shown_in_the_active_research_card():
+    class Card:
+        generation = 3
+
+        def __init__(self): self.sources = []
+        @staticmethod
+        def _parse_sources(text):
+            from aurora_core.ui.research_card import ResearchCard
+            return ResearchCard._parse_sources(text)
+        def set_sources(self, generation, items): self.sources = items
+
+    class Orb:
+        def set_mode(self, mode): self.mode = mode
+
+    class Service:
+        companion_request = None
+        companion_server = None
+        research_card = Card()
+        request_generation = 3
+        active_search_context = ""
+        orb = Orb()
+
+    service = Service()
+    AuroraService.search_update(
+        service,
+        "consulta",
+        "Resultados\nFonte de teste [fonte.example · 24/10/2026] :: Trecho verificado. — https://fonte.example/artigo",
+    )
+
+    assert service.research_card.sources[0]["host"] == "fonte.example"
+    assert service.research_card.sources[0]["published"] == "24/10/2026"
+    assert service.orb.mode == "thinking"
+
+
 def test_companion_tool_approval_is_refused_immediately_without_desktop_ui():
     from threading import Event
 

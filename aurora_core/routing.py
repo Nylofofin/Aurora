@@ -15,6 +15,38 @@ from .web.intent import (
 )
 from .web.requests import FXRequest, SearchRequest, WeatherRequest
 
+_AGENT_ACTION = re.compile(
+    r'\b(abr(?:a|e|em|o|imos|ir|iu|iram)|inici(?:a|e|am|o|amos|ar|ou|aram)|'
+    r'execut(?:a|e|am|o|amos|ar|ou|aram)|rod(?:a|e|am|o|amos|ar|ou|aram)|'
+    r'clic(?:a|e|am|o|amos|ar|ou|aram)|digit(?:a|e|am|o|amos|ar|ou|aram)|'
+    r'escrev(?:a|e|em|o|emos|er|eu|eram)|control(?:a|e|am|o|amos|ar|ou|aram)|'
+    r'cri(?:a|e|am|o|amos|ar|ou|aram)|faca|faco|faz|fazer|fiz|'
+    r'ger(?:a|e|am|o|amos|ar|ou|aram)|lembr(?:a|e|am|o|amos|ar|ou|aram)|'
+    r'esquec(?:e|a|em|o|emos|er|eu|eram)|salv(?:a|e|am|o|amos|ar|ou|aram)|'
+    r'leia|leio|ler|aces(?:sa|se|sam|so|samos|sar|sou|saram)|'
+    r'lanc(?:a|e|am|o|amos|ar|ou|aram)|coloc(?:a|e|am|o|amos|ar|ou|aram)|'
+    r'minimiz(?:a|e|am|o|amos|ar|ou|aram)|maximiz(?:a|e|am|o|amos|ar|ou|aram)|'
+    r'fech(?:a|e|am|o|amos|ar|ou|aram)|encerr(?:a|e|am|o|amos|ar|ou|aram)|'
+    r'aument(?:a|e|am|o|amos|ar|ou|aram)|diminu(?:a|e|em|o|imos|ir|iu|iram)|'
+    r'baix(?:a|e|am|o|amos|ar|ou|aram)|silenci(?:a|e|am|o|amos|ar|ou|aram)|'
+    r'mut(?:a|e|am|o|amos|ar|ou|aram)|pesquis\w*|busc\w*|procur\w*|'
+    r'investig\w*|agend(?:a|e|am|o|amos|ar|ou|aram)|marc(?:a|e|am|o|amos|ar|ou|aram))\b'
+)
+
+
+def _agent_action_intent(normalized_prompt):
+    """Recognize broad action language so local requests beat generic web routing."""
+    match=_AGENT_ACTION.search(normalized_prompt)
+    if not match: return False
+    prefix=normalized_prompt[:match.start()].strip()
+    if not prefix: return True
+    if re.fullmatch(r'como(?: eu)?',prefix): return True
+    if (re.match(r'^(?:(?:por favor|aurora)\s*,?\s*)?(?:(?:eu\s+)?(?:quero|preciso|pode|poderia|consegue)|me ajuda|eu gostaria de|faz|faca)\b',prefix)
+            and not re.search(r'\b(saber|entender|aprender|explicar|explicacao|informacao|noticia|valor|preco)\b',prefix)):
+        return True
+    return False
+
+
 def route_request(self,prompt):
     if not self.voice.request_active.is_set() and not getattr(self,'companion_request',None): return
     prompt=prompt.strip()
@@ -75,7 +107,13 @@ def route_request(self,prompt):
     relative_reference=bool(re.search(r'\b(isso|disso|nisso|desse|dessa|dele|dela|essa fonte|esse resultado|essa noticia|essa resposta|a primeira fonte|o primeiro resultado|a segunda fonte|o segundo resultado|a terceira fonte|o terceiro resultado)\b',normalized))
     needs_context_search=bool(is_followup and relative_reference and (query or freshness))
     if needs_context_search: query=''
-    if not query and ((freshness and not needs_context_search) or ((factual_web_intent(prompt) or research_request_intent(prompt)) and not is_followup)):
+    refers_to_source=bool(self.context_history and re.search(r'\b(fonte|link|noticia|artigo|resultado)\b',normalized))
+    agent_intent=(source_followup or refers_to_source or needs_context_search
+                  or _agent_action_intent(normalized))
+    # Explicit research wording always remains web research. Inferred freshness
+    # and generic factual-question routes yield to action language so a local
+    # request such as "Como abro o terminal?" is not sent to search first.
+    if not query and not agent_intent and ((freshness and not needs_context_search) or ((factual_web_intent(prompt) or research_request_intent(prompt)) and not is_followup)):
         query=LocalVoice.strip_wake_word(prompt).strip(' \t,.:;!?')
     if query:
         generation=self.request_generation
@@ -88,9 +126,14 @@ def route_request(self,prompt):
         request.result.connect(lambda q,out,g=generation:self.quick_search_done(q,out,g),Qt.ConnectionType.QueuedConnection)
         request.error.connect(lambda q,message,g=generation:self.quick_search_error(q,message,g),Qt.ConnectionType.QueuedConnection)
         self.start_background_request(self.quick_search); return
-    refers_to_source=bool(self.context_history and re.search(r'\b(fonte|link|noticia|artigo|resultado)\b',normalized))
-    agent_intent=source_followup or refers_to_source or needs_context_search or bool(re.search(r'\b(abra|abrir|abre|aberto|aberta|inicie|iniciar|execute|executar|rode|rodar|clique|clicar|digite|digitar|escreva|escrever|controle o computador|controle o pc|crie|criar|faca|gere|gerar|lembre|lembrar|esqueca|esquecer|salve|salvar|salve como|salvar como|leia|ler|acesse|acessar|lance|lancar|bote|coloque|minimize|minimizar|maximize|maximizar|feche|fechar|fecha|encerre|encerrar|encerra|aumente|aumentar|diminua|diminuir|baixe|baixar|silencie|mute|pesquise|pesquisar|busque|buscar|procure|procurar|investigue|investigar|agende|agendar|marque|marcar|agenda|compromissos?|reunioes?|eventos?)\b',normalized))
+    if agent_intent and not getattr(self, '_mobile_audio_owned', lambda: False)():
+        card=getattr(self,'research_card',None)
+        if card:
+            generation=self.request_generation
+            card.begin(generation,prompt,self.orb.frameGeometry(),mode='local')
+            card.update_progress(generation,{'stage':'understanding','tasks':['Entendendo o pedido'],
+                                             'workers':1,'completed':0,'total':1})
     model=self.cfg.get('agent_model','gemma4:e2b-it-q4_K_M') if agent_intent else self.cfg['model']
     inference=Inference(self.cfg,prompt,model=model,use_tools=agent_intent,history=self.context_history[-6:],response_language=self.response_language)
     generation=self.request_generation
-    inference.sentence.connect(lambda text,g=generation:self.queue_sentence(text,g)); inference.search.connect(lambda q,out,g=generation:self.search_update(q,out) if g==self.request_generation else None); inference.progress.connect(lambda event,g=generation:self.research_progress(event,g),Qt.ConnectionType.QueuedConnection); inference.approval.connect(lambda name,detail,g=generation:self.request_approval(name,detail) if g==self.request_generation else None); inference.error.connect(lambda message,g=generation:self.answer_error(message,g)); inference.result.connect(lambda text,g=generation:self.answer_done(text,g)); self.start_inference(inference,generation)
+    inference.sentence.connect(lambda text,g=generation:self.queue_sentence(text,g)); inference.search.connect(lambda q,out,g=generation:self.search_update(q,out) if g==self.request_generation else None,Qt.ConnectionType.QueuedConnection); inference.progress.connect(lambda event,g=generation:self.research_progress(event,g),Qt.ConnectionType.QueuedConnection); inference.approval.connect(lambda name,detail,g=generation:self.request_approval(name,detail) if g==self.request_generation else None); inference.error.connect(lambda message,g=generation:self.answer_error(message,g)); inference.result.connect(lambda text,g=generation:self.answer_done(text,g)); self.start_inference(inference,generation)

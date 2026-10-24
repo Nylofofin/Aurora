@@ -30,6 +30,24 @@ def _agenda_add_needs_followup(result):
     text = str(result).strip()
     return text.startswith(('Precisa de um título', 'A data ou hora do compromisso'))
 
+
+def _tool_progress_label(name):
+    """Use short, user-facing labels while a tool-backed request is running."""
+    labels={
+        'web_search':'Consultando a web','read_web_page':'Lendo página',
+        'open_url':'Abrindo site','take_screenshot':'Capturando tela',
+        'spotify_play':'Preparando reprodução','obs_record':'Controlando OBS',
+        'open_application':'Abrindo aplicativo','close_application':'Encerrando aplicativo',
+        'manage_window':'Ajustando janela','inspect_accessible_windows':'Lendo controles da janela',
+        'focus_accessible_window':'Focando controle','type_accessible_text':'Digitando texto',
+        'volume_control':'Ajustando volume','get_system_info':'Consultando o computador',
+        'create_file':'Criando arquivo','remember_preference':'Salvando preferência',
+        'forget_preference':'Removendo preferência','agenda_add':'Salvando compromisso',
+        'agenda_cancel':'Atualizando agenda','agenda_clear':'Limpando agenda',
+        'agenda_list':'Consultando agenda','agenda_nearest':'Consultando próximo compromisso',
+    }
+    return labels.get(name,'Executando etapa')
+
 class Inference(QThread):
     phrase=Signal(str); sentence=Signal(str); state=Signal(str); approval=Signal(str,object); result=Signal(str); error=Signal(str); search=Signal(str,str); progress=Signal(object)
     def __init__(self, cfg, prompt, model=None, use_tools=False, history=None, system_prompt=None,response_language='Português brasileiro'): super().__init__(); self.cfg=cfg; self.prompt=prompt; self.model=model or cfg['model']; self.use_tools=use_tools; self.history=(history or [])[-6:]; self.system_prompt=system_prompt; self.response_language=response_language; self.cancelled=False; self.active_response=None
@@ -186,13 +204,22 @@ class Inference(QThread):
         """Run only independent read-only local inspections concurrently."""
         if not local_parallel_tool_calls(calls):
             outputs=[]
-            for call in calls:
+            tasks=[_tool_progress_label(call.get('function',{}).get('name','')) for call in calls]
+            tool_names={call.get('function',{}).get('name','') for call in calls}
+            mode='web' if tool_names.intersection({'web_search','read_web_page'}) else 'local'
+            if tasks:
+                self.progress.emit({'mode':mode,'stage':'executing','title':self.prompt,
+                                    'tasks':tasks,'workers':1,'completed':0,'total':len(calls)})
+            for index,call in enumerate(calls):
                 if self.cancelled: return None
                 fn=call.get('function',{}); name=fn.get('name',''); args=fn.get('arguments',{})
                 if isinstance(args,str):
                     try: args=json.loads(args)
                     except Exception: args={}
                 outputs.append((call,name,self.execute_tool(name,args)))
+                self.progress.emit({'mode':mode,'stage':'executing','title':self.prompt,
+                                    'tasks':tasks,'workers':1,'completed':index+1,'total':len(calls),
+                                    'finished_task':tasks[index]})
             return outputs
 
         worker_count=local_worker_limit(len(calls))

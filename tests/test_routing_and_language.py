@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-only
 import threading
+from concurrent.futures import Future
 
 import aurora
 import aurora_core.routing as routing
@@ -94,6 +95,64 @@ def test_news_and_how_to_requests_route_to_research_without_search_verbs():
     assert aurora.guided_learning_intent("Como jogar um jogo de estratégia?")
     assert aurora.factual_web_intent("Como jogar um jogo de estratégia?" )
     assert aurora.news_search_intent("Quais são as notícias internacionais hoje?")
+
+
+def test_local_action_language_takes_precedence_over_automatic_factual_search(monkeypatch):
+    monkeypatch.setattr(routing, "parse_local_command", lambda _prompt: None)
+    monkeypatch.setattr(routing, "local_datetime_answer", lambda _prompt: "")
+    monkeypatch.setattr(routing, "calculate_local_expression", lambda _prompt: None)
+    monkeypatch.setattr(routing, "search_intent", lambda _prompt: "")
+
+    class Voice:
+        def __init__(self):
+            self.request_active = threading.Event()
+            self.request_active.set()
+            self.speaking = False
+
+    class Orb:
+        def isVisible(self): return True
+        def set_mode(self, _mode): pass
+        def reveal(self, _mode): pass
+
+    class Signal:
+        def connect(self, _callback, *_args): pass
+
+    class FakeInference:
+        def __init__(self, *args, **kwargs):
+            self.args, self.kwargs = args, kwargs
+            self.sentence = self.search = self.progress = self.approval = self.error = self.result = Signal()
+
+    monkeypatch.setattr(routing, "Inference", FakeInference)
+
+    class Service:
+        voice = Voice()
+        orb = Orb()
+        inf = None
+        cfg = {"model": "gemma3:1b", "agent_model": "gemma4:e2b"}
+        context_history = []
+        activity_generation = 0
+        request_generation = 0
+        response_language = "Português brasileiro"
+        companion_request = {"future": Future()}
+
+        def start_background_request(self, _request):
+            raise AssertionError("A pergunta de ação local não deve abrir a busca web")
+        def start_inference(self, inference, generation):
+            self.started = (inference, generation)
+
+    service = Service()
+    routing.route_request(service, "Como abro o terminal?")
+
+    inference, _ = service.started
+    assert inference.kwargs["model"] == "gemma4:e2b"
+    assert inference.kwargs["use_tools"] is True
+
+
+def test_agent_action_cue_does_not_mistake_topic_nouns_for_commands():
+    assert routing._agent_action_intent("como abro o terminal")
+    assert routing._agent_action_intent("quero abrir o navegador")
+    assert not routing._agent_action_intent("quais sao os eventos de tecnologia hoje")
+    assert not routing._agent_action_intent("qual foi o aumento do setor este ano")
 
 
 def test_international_news_scope_is_not_mistaken_for_the_topic():

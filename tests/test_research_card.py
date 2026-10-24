@@ -64,6 +64,7 @@ def test_research_card_shows_local_parallel_inspection_without_web_sources(monke
     card = ResearchCard()
     monkeypatch.setattr(card, "_show_near", lambda _anchor: None)
     card.begin(9, "Consulte hardware e volume", None, mode="local")
+    assert card.stage_label.text() == "Entendendo o pedido"
     card.update_progress(9, {
         "mode": "local", "stage": "executing", "tasks": ["Consultar hardware", "Consultar volume"],
         "workers": 2, "completed": 1, "total": 2, "finished_task": "Consultar volume",
@@ -71,8 +72,25 @@ def test_research_card_shows_local_parallel_inspection_without_web_sources(monke
 
     assert card.source_heading.isHidden()
     assert card.source_area.isHidden()
-    assert card.stage_label.text() == "Consultando ferramentas locais · 1/2"
+    assert card.stage_label.text() == "Executando etapas · 1/2"
     assert card.worker_labels[1].text().endswith("concluída")
+    card.hide()
+    app.processEvents()
+
+
+def test_research_card_switches_from_local_task_to_web_sources(monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    card = ResearchCard()
+    monkeypatch.setattr(card, "_show_near", lambda _anchor: None)
+    card.begin(15, "Responda à pergunta", None, mode="local")
+    card.update_progress(15, {
+        "mode": "web", "stage": "executing", "tasks": ["Consultando a web"],
+        "workers": 1, "completed": 0, "total": 1,
+    })
+
+    assert card.kind_label.text() == "Pesquisa"
+    assert not card.source_heading.isHidden()
+    assert not card.source_area.isHidden()
     card.hide()
     app.processEvents()
 

@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 
 
 _STAGES = {
+    "understanding": "Entendendo o pedido",
     "planning": "Preparando pesquisa",
     "planning_complete": "Pesquisa preparada",
     "searching": "Pesquisando em paralelo",
@@ -32,9 +33,10 @@ class ResearchCard(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setWindowTitle("Aurora · pesquisa")
-        self.resize(392, 432)
+        self.resize(376, 408)
         self.generation = None
         self.mode = "web"
+        self._anchor = None
         self._hide_after_animation = False
         self._tasks = []
         self._finished = set()
@@ -49,8 +51,8 @@ class ResearchCard(QWidget):
         self.panel.setObjectName("researchPanel")
         outer.addWidget(self.panel)
         layout = QVBoxLayout(self.panel)
-        layout.setContentsMargins(18, 16, 18, 17)
-        layout.setSpacing(10)
+        layout.setContentsMargins(16, 14, 16, 15)
+        layout.setSpacing(8)
 
         top = QHBoxLayout()
         brand = QLabel("Aurora")
@@ -134,6 +136,7 @@ class ResearchCard(QWidget):
         self._position.stop()
         self.generation = generation
         self.mode = mode
+        self._anchor = anchor
         self.kind_label.setText("Local" if mode == "local" else "Pesquisa")
         self._tasks = [str(query)]
         self._finished.clear()
@@ -141,17 +144,26 @@ class ResearchCard(QWidget):
         self.query_label.setText(" ".join(str(query).split())[:220])
         self.answer.clear()
         self.answer.hide()
-        self._set_stage("searching")
-        self._set_workers(self._tasks, 1)
+        initial_stage="understanding" if mode == "local" else "searching"
+        self._set_stage(initial_stage)
+        self._set_workers(["Entendendo o pedido"] if mode == "local" else self._tasks, 1)
         self._clear_sources()
         self.source_heading.setVisible(mode != "local")
         self.source_area.setVisible(mode != "local")
-        self.progress.setValue(8)
+        self.progress.setValue(5 if mode == "local" else 8)
         self._show_near(anchor)
 
     def update_progress(self, generation, event):
         if generation != self.generation or not isinstance(event, dict):
             return
+        event_mode=event.get("mode")
+        if event_mode in {"local", "web"} and event_mode != self.mode:
+            self.mode=event_mode
+            self.kind_label.setText("Local" if self.mode == "local" else "Pesquisa")
+            visible=self.mode != "local"
+            self.source_heading.setVisible(visible)
+            self.source_area.setVisible(visible)
+            self._show_near(self._anchor)
         stage = event.get("stage", "searching")
         tasks = event.get("tasks")
         if isinstance(tasks, list) and tasks:
@@ -188,7 +200,7 @@ class ResearchCard(QWidget):
         elif stage == "executing":
             completed = int(event.get("completed", len(self._finished)))
             total = max(1, int(event.get("total", len(self._tasks))))
-            self.stage_label.setText(f"Consultando ferramentas locais · {completed}/{total}")
+            self.stage_label.setText(f"Executando etapas · {completed}/{total}")
             self.progress.setValue(12 + int(76 * completed / total))
             self._paint_workers()
         elif stage == "validating":
@@ -393,14 +405,16 @@ class ResearchCard(QWidget):
         if anchor is None or anchor.isNull():
             screen = QApplication.primaryScreen()
             area = screen.availableGeometry() if screen else self.geometry()
-            self.resize(min(400, max(320, area.width() - 24)), min(448, max(360, area.height() - 32)))
-            self.source_area.setMaximumHeight(min(146, max(86, self.height() - 300)))
+            self.resize(min(384, max(320, area.width() - 24)), min(420, max(320, area.height() - 32)))
+            if self.mode == "local": self.resize(self.width(), min(self.height(), 352))
+            self.source_area.setMaximumHeight(min(136, max(72, self.height() - 280)))
             target = QPoint(area.right() - self.width() - 24, area.bottom() - self.height() - 24)
         else:
             screen = QApplication.screenAt(anchor.center()) or QApplication.primaryScreen()
             area = screen.availableGeometry() if screen else self.geometry()
-            self.resize(min(400, max(320, area.width() - 24)), min(448, max(360, area.height() - 32)))
-            self.source_area.setMaximumHeight(min(146, max(86, self.height() - 300)))
+            self.resize(min(384, max(320, area.width() - 24)), min(420, max(320, area.height() - 32)))
+            if self.mode == "local": self.resize(self.width(), min(self.height(), 352))
+            self.source_area.setMaximumHeight(min(136, max(72, self.height() - 280)))
             gap = 14
             left = anchor.left() - self.width() - gap
             right = anchor.right() + gap
