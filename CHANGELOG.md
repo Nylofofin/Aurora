@@ -1,5 +1,11 @@
 # Histórico de versões
 
+## Aurora Desktop 1.7.1-beta.2 — Cygnus X-1 Hardware Query Recovery, 2026-10-24 (pré-release beta)
+
+- Perguntas naturais sobre os componentes do próprio computador agora são roteadas diretamente à ferramenta local de hardware, sem depender do modelo para iniciar a consulta.
+- A coleta de CPU, memória, GPU e armazenamento roda em trabalhador separado; a resposta falada é formada com os dados coletados.
+- Testes de regressão cobrem variações de frase, rejeição de pedidos de pesquisa/upgrade e desvio da etapa de inferência.
+
 ## Aurora Desktop 1.7.1-beta.1 — Gaia BH1 Resumable Local Timers, 2026-10-24 (pré-release beta)
 
 - Revisita a rotina de saúde local: as consultas continuam somente de leitura, paralelas e limitadas; estados parciais e fontes indisponíveis permanecem explícitos.

@@ -3,8 +3,8 @@ from __future__ import annotations
 
 """Release identity for the Aurora local desktop build."""
 
-__version__ = "1.7.1-beta.1"
+__version__ = "1.7.1-beta.2"
 
-CODENAME = "GAIA BH1 RESUMABLE LOCAL TIMERS"
+CODENAME = "CYGNUS X-1 HARDWARE QUERY RECOVERY"
 
-BUILD_ID = "aurora-desktop-1.7.1-beta.1-gaia-bh1-resumable-local-timers"
+BUILD_ID = "aurora-desktop-1.7.1-beta.2-cygnus-x1-hardware-query-recovery"
