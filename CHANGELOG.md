@@ -1,5 +1,12 @@
 # Histórico de versões
 
+## Aurora Desktop 1.8.1 — Sirius Wake Profile, 2026-10-24 (patch estável)
+
+- Sincroniza a instalação local com o perfil de wake word personalizado.
+- Permite treinamento local com quatro amostras quando o nome não existe no vocabulário do Vosk.
+- Mantém somente características acústicas privadas; o áudio bruto não é armazenado.
+- Mantém o serviço, o microfone e as configurações do usuário durante a atualização.
+
 ## Aurora Desktop 1.8.0 — Sagittarius, 2026-10-24 (release estável)
 
 - Corrige a atualização de instalações existentes preservando os links internos normais do `.venv`.
