@@ -154,7 +154,9 @@ class AuroraService(QObject):
         self.feedback=QSoundEffect(); self.feedback.setSource(QUrl.fromLocalFile(str(APP_DIR/'assets'/'audio'/'entrada.wav'))); self.feedback.setVolume(.34)
         self.exit_feedback=QSoundEffect(); self.exit_feedback.setSource(QUrl.fromLocalFile(str(APP_DIR/'assets'/'audio'/'saida.wav'))); self.exit_feedback.setVolume(.30)
         self.orb.hidden.connect(self.play_exit_feedback)
-        self.speaker=Speaker(self.cfg); self.speaker.speaking.connect(self.speaking_changed); self.speaker.audio_started.connect(self.audio_started); self.speaker.speech_level.connect(self.orb.set_speech_level,Qt.ConnectionType.QueuedConnection); self.speaker.start()
+        self.speaker=Speaker(self.cfg); self.speaker.speaking.connect(self.speaking_changed); self.speaker.audio_started.connect(self.audio_started); self.speaker.speech_level.connect(self.orb.set_speech_level,Qt.ConnectionType.QueuedConnection)
+        if hasattr(self.speaker,'speech_error'): self.speaker.speech_error.connect(self.speech_error,Qt.ConnectionType.QueuedConnection)
+        self.speaker.start()
         self.voice=LocalVoice(self.cfg)
         # These callbacks touch the floating window/QSoundEffect. Queue them explicitly
         # because LocalVoice emits from its audio-capture thread.
@@ -477,7 +479,8 @@ class AuroraService(QObject):
                     'firmware':{'ok':False,'devices':[],'available':True},
                     'warnings':['não consegui concluir a verificação local']}
         self.system_routine_report=report
-        findings=summarize_health(report)
+        # A failed probe is unknown state, not a confirmed pending system issue.
+        findings=summarize_health(report,include_unavailable=False)
         rpm=report.get('rpm',{}); flatpak=report.get('flatpak',{})
         rpm_count=len(rpm.get('packages',[])) if rpm.get('ok') else 0
         flatpak_count=len(flatpak.get('apps',[])) if flatpak.get('ok') else 0
@@ -916,6 +919,9 @@ class AuroraService(QObject):
         elif not self.speaker.active and self.speaker.q.empty() and self.response_finished:
             self.schedule_dismiss(750)
     def audio_started(self): self.orb.set_mode('speaking')
+    def speech_error(self,message):
+        print(f'[voice] {message}',file=sys.stderr,flush=True)
+        if self.response_finished: self.orb.set_mode('error')
     def schedule_dismiss(self,delay):
         generation=self.activity_generation
         def finish():

@@ -116,6 +116,18 @@ def test_health_summary_only_reports_actionable_findings():
     ]
 
 
+def test_proactive_health_summary_omits_failed_probes_as_pending_items():
+    report = {
+        'rpm': {'ok': False, 'packages': [], 'security_count': 0},
+        'flatpak': {'ok': False, 'apps': [], 'available': True},
+        'firmware': {'ok': False, 'devices': [], 'available': True},
+        'warnings': ['não consegui concluir a verificação local', 'pouco espaço livre: 4 GB'],
+    }
+    assert routine.summarize_health(report, include_unavailable=False) == [
+        'pouco espaço livre: 4 GB',
+    ]
+
+
 def test_update_worker_never_disables_package_signature_checks(monkeypatch):
     calls = []
 

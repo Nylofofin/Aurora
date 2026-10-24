@@ -34,6 +34,28 @@ def test_spanish_output_is_translated_before_it_is_spoken(monkeypatch):
     )
 
 
+def test_short_spanish_and_english_voice_lines_are_detected():
+    from aurora_core.web.language import likely_english, likely_spanish
+
+    assert likely_spanish("Grabación iniciada.")
+    assert likely_english("Recording started.")
+
+
+def test_failed_translation_never_returns_the_foreign_original(monkeypatch):
+    cfg = {"endpoint": "http://localhost:11434", "model": "gemma3:1b",
+           "keep_alive": "5m", "num_ctx": 1024, "num_thread": 4, "num_gpu": 99}
+    worker = inference_module.Inference(cfg, "", response_language="Português brasileiro")
+    spanish = "Grabación iniciada."
+    monkeypatch.setattr(worker, "translate_to_language", lambda *_args: spanish)
+    assert worker._translate_before_speaking(spanish) == (
+        "Não consegui responder em português agora. Pode repetir, por favor?"
+    )
+    monkeypatch.setattr(worker, "translate_to_language", lambda *_args: "")
+    assert worker._translate_before_speaking("Recording started.") == (
+        "Não consegui responder em português agora. Pode repetir, por favor?"
+    )
+
+
 def test_inference_translates_spanish_sentences_before_emitting_them(monkeypatch):
     class Response:
         def __enter__(self): return self

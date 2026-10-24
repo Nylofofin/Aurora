@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QThread, Signal
-import asyncio, queue, re, shutil, subprocess, time
+import asyncio, queue, re, shutil, time
 
 class Speaker(QThread):
-    speaking=Signal(bool); audio_started=Signal(); drained=Signal(); speech_level=Signal(float)
-    def __init__(self,cfg): super().__init__(); self.cfg=cfg; self.q=queue.Queue(); self.running=True; self.active=False; self.playing=False; self.current_player=None; self.stream_loop=None; self.stream_task=None; self.cancel_generation=0; self.engine=shutil.which('ffplay'); self.fallback=shutil.which('espeak-ng') or shutil.which('espeak')
+    speaking=Signal(bool); audio_started=Signal(); drained=Signal(); speech_level=Signal(float); speech_error=Signal(str)
+    def __init__(self,cfg): super().__init__(); self.cfg=cfg; self.q=queue.Queue(); self.running=True; self.active=False; self.playing=False; self.current_player=None; self.stream_loop=None; self.stream_task=None; self.cancel_generation=0; self.engine=shutil.which('ffplay')
     def say(self,text):
         text=self.clean(text)
         if text: self.q.put((text[:1800],time.perf_counter()))
@@ -64,20 +64,20 @@ class Speaker(QThread):
             if player is not None and self.current_player is player: self.current_player=None
             if self.stream_task is task: self.stream_task=None; self.stream_loop=None
     async def _stream_edge_retry(self,text,generation):
-        """Retry one transient Edge failure before allowing the local fallback."""
+        """Retry a transient Edge failure; never silently switch to another voice."""
         try:
             await self._stream_edge(text,generation)
         except Exception as first_error:
             if generation!=self.cancel_generation or not self.running:
                 raise
             # Edge occasionally opens a stream but returns no audio. A short
-            # retry avoids changing Thalita to espeak for a transient outage.
+            # retry avoids dropping a transient Edge outage.
             print(f'[voice] Edge TTS attempt failed ({type(first_error).__name__}); retrying once', flush=True)
             await asyncio.sleep(.2)
             try:
                 await self._stream_edge(text,generation)
             except Exception as retry_error:
-                print(f'[voice] Edge TTS retry failed ({type(retry_error).__name__}); using local fallback', flush=True)
+                print(f'[voice] Edge TTS retry failed ({type(retry_error).__name__}); no alternate voice will be used', flush=True)
                 raise
     def run(self):
         while self.running:
@@ -89,8 +89,9 @@ class Speaker(QThread):
             generation=self.cancel_generation
             log_voice_timing('tts_queue',elapsed_ms(queued_at))
             playback_started=time.perf_counter()
-            if not self.engine and not self.fallback:
+            if not self.engine:
                 log_voice_timing('tts_complete',elapsed_ms(playback_started),'unavailable')
+                self.speech_error.emit('O Edge TTS precisa do ffplay para reproduzir a voz Thalita.')
                 self.speaking.emit(False); self.drained.emit(); continue
             outcome='ok'
             self.active=True; self.speaking.emit(True)
@@ -98,19 +99,12 @@ class Speaker(QThread):
                 if self.engine:
                     import asyncio
                     asyncio.run(self._stream_edge_retry(text,generation))
-                elif self.fallback:
-                    outcome='fallback'
-                    self.playing=True; self.audio_started.emit()
-                    self.current_player=subprocess.Popen([self.fallback,'-v','pt-br',text],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-                    self.current_player.wait(timeout=35)
             except asyncio.CancelledError:
                 outcome='interrupted'
             except Exception:
-                outcome='fallback' if self.fallback and self.running and generation==self.cancel_generation else 'error'
-                if self.fallback and self.running and generation==self.cancel_generation:
-                    try:
-                        self.playing=True; self.audio_started.emit(); self.current_player=subprocess.Popen([self.fallback,'-v','pt-br',text],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL); self.current_player.wait(timeout=35)
-                    except Exception: outcome='error'
+                outcome='error'
+                if self.running and generation==self.cancel_generation:
+                    self.speech_error.emit('Não consegui gerar a voz Thalita pelo Edge TTS.')
             finally:
                 self.current_player=None
                 log_voice_timing('tts_complete',elapsed_ms(playback_started),outcome)

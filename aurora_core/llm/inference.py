@@ -47,13 +47,13 @@ class Inference(QThread):
                 self.active_response=response
                 try:
                     for raw in response:
-                        if self.cancelled: return 'Ação cancelada.'
+                        if self.cancelled: return ''
                         try: parts.append(json.loads(raw.decode()).get('message',{}).get('content',''))
                         except Exception: continue
                 finally: self.active_response=None
             translated=''.join(parts).strip()
-            return translated or text
-        except Exception: return text
+            return translated
+        except Exception: return ''
     def _needs_translation(self,text):
         language=self.response_language
         if language=='Português brasileiro':
@@ -65,8 +65,18 @@ class Inference(QThread):
         return likely_english(text) or likely_portuguese(text) or likely_spanish(text)
     def _translate_before_speaking(self,text):
         translated=self.translate_to_language(text,self.response_language)
-        if self.response_language=='Português brasileiro' and likely_spanish(translated):
-            return 'Não consegui responder em português agora. Pode repetir, por favor?'
+        failed=not translated.strip()
+        if self.response_language=='Português brasileiro':
+            failed=failed or likely_english(translated) or likely_spanish(translated)
+            if failed: return 'Não consegui responder em português agora. Pode repetir, por favor?'
+        elif self.response_language=='English':
+            failed=failed or likely_portuguese(translated) or likely_spanish(translated)
+            if failed: return 'I could not prepare the answer in English just now. Please try again.'
+        elif self.response_language=='Spanish':
+            failed=failed or likely_english(translated) or likely_portuguese(translated)
+            if failed: return 'No pude preparar la respuesta en español. Inténtalo de nuevo.'
+        elif failed:
+            return 'Não consegui preparar a resposta no idioma solicitado.'
         return translated
     def run(self):
         ep=self.cfg['endpoint'].rstrip('/')

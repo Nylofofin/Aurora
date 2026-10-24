@@ -3,14 +3,14 @@ from __future__ import annotations
 
 import re
 
-ENGLISH_MARKERS={'absolutely','and','answer','are','because','can','certainly','could','degrees','do','does','face','fast','four','from','good','have','has','here','hot','how','is','it','its','okay','please','should','smiling','sure','temperature','that','the','they','this','those','three','today','tomorrow','two','was','we','weather','were','what','when','where','which','who','will','with','would','yes','you','your','eyes'}
+ENGLISH_MARKERS={'absolutely','and','answer','are','because','can','certainly','could','degrees','do','does','face','fast','four','from','good','have','has','here','hot','how','is','it','its','okay','please','should','smiling','sure','temperature','that','the','they','this','those','three','today','tomorrow','two','was','we','weather','were','what','when','where','which','who','will','with','would','yes','you','your','eyes','recording','started','stopped','completed','finished','available','ready','done','playing','opening','closed','saved','captured','found'}
 
 PORTUGUESE_MARKERS={'a','agora','as','com','da','das','de','do','dos','ela','ele','em','está','estão','eu','hoje','mais','meu','minha','não','no','nos','o','os','para','pela','pelo','por','que','se','sim','sua','um','uma','você'}
 
 # Words and verb forms that are strong Spanish signals and uncommon in normal
 # Brazilian Portuguese. Keep this intentionally small to avoid translating
 # Portuguese sentences just because they share words such as "que" or "para".
-SPANISH_MARKERS={'aquí','allí','allá','comenzó','comenzo','puedo','puedes','pueden','según','siento','inició','inicio','el','los','pero','hay','fue','estoy','estás','tienes','quieres','necesitas','deberías','ha','hemos','había','ustedes'}
+SPANISH_MARKERS={'aquí','allí','allá','comenzó','comenzo','puedo','puedes','pueden','según','siento','inició','inicio','el','los','pero','hay','fue','estoy','estás','tienes','quieres','necesitas','deberías','ha','hemos','había','ustedes','grabación','grabacion','iniciada','iniciado','detenerla','terminada','finalizada','listo','lista','encontré','encontre','hecho','cerrada','abierta','guardada','captura'}
 
 def likely_english(text):
     words=re.findall(r"[a-zA-ZÀ-ÿ']+",str(text).lower())

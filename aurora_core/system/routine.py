@@ -135,28 +135,33 @@ def check_system_health(cfg, *, runner=subprocess.run):
     }
 
 
-def summarize_health(report):
+def summarize_health(report, *, include_unavailable=True):
     parts=[]
     rpm=report.get('rpm',{})
     if rpm.get('ok') and rpm.get('packages'):
         count=len(rpm['packages']); security=int(rpm.get('security_count',0))
         noun='atualização' if count==1 else 'atualizações'
         parts.append(f'{count} {noun} de pacotes do sistema, {security} de segurança')
-    elif not rpm.get('ok'):
+    elif not rpm.get('ok') and include_unavailable:
         parts.append('não consegui consultar atualizações dos pacotes do sistema')
     flatpak=report.get('flatpak',{})
     if flatpak.get('apps'):
         count=len(flatpak['apps']); noun='aplicativo' if count==1 else 'aplicativos'
         parts.append(f'{count} {noun} Flatpak com atualização disponível')
-    elif flatpak.get('available') and not flatpak.get('ok'):
+    elif flatpak.get('available') and not flatpak.get('ok') and include_unavailable:
         parts.append('não consegui consultar atualizações Flatpak')
     firmware=report.get('firmware',{})
     if firmware.get('devices'):
         count=len(firmware['devices']); noun='atualização' if count==1 else 'atualizações'
         parts.append(f'{count} {noun} de firmware; elas não serão instaladas automaticamente')
-    elif firmware.get('available') and not firmware.get('ok'):
+    elif firmware.get('available') and not firmware.get('ok') and include_unavailable:
         parts.append('não consegui consultar atualizações de firmware')
-    parts.extend(report.get('warnings',[]))
+    warnings=report.get('warnings',[])
+    if not include_unavailable:
+        warnings=[warning for warning in warnings
+                  if not any(marker in str(warning).casefold() for marker in
+                             ('não consegui', 'nao consegui', 'não foi possível', 'nao foi possivel'))]
+    parts.extend(warnings)
     return parts
 
 
@@ -241,10 +246,6 @@ class SessionUnlockMonitor(QObject):
         self.session_path=''
         self.connected=False
         self._attach_logind()
-        self.startup_timer=QTimer(self)
-        self.startup_timer.setSingleShot(True)
-        self.startup_timer.timeout.connect(self._startup_unlocked)
-        if self.active is False: self.startup_timer.start(1500)
 
     def _attach_logind(self):
         if not self.bus.isConnected(): return
@@ -292,22 +293,15 @@ class SessionUnlockMonitor(QObject):
         self.active=bool(locked)
         transition=self._transition(previous,self.active)
         if self.active:
-            self.startup_timer.stop()
             if transition=='locked': self.locked.emit()
         elif transition=='unlocked':
-            self.startup_timer.stop()
             self.unlocked.emit()
-
-    @Slot()
-    def _startup_unlocked(self):
-        if self.active is False: self.unlocked.emit()
 
     @Slot(bool)
     def _active_changed(self,active):
         self._set_locked(bool(active))
 
     def close(self):
-        self.startup_timer.stop()
         if self.connected and self.session_path:
             self.bus.disconnect(self.SERVICE,self.session_path,self.PROPERTIES_INTERFACE,'PropertiesChanged',self,SLOT('_properties_changed(QString,QVariantMap,QStringList)'))
             self.bus.disconnect(self.SERVICE,self.session_path,self.SESSION_INTERFACE,'Lock',self,SLOT('_lock_signal()'))

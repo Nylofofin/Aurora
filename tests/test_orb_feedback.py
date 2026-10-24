@@ -11,6 +11,31 @@ def test_word_boundary_pulse_is_bounded_and_responds_to_word_length():
     assert Speaker.word_boundary_pulse("…") == 0.18
 
 
+def test_missing_ffplay_reports_voice_error_without_linux_speech_fallback(monkeypatch):
+    monkeypatch.setattr("aurora_core.voice.tts.shutil.which", lambda _name: None)
+    speaker = Speaker({})
+    errors = []
+    drained = []
+    speaker.speech_error.connect(errors.append)
+    speaker.drained.connect(lambda: drained.append(True))
+
+    class OneItemQueue:
+        def __init__(self): self.read = False
+        def get(self, timeout):
+            if not self.read:
+                self.read = True
+                return ("teste", 0.0)
+            speaker.running = False
+            raise __import__("queue").Empty
+        def empty(self): return True
+
+    speaker.q = OneItemQueue()
+    speaker.run()
+
+    assert errors == ["O Edge TTS precisa do ffplay para reproduzir a voz Thalita."]
+    assert drained == [True]
+
+
 def test_completion_pulse_only_resets_from_latest_timer(monkeypatch):
     timers = []
 
