@@ -17,3 +17,11 @@ def test_readme_release_identity_matches_application_version():
     assert match is not None
     assert match.group(1) == __version__
     assert match.group(2) == BUILD_ID
+
+    changelog = (Path(__file__).resolve().parents[1] / "CHANGELOG.md").read_text(
+        encoding="utf-8"
+    )
+    assert changelog.splitlines()[2] == (
+        "## Aurora Desktop 1.6.0 — Bellatrix Stability Baseline, "
+        "2026-10-24 (release estável)"
+    )

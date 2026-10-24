@@ -3,8 +3,8 @@ from __future__ import annotations
 
 """Release identity for the Aurora local desktop build."""
 
-__version__ = "1.5.7"
+__version__ = "1.6.0"
 
-CODENAME = "ALTAIR ROUTINE & RELIABILITY"
+CODENAME = "BELLATRIX STABILITY BASELINE"
 
-BUILD_ID = "aurora-desktop-1.5.7-altair-routine-reliability"
+BUILD_ID = "aurora-desktop-1.6.0-bellatrix-stability-baseline"

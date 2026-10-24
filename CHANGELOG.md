@@ -1,5 +1,13 @@
 # Histórico de versões
 
+## Aurora Desktop 1.6.0 — Bellatrix Stability Baseline, 2026-10-24 (release estável)
+
+- Declara a primeira release estável da geração Altair, com versão/build sincronizadas entre aplicação, README e Launchpad.
+- Corrige o roteamento de perguntas explicitamente sobre o computador local: elas chegam ao agente local antes da busca factual automática; pedidos explícitos de pesquisa continuam na web.
+- Mostra imediatamente o cartão de interpretação para pedidos do agente, com progresso por etapa e fontes quando uma ferramenta realmente consulta a web.
+- Mantém pesquisas independentes limitadas pela carga e RAM disponíveis, sem iniciar modelos adicionais.
+- Validação desta build: `scripts/check-desktop-release.sh`; a compatibilidade real de voz, portais e integrações externas continua dependente do ambiente documentado no README.
+
 ## Aurora Desktop 1.5.7 — Altair Routine & Reliability, 2026-10-23 (pré-release)
 
 Build experimental e **não estável**, publicada para testes antes da futura 1.6.0 Stable.
