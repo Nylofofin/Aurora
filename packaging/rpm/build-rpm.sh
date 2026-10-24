@@ -26,6 +26,12 @@ TOPDIR="$WORK/rpmbuild"
 mkdir -p "$TOPDIR"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
 cp "$WORK/aurora-launchpad-$VERSION.tar.gz" "$TOPDIR/SOURCES/"
 rpmbuild -bb --define "_topdir $TOPDIR" "$SOURCE_TREE/packaging/rpm/aurora-launchpad.spec"
-cp "$TOPDIR/RPMS/noarch/aurora-launchpad-$VERSION-"*.noarch.rpm "$ROOT/dist/"
-(cd "$ROOT/dist" && sha256sum aurora-launchpad-*.rpm > SHA256SUMS)
+RPM_FILES=("$TOPDIR"/RPMS/noarch/aurora-launchpad-"$VERSION"-*.noarch.rpm)
+if [[ ${#RPM_FILES[@]} -ne 1 || ! -f "${RPM_FILES[0]}" ]]; then
+  echo "Expected exactly one Launchpad RPM for version $VERSION." >&2
+  exit 1
+fi
+RPM_NAME="$(basename "${RPM_FILES[0]}")"
+cp "${RPM_FILES[0]}" "$ROOT/dist/$RPM_NAME"
+(cd "$ROOT/dist" && sha256sum "$RPM_NAME" > SHA256SUMS)
 ls -lh "$ROOT"/dist/aurora-launchpad-*.rpm "$ROOT/dist/SHA256SUMS"
