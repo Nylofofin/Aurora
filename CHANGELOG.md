@@ -1,5 +1,11 @@
 # Histórico de versões
 
+## Aurora Desktop 1.7.1-beta.4 — V404 Cygni First-Run Personalization, 2026-10-24 (pré-release beta)
+
+- Adiciona o assistente de primeira configuração após uma instalação nova: nome de saudação, nome de ativação validado pelo vocabulário instalado do Vosk, acabamento da bolha e voz Edge TTS.
+- Guarda as escolhas nas configurações locais privadas e adiciona validações para configurações, roteamento, idioma, wake word e integração com o Launchpad.
+- Atualiza o Launchpad para concluir o fluxo de personalização na primeira inicialização após a instalação.
+
 ## Aurora Desktop 1.7.1-beta.3 — Cygnus X-1 Private Memory Hardening, 2026-10-24 (pré-release beta)
 
 - Preferências da memória pessoal passam a ser gravadas com permissão `600`, e a leitura restringe permissões de arquivos legados já existentes.

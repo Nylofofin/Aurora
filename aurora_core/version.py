@@ -3,8 +3,8 @@ from __future__ import annotations
 
 """Release identity for the Aurora local desktop build."""
 
-__version__ = "1.7.1-beta.3"
+__version__ = "1.7.1-beta.4"
 
-CODENAME = "CYGNUS X-1 PRIVATE MEMORY HARDENING"
+CODENAME = "V404 CYGNI FIRST-RUN PERSONALIZATION"
 
-BUILD_ID = "aurora-desktop-1.7.1-beta.3-cygnus-x1-private-memory-hardening"
+BUILD_ID = "aurora-desktop-1.7.1-beta.4-v404-cygni-first-run-personalization"
