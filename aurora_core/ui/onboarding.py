@@ -373,6 +373,8 @@ class PersonalizationWizard(QDialog):
         self.default_name = QCheckBox("Nah, prefiro Aurora")
         self.default_name.setChecked(str(self.cfg.get("assistant_name", "Aurora")).casefold() == "aurora")
         self.default_name.toggled.connect(self.assistant_name.setHidden)
+        self.default_name.toggled.connect(self._update_preview_phrase)
+        self.assistant_name.textChanged.connect(self._update_preview_phrase)
         self.assistant_name.setHidden(self.default_name.isChecked())
         layout.addWidget(self.default_name)
         self.name_note = QLabel("O nome será adicionado à gramática dinâmica do Vosk. Para funcionar bem, cada palavra precisa existir no vocabulário do modelo instalado.")
@@ -421,6 +423,12 @@ class PersonalizationWizard(QDialog):
         self.voice_status = QLabel("A prévia usa Edge TTS e precisa de internet.")
         self.voice_status.setObjectName("cardDetail")
         layout.addWidget(self.voice_status)
+        self.preview_phrase = QLabel()
+        self.preview_phrase.setObjectName("cardDetail")
+        self.preview_phrase.setWordWrap(True)
+        self.preview_phrase.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.preview_phrase)
+        self._update_preview_phrase()
         self.stack.addWidget(frame)
 
     def _build_loading(self):
@@ -460,8 +468,17 @@ class PersonalizationWizard(QDialog):
         if checked:
             self._selected_voice = voice
 
+    def _preview_name(self):
+        return "Aurora" if self.default_name.isChecked() else (self.assistant_name.text().strip() or "Aurora")
+
+    def _update_preview_phrase(self, *_args):
+        phrase = f'“Olá, eu sou {self._preview_name()}. Estou pronta para ajudar.”'
+        label = getattr(self, "preview_phrase", None)
+        if label is not None:
+            label.setText(f"Texto da prévia: {phrase}")
+
     def _preview_voice(self, voice):
-        name = "Aurora" if self.default_name.isChecked() else (self.assistant_name.text().strip() or "Aurora")
+        name = self._preview_name()
         label = next((n for s, n, _ in SUPPORTED_VOICES if s == voice), voice)
         # A preview must replace a previous preview immediately. Otherwise a
         # queued Edge request can make a click appear to do nothing for many
