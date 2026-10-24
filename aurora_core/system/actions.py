@@ -14,7 +14,7 @@ from .diagnostics import run_local_diagnostics
 from .accessibility import focus_accessible_window, inspect_accessible_windows, type_into_accessible_field
 from .volume import control_volume
 from .windows import manage_window
-from .agenda import agenda_add, agenda_cancel, agenda_list, agenda_nearest, parse_datetime
+from .agenda import agenda_add, agenda_cancel, agenda_clear, agenda_list, agenda_nearest, parse_datetime
 from ..memory import user_memory_update
 
 def execute_action(self,name,args):
@@ -40,6 +40,7 @@ def execute_action(self,name,args):
         ts = parse_datetime(str(args.get('when', '')))
         return agenda_add(str(args.get('title', '')), ts or 0, str(args.get('notes', '')))
     if name=='agenda_cancel': return agenda_cancel(args.get('event_id'))
+    if name=='agenda_clear': return agenda_clear()
     if name=='agenda_list': return agenda_list(int(args.get('days', 7)))
     if name=='agenda_nearest': return agenda_nearest()
     if name=='create_file':

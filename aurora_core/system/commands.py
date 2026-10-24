@@ -17,7 +17,9 @@ def _parse_agenda_command(text: str, original: str):
     """
     # "lista compromissos", "agenda de hoje", "quais são meus compromissos"
     if re.search(r'\b(agenda|compromisso(?:s)?|evento(?:s)?|reuniao(?:oes)?)\b', text):
-        if re.search(r'\b(cancele|cancelar|cancela|remova|remover|apague|apagar|exclua|excluir)\b', text):
+        if re.search(r'\b(cancele|cancelar|cancela|remova|remover|apague|apagar|exclua|excluir|limpe|limpar)\b', text):
+            if re.search(r'\b(todos|todas|tudo|geral|gerais)\b', text):
+                return ('agenda_clear', {})
             m = re.search(r'\b(?:compromisso|evento|item)?\s*(?:numero\s*)?(\d+)\b', text)
             event_id = int(m.group(1)) if m else None
             return ('agenda_cancel', {'event_id': event_id})

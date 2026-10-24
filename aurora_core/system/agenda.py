@@ -199,6 +199,16 @@ def agenda_cancel(event_id: Optional[int] = None) -> str:
     return f'Compromisso {event_id} removido.'
 
 
+def agenda_clear() -> str:
+    """Clear all events completely."""
+    events = _load()
+    if not events:
+        return 'A agenda já está vazia.'
+    count = len(events)
+    _save([])
+    return f'Limpei todos os {count} compromisso(s) da sua agenda.'
+
+
 def agenda_nearest() -> str:
     """Return the next upcoming event as a short spoken string."""
     events = _load()
