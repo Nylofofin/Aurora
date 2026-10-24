@@ -3,6 +3,9 @@
 ## Aurora Desktop 1.8.0 — Sagittarius, 2026-10-24 (release estável)
 
 - Corrige a atualização de instalações existentes preservando os links internos normais do `.venv`.
+- Abre o Launchpad em um painel de manutenção quando a Aurora já está instalada, com serviço, integridade e modelos visíveis.
+- Mostra no máximo as três builds da Aurora mais novas que a versão instalada, somente quando elas existem.
+- Adiciona fallback de reconhecimento para nomes personalizados no Vosk, mantendo a validação de frase exata.
 - Adiciona transições de página com fade e deslocamento suave no onboarding.
 - Adiciona tema claro/escuro automático baseado na paleta do sistema.
 - Dá movimento contínuo à orb de prévia, com deslocamento de luz, respiração e inclinação sutil.

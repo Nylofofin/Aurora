@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-only
 Name:           aurora-launchpad
-Version:        0.3.3
+Version:        0.3.4
 Release:        1%{?dist}
 Summary:        GTK setup assistant and installer for Aurora Desktop
 License:        GPL-3.0-only
@@ -45,6 +45,9 @@ install -Dpm0644 launchpad/aurora-launchpad.desktop %{buildroot}%{_datadir}/appl
 %{_datadir}/icons/hicolor/scalable/apps/com.nylofofin.AuroraLaunchpad.svg
 
 %changelog
+* Sat Oct 24 2026 Aurora Project <nylofofin@localhost> - 0.3.4-1
+- Show a maintenance dashboard for installed Aurora builds and preserve update choices.
+- Show at most three newer Aurora builds and report installed model health.
 * Sat Oct 24 2026 Aurora Project <nylofofin@localhost> - 0.3.3-1
 - Preserve the Python virtual environment during Aurora upgrades.
 * Sat Oct 24 2026 Aurora Project <nylofofin@localhost> - 0.3.2-1

@@ -129,6 +129,28 @@ def latest_launchpad_update(releases, current_version: str) -> dict | None:
     return {"release": release, "asset": asset}
 
 
+def newer_aurora_releases(releases, installed_version: str, limit: int = 3) -> tuple[dict, ...]:
+    """Return at most ``limit`` published Aurora builds newer than installed."""
+    current = _rpm_version_key(installed_version)
+    if current is None or not isinstance(limit, int) or limit < 1:
+        return ()
+    candidates: list[tuple[tuple[int, ...], str, dict]] = []
+    for release in releases if isinstance(releases, list) else ():
+        if not isinstance(release, dict) or release.get("draft"):
+            continue
+        tag = release.get("tag_name")
+        match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)(?:[-+][A-Za-z0-9.-]+)?", str(tag or ""))
+        published = str(release.get("published_at") or "")
+        if not match or not isinstance(release.get("prerelease"), bool):
+            continue
+        version = tuple(int(part) for part in match.groups())
+        if version <= current:
+            continue
+        candidates.append((version, published, release))
+    candidates.sort(key=lambda item: (item[0], item[1], item[2].get("tag_name", "")), reverse=True)
+    return tuple(item[2] for item in candidates[:limit])
+
+
 def inspect_installation(managed_app: Path, unit_path: Path, *, service_active: bool) -> InstallationHealth:
     """Classify an installation without starting processes or changing files."""
     managed_app = Path(managed_app)

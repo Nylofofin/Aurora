@@ -47,13 +47,15 @@ from aurora_launchpad_core import (
     MAX_RELEASE_ARCHIVE_BYTES,
     inspect_installation,
     latest_launchpad_update,
+    newer_aurora_releases,
     MAX_LAUNCHPAD_RPM_BYTES,
+    parse_ollama_models,
     prepare_first_boot_onboarding,
 )
 
 
 APP_ID = "com.nylofofin.AuroraLaunchpad"
-INSTALLER_VERSION = "0.3.3"
+INSTALLER_VERSION = "0.3.4"
 PKEXEC = "/usr/bin/pkexec"
 SYSTEMCTL = "/usr/bin/systemctl"
 DNF = "/usr/bin/dnf"
@@ -150,6 +152,17 @@ def fetch_launchpad_update():
     api = f"https://api.github.com/repos/{GITHUB_REPOSITORY}"
     releases = _github_json(api + "/releases?per_page=100")
     return latest_launchpad_update(releases, INSTALLER_VERSION)
+
+
+def installed_aurora_version(root: Path) -> str:
+    """Read the managed build version without importing the installed app."""
+    version_file = Path(root) / "aurora_core" / "version.py"
+    try:
+        text = version_file.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return "0.0.0"
+    match = re.search(r'^__version__\s*=\s*["\'](\d+\.\d+\.\d+)', text, re.MULTILINE)
+    return match.group(1) if match else "0.0.0"
 
 
 def download_launchpad_update(workspace: Path, update: dict) -> Path:
@@ -345,6 +358,10 @@ class Launchpad(Adw.Application):
         self.update_button = None
         self.launchpad_update = None
         self.update_in_progress = False
+        self.installed_aurora_version = installed_aurora_version(MANAGED_APP)
+        self.new_aurora_releases = ()
+        self.maintenance_updates_button = None
+        self.maintenance_updates_status = None
 
     def _installation_health(self):
         unit = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home()/".config"))) / "systemd/user/aurora.service"
@@ -372,13 +389,89 @@ class Launchpad(Adw.Application):
         header.add_css_class("flat")
         outer.append(header)
         self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE, transition_duration=240)
-        self.stack.add_named(self._welcome_page(), "welcome")
+        self.stack.add_named(self._maintenance_page() if self.existing_install else self._welcome_page(), "welcome")
         self.stack.add_named(self._progress_page(), "progress")
         self.stack.add_named(self._done_page(), "done")
         outer.append(self.stack)
         self.window.set_content(outer)
         self.window.present()
+        if self.existing_install:
+            threading.Thread(target=self._maintenance_probe_worker, daemon=True).start()
         self._load_releases()
+
+    def _maintenance_probe_worker(self):
+        if not self.ollama:
+            GLib.idle_add(self.model_status.set_text, "Modelos presentes: comando ollama não encontrado.")
+            return
+        try:
+            result = subprocess.run([self.ollama, "list"], capture_output=True, text=True, timeout=20)
+            if result.returncode:
+                raise RuntimeError(result.stderr.strip() or "ollama list falhou")
+            present = parse_ollama_models(result.stdout)
+            missing = [model for model in MODEL_NAMES if model not in present]
+            text = "Modelos presentes: todos os modelos esperados." if not missing else "Modelos ausentes: " + ", ".join(missing)
+        except Exception as exc:
+            text = f"Modelos presentes: não foi possível consultar ({type(exc).__name__})."
+        GLib.idle_add(self.model_status.set_text, text)
+
+    def _maintenance_page(self) -> Gtk.Widget:
+        col = self._column()
+        hero = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        hero.add_css_class("hero")
+        hero.append(self._label("AURORA DESKTOP · PAINEL LOCAL", "caption"))
+        hero.append(self._label("Aurora instalada", "title-1"))
+        hero.append(self._label("Confira o estado básico sem abrir o instalador. Atualizações só aparecem quando há builds novas acima da versão instalada.", "subtle", True))
+        col.append(hero)
+
+        status = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        status.add_css_class("panel")
+        status.append(self._label("ESTADO BÁSICO", "caption"))
+        self.maintenance_status = self._label("Consultando o serviço…", "subtle", True)
+        status.append(self.maintenance_status)
+        status.append(self._label(f"Build instalada: {self.installed_aurora_version}", "subtle", True))
+        status.append(self._label(f"Modelos esperados: {', '.join(MODEL_NAMES)}", "subtle", True))
+        self.model_status = self._label("Modelos presentes: consultando…", "subtle", True)
+        status.append(self.model_status)
+        status.append(self._label(f"Pasta gerenciada: {MANAGED_APP}", "subtle", True))
+        col.append(status)
+
+        health = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        health.add_css_class("panel")
+        health.append(self._label("INTEGRIDADE", "caption"))
+        health_title = {"healthy": "Instalação íntegra", "repairable": "Instalação precisa de reparo", "broken": "Instalação incompleta", "missing": "Aurora não encontrada"}.get(self.install_health.state, "Estado desconhecido")
+        health.append(self._label(health_title, "status-good" if self.install_health.state == "healthy" else "status-warn", True))
+        for detail in self.install_health.details:
+            health.append(self._label(detail, "subtle", True))
+        if self.install_health.repairable and self.install_health.state != "healthy":
+            health.append(self._button("Parar e reparar", self._repair_install, suggested=True))
+        col.append(health)
+
+        self.update_panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        self.update_panel.add_css_class("panel")
+        self.update_panel.append(self._label("ATUALIZAÇÃO DO LAUNCHPAD", "caption"))
+        self.update_status = self._label("Verificando se há uma versão nova…", "subtle", True)
+        self.update_panel.append(self.update_status)
+        self.update_button = self._button("Atualizar Launchpad", self._start_launchpad_update, suggested=True)
+        self.update_button.set_visible(False)
+        self.update_panel.append(self.update_button)
+        col.append(self.update_panel)
+
+        builds = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        builds.add_css_class("panel")
+        builds.append(self._label("BUILDS NOVAS", "caption"))
+        self.maintenance_updates_status = self._label("Procurando builds novas…", "subtle", True)
+        builds.append(self.maintenance_updates_status)
+        self.maintenance_updates_button = self._button("Ver builds novas", self._show_new_aurora_releases, suggested=True)
+        self.maintenance_updates_button.set_visible(False)
+        builds.append(self.maintenance_updates_button)
+        self.maintenance_releases_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        builds.append(self.maintenance_releases_box)
+        col.append(builds)
+
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12, halign=Gtk.Align.END)
+        actions.append(self._button("Remover Aurora…", self._confirm_uninstall))
+        col.append(actions)
+        return self._page(col)
 
     def _page(self, child: Gtk.Widget) -> Gtk.Widget:
         scroll = Gtk.ScrolledWindow(hexpand=True, vexpand=True)
@@ -496,14 +589,16 @@ class Launchpad(Adw.Application):
             releases = _github_json(api + "/releases?per_page=100")
             options = recommend_releases(releases)
             update = latest_launchpad_update(releases, INSTALLER_VERSION)
-            GLib.idle_add(self._show_release_options, options, None, update)
+            newer = newer_aurora_releases(releases, self.installed_aurora_version, 3) if self.existing_install else ()
+            GLib.idle_add(self._show_release_options, options, None, update, newer)
         except Exception as exc:
-            GLib.idle_add(self._show_release_options, (), str(exc), None)
+            GLib.idle_add(self._show_release_options, (), str(exc), None, ())
 
-    def _show_release_options(self, options, error, update=None):
+    def _show_release_options(self, options, error, update=None, newer=()):
         self.loading_releases = False
         self.release_options = options
         self.launchpad_update = update
+        self.new_aurora_releases = tuple(newer or ())
         self.release_cards.clear()
         while self.releases_box.get_first_child():
             self.releases_box.remove(self.releases_box.get_first_child())
@@ -522,6 +617,15 @@ class Launchpad(Adw.Application):
             self.release_status.set_text("Atualização obrigatória do Launchpad disponível.")
             return False
         self.update_status.set_text(f"Launchpad {INSTALLER_VERSION} está atualizado.")
+        if self.existing_install:
+            if self.new_aurora_releases:
+                count = len(self.new_aurora_releases)
+                self.maintenance_updates_status.set_text(f"{count} build(s) nova(s) acima da versão {self.installed_aurora_version}.")
+                self.maintenance_updates_button.set_visible(True)
+            else:
+                self.maintenance_updates_status.set_text("Nenhuma build nova foi publicada desde a versão instalada.")
+            self._refresh_maintenance_status()
+            return False
         if not options:
             self.release_status.set_text("O GitHub não retornou releases publicadas válidas.")
             return False
@@ -559,6 +663,30 @@ class Launchpad(Adw.Application):
             self.release_cards.append((button, option))
 
         return False
+
+    def _show_new_aurora_releases(self, *_):
+        if not self.new_aurora_releases:
+            return
+        while self.maintenance_releases_box.get_first_child():
+            self.maintenance_releases_box.remove(self.maintenance_releases_box.get_first_child())
+        self.maintenance_updates_button.set_visible(False)
+        self.release_options = tuple(ReleaseRecommendation("new_build", release) for release in self.new_aurora_releases)
+        for option in self.release_options:
+            release = option.release
+            title = str(release.get("name") or release.get("tag_name"))
+            button = Gtk.Button(label=f"{title} · {release.get('tag_name')}")
+            button.add_css_class("pill")
+            button.add_css_class("suggested-action")
+            button.connect("clicked", self._choose_release, option)
+            self.maintenance_releases_box.append(button)
+
+    def _refresh_maintenance_status(self):
+        if not hasattr(self, "maintenance_status"):
+            return
+        active = self._installation_health().state == "healthy"
+        self.maintenance_status.set_text(
+            "Serviço ativo e instalação íntegra." if active else "Serviço ou instalação precisam de atenção."
+        )
 
     def _start_launchpad_update(self, *_):
         if self.update_in_progress or not self.launchpad_update:

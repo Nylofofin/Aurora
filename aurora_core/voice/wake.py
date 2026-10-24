@@ -118,8 +118,15 @@ class LocalVoice(QThread):
             import speech_recognition as sr
             if not VOSK_PATH.exists(): raise RuntimeError(f'Modelo Vosk local não encontrado em {VOSK_PATH}')
             model=Model(str(VOSK_PATH)); rec=KaldiRecognizer(model,16000); rec.SetWords(False)
-            wake_phrases=wake_grammar_phrases(self.cfg.get('assistant_name','Aurora'))
+            assistant_name=' '.join(str(self.cfg.get('assistant_name','Aurora') or 'Aurora').split()) or 'Aurora'
+            wake_phrases=wake_grammar_phrases(assistant_name)
             wake_rec=KaldiRecognizer(model,16000,json.dumps(wake_phrases,ensure_ascii=False)); wake_rec.SetWords(False)
+            # A constrained grammar can fail for a valid custom name when a
+            # small model's grammar graph is stale or under-pronounces it.
+            # For custom names only, keep an unconstrained recognizer as a
+            # fallback and still require an exact final phrase below.
+            wake_fallback_rec = None if normalize_words(assistant_name) == 'aurora' else KaldiRecognizer(model,16000)
+            if wake_fallback_rec is not None: wake_fallback_rec.SetWords(False)
             cancel_rec=KaldiRecognizer(model,16000,'["para", "pare", "parar", "cancele", "cancela", "cancelar", "interrompa", "interrompe", "interromper", "chega", "espera", "calma", "calma para", "pera", "pera aí", "deixa", "deixa pra lá", "para agora", "para com isso", "não", "não para", "não calma para", "não espera", "corta"]'); cancel_rec.SetWords(False)
             self.recognizer=sr.Recognizer(); self.recognizer.operation_timeout=2.0
             while self.running:
@@ -127,6 +134,7 @@ class LocalVoice(QThread):
                     self.status.emit('hidden')
                     self._drain_mobile_audio(wake_rec)
                 wake_rec.Reset()
+                if wake_fallback_rec is not None: wake_fallback_rec.Reset()
                 q=queue.Queue(maxsize=8)
                 def callback(data,frames,time_info,status):
                     try: q.put_nowait(bytes(data))
@@ -171,11 +179,24 @@ class LocalVoice(QThread):
                             self.audio_level.emit(self.normalized_audio_level(block))
                         active_rec=rec if active else wake_rec
                         finalized=active_rec.AcceptWaveform(block)
+                        fallback_finalized = bool(wake_fallback_rec is not None and not active and wake_fallback_rec.AcceptWaveform(block))
+                        wake_finalized = finalized or fallback_finalized
                         if not finalized:
+                            if fallback_finalized:
+                                text=json.loads(wake_fallback_rec.Result()).get('text','').strip()
+                                wake_fallback_rec.Reset()
+                            else:
+                                text=''
                             if active and time.monotonic()-started>22:
                                 active=False; buffer=[]; wake_audio=[]; rec.Reset(); wake_rec.Reset(); self.end_request(); self.status.emit('hidden')
-                            continue
-                        text=json.loads(active_rec.Result()).get('text','').strip()
+                            if not text:
+                                continue
+                        else:
+                            text=json.loads(active_rec.Result()).get('text','').strip()
+                            if not text and fallback_finalized:
+                                text=json.loads(wake_fallback_rec.Result()).get('text','').strip()
+                        if not active and wake_fallback_rec is not None:
+                            wake_fallback_rec.Reset()
                         if active:
                             if text:
                                 self.audio_level.emit(0.0)
@@ -188,7 +209,7 @@ class LocalVoice(QThread):
                             elif time.monotonic()-started>22:
                                 active=False; buffer=[]; wake_audio=[]; rec.Reset(); wake_rec.Reset(); self.end_request(); self.status.emit('hidden')
                         elif text:
-                            if self.is_final_wake_phrase(text,finalized,self.cfg.get('assistant_name','Aurora')):
+                            if self.is_final_wake_phrase(text,wake_finalized,self.cfg.get('assistant_name','Aurora')):
                                 self.begin_request()
                                 self.wake.emit(); self.status.emit('listening')
                                 active=True; buffer=list(wake_audio); wake_audio=[]; started=time.monotonic(); rec.Reset(); wake_rec.Reset()

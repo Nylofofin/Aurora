@@ -12,6 +12,7 @@ from launchpad.aurora_launchpad_core import (
     assess_environment,
     inspect_installation,
     latest_launchpad_update,
+    newer_aurora_releases,
     copy_existing_memory,
     extract_release_tarball,
     format_size,
@@ -261,6 +262,18 @@ def test_latest_launchpad_update_rejects_untrusted_asset_metadata():
     }
     release = {"published_at": "2026-10-24T21:00:00Z", "draft": False, "prerelease": False, "assets": [bad]}
     assert latest_launchpad_update([release], "0.3.1") is None
+
+
+def test_newer_aurora_releases_returns_only_three_builds_above_installed():
+    releases = [
+        {"tag_name": "v1.8.0", "published_at": "2026-10-24T20:00:00Z", "draft": False, "prerelease": False},
+        {"tag_name": "v1.7.4-beta.1", "published_at": "2026-10-24T19:00:00Z", "draft": False, "prerelease": True},
+        {"tag_name": "v1.7.3", "published_at": "2026-10-24T18:00:00Z", "draft": False, "prerelease": False},
+        {"tag_name": "v1.7.2", "published_at": "2026-10-24T17:00:00Z", "draft": False, "prerelease": False},
+        {"tag_name": "v2.0.0-alpha.1", "published_at": "2026-10-24T16:00:00Z", "draft": False, "prerelease": True},
+    ]
+    found = newer_aurora_releases(releases, "1.7.2", 3)
+    assert [item["tag_name"] for item in found] == ["v2.0.0-alpha.1", "v1.8.0", "v1.7.4-beta.1"]
 
 
 def _make_tarball(path: Path, *, member_name="project/aurora.py", symlink=False):
