@@ -24,17 +24,17 @@ Item {
     property bool dragging: false
 
     readonly property var statePalette: bubbleStyle === "emerald" ? ({
-        listening: "#78F0B2", thinking: "#42D99A", searching: "#24C987",
-        weather: "#67E8A8", preparing: "#32D583", speaking: "#9AF5C7",
-        approval: "#F1D878", controlling: "#17B978", error: "#F19A7E", idle: "#35C98B"
+        listening: "#8AF5C2", thinking: "#45E0A4", searching: "#22C997",
+        weather: "#75E7B1", preparing: "#38D58A", speaking: "#B0F8D2",
+        approval: "#F3D77C", controlling: "#14B87A", error: "#F29B80", idle: "#31C98D"
     }) : bubbleStyle === "crimson" ? ({
-        listening: "#FF9B9F", thinking: "#FF727D", searching: "#FF5469",
-        weather: "#FF8584", preparing: "#FF6575", speaking: "#FFB0A9",
-        approval: "#F5D277", controlling: "#E94768", error: "#FF5268", idle: "#E94469"
+        listening: "#FFA8AD", thinking: "#FF7884", searching: "#FF526B",
+        weather: "#FF8D8D", preparing: "#FF6B7B", speaking: "#FFC0B9",
+        approval: "#F7D77A", controlling: "#E64568", error: "#FF4F69", idle: "#E6416A"
     }) : ({
-        listening: "#8DDBF4", thinking: "#AF9BE8", searching: "#82C6EE",
-        weather: "#91CDE7", preparing: "#BAA5ED", speaking: "#D6C4F5",
-        approval: "#E8C889", controlling: "#B2A0E2", error: "#E7A2B2", idle: "#A99AD8"
+        listening: "#91E4F8", thinking: "#B7A4F2", searching: "#7ECDF5",
+        weather: "#9DDCF0", preparing: "#C8B5F7", speaking: "#E2D2FF",
+        approval: "#EBCB8B", controlling: "#A99AE8", error: "#EAA7BB", idle: "#A493D8"
     })
     readonly property color stateColor: statePalette[mode] || statePalette.idle
     property color animatedStateColor: stateColor
@@ -126,8 +126,8 @@ Item {
                     GradientStop { position: 0.19; color: bubbleStyle === "emerald" ? "#E9FFF2" : bubbleStyle === "crimson" ? "#FFF0F0" : "#EDF8FC" }
                     GradientStop { position: 0.42; color: bubbleStyle === "emerald" ? "#B9F5D2" : bubbleStyle === "crimson" ? "#FFC6C7" : "#BFEAF5" }
                     GradientStop { position: 0.66; color: bubbleStyle === "emerald" ? "#57DFA0" : bubbleStyle === "crimson" ? "#FF818B" : "#91B9EF" }
-                    GradientStop { position: 0.84; color: bubbleStyle === "emerald" ? "#20B879" : bubbleStyle === "crimson" ? "#E94367" : "#8C8CDE" }
-                    GradientStop { position: 1.00; color: bubbleStyle === "emerald" ? "#087B62" : bubbleStyle === "crimson" ? "#9D174D" : "#675BAF" }
+                    GradientStop { position: 0.84; color: bubbleStyle === "emerald" ? "#18B981" : bubbleStyle === "crimson" ? "#E63F68" : "#8078DD" }
+                    GradientStop { position: 1.00; color: bubbleStyle === "emerald" ? "#057A68" : bubbleStyle === "crimson" ? "#98194E" : "#4C46A8" }
                 }
                 PathAngleArc { centerX: 57; centerY: 57; radiusX: 56; radiusY: 56; startAngle: 0; sweepAngle: 360 }
             }
