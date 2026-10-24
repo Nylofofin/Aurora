@@ -26,7 +26,13 @@ def _parse_agenda_command(text: str, original: str):
         if re.search(r'\b(liste|listar|lista|mostre|mostrar|verifique|quais|tenho|minha)\b', text):
             return ('agenda_list', {'days': 7})
         if re.search(r'\b(adicione|adicionar|adiciona|crie|criar|cria|agende|agendar|agenda|marque|marcar|marca|coloque|coloca)\b', text):
-            # Let agent handle it — we need title + datetime extraction from full context
+            ts = parse_datetime(text)
+            if ts is not None:
+                title = re.sub(r'^(?:por favor\s+)?(?:adicione|adicionar|adiciona|crie|criar|cria|agende|agendar|agenda|marque|marcar|marca|coloque|coloca)\s+(?:um|uma|o|a|meu|minha)?\s*', '', text, flags=re.I)
+                title = re.sub(r'\s+(?:amanha|hoje|segunda|terca|quarta|quinta|sexta|sabado|domingo|dia\s+\d+|as\s+\d+|\d+[h:]\d*).*$', '', title, flags=re.I)
+                title = re.sub(r'^(?:um|uma|o|a|meu|minha)\s+', '', title.strip(), flags=re.I).strip()
+                if not title: title = 'Compromisso'
+                return ('agenda_add', {'title': title.capitalize(), 'when': text})
             return None
     return None
 
