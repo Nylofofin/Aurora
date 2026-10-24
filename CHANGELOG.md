@@ -1,5 +1,12 @@
 # Histórico de versões
 
+## Aurora Desktop 1.7.2 — Andromeda First Light, 2026-10-24 (release estável)
+
+- Reformula a personalização inicial com cartões Material claros, transições suaves e campos de perfil mais legíveis.
+- Mostra três prévias animadas da bolha (Névoa Boreal, Prisma e Órbita Violeta), com seleção explícita.
+- Limita a tela de voz às três vozes brasileiras suportadas pelo produto: Thalita, Francisca e Antonio; cada cartão oferece prévia e seleção por rádio.
+- Atualiza o identificador do Launchpad para 0.3.1 e mantém o instalador separado do payload da Aurora.
+
 ## Aurora Desktop 1.7.1-beta.4 — V404 Cygni First-Run Personalization, 2026-10-24 (pré-release beta)
 
 - Adiciona o assistente de primeira configuração após uma instalação nova: nome de saudação, nome de ativação validado pelo vocabulário instalado do Vosk, acabamento da bolha e voz Edge TTS.

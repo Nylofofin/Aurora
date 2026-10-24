@@ -3,15 +3,145 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import time
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QThread, Signal, QTimer
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QRadialGradient, QLinearGradient, QPen
 from PySide6.QtWidgets import (
-    QButtonGroup, QCheckBox, QComboBox, QDialog, QFrame, QGraphicsOpacityEffect, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QStackedWidget, QVBoxLayout, QWidget,
+    QButtonGroup, QCheckBox, QDialog, QFrame, QGraphicsOpacityEffect, QHBoxLayout,
+    QLabel, QLineEdit, QPushButton, QRadioButton, QStackedWidget, QVBoxLayout, QWidget,
 )
 
 from ..config import VOSK_PATH
 from ..voice.wake import wake_name_supported, wake_name_words
+
+
+SUPPORTED_VOICES = (
+    ("pt-BR-ThalitaMultilingualNeural", "Thalita", "Feminina"),
+    ("pt-BR-FranciscaNeural", "Francisca", "Feminina"),
+    ("pt-BR-AntonioNeural", "Antonio", "Masculina"),
+)
+
+
+class _AnimatedOrb(QWidget):
+    """Small, continuously animated preview of the selected orb finish."""
+    def __init__(self, style="boreal", parent=None):
+        super().__init__(parent)
+        self.style = style
+        self.phase = 0.0
+        self.setFixedSize(126, 126)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self._timer = QTimer(self)
+        self._timer.setInterval(33)
+        self._timer.timeout.connect(self._tick)
+        self._timer.start()
+
+    def _tick(self):
+        self.phase = (self.phase + 0.018) % (math.tau)
+        self.update()
+
+    def paintEvent(self, _event):
+        size = min(self.width(), self.height()) - 10
+        rect_x = (self.width() - size) / 2
+        rect_y = (self.height() - size) / 2
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.translate(rect_x, rect_y)
+        base = QColor("#eafaff")
+        lower = QColor("#177ff2")
+        violet = QColor("#7950d8")
+        if self.style == "prisma":
+            base, lower, violet = QColor("#fbfdff"), QColor("#66c7fa"), QColor("#b397f2")
+        elif self.style == "violeta":
+            base, lower, violet = QColor("#f7f4ff"), QColor("#5c68e8"), QColor("#8e49db")
+        circle = QPainterPath()
+        circle.addEllipse(2, 2, size-4, size-4)
+        painter.setClipPath(circle)
+        gradient = QLinearGradient(0, 0, size * .12, size)
+        gradient.setColorAt(0, base)
+        gradient.setColorAt(.50, QColor("#d9f3ff"))
+        gradient.setColorAt(.73, lower)
+        gradient.setColorAt(1, violet)
+        painter.fillPath(circle, gradient)
+        # Slow, overlapping color fields create motion inside the sphere itself.
+        drift_x = math.sin(self.phase) * size * .12
+        drift_y = math.cos(self.phase * .8) * size * .08
+        field = QRadialGradient(size*.48 + drift_x, size*.70 + drift_y, size*.65)
+        field.setColorAt(0, QColor(violet.red(), violet.green(), violet.blue(), 110))
+        field.setColorAt(.58, QColor(lower.red(), lower.green(), lower.blue(), 92))
+        field.setColorAt(1, QColor(lower.red(), lower.green(), lower.blue(), 0))
+        painter.fillPath(circle, field)
+        shine = QRadialGradient(size*.31, size*.22, size*.48)
+        shine.setColorAt(0, QColor(255, 255, 255, 235))
+        shine.setColorAt(.35, QColor(255, 255, 255, 120))
+        shine.setColorAt(1, QColor(255, 255, 255, 0))
+        painter.fillPath(circle, shine)
+        painter.setClipping(False)
+        painter.setPen(QPen(QColor(255,255,255,210), 1.2))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(2, 2, size-4, size-4)
+        painter.end()
+
+
+class _StyleCard(QFrame):
+    def __init__(self, key, title, detail, parent=None):
+        super().__init__(parent)
+        self.key = key
+        self.setObjectName("choiceCard")
+        self.setProperty("selected", False)
+        self.setMinimumWidth(238)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 15, 16, 15)
+        layout.setSpacing(8)
+        heading = QLabel(title)
+        heading.setObjectName("cardTitle")
+        heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(heading)
+        orb = _AnimatedOrb(key)
+        layout.addWidget(orb, 0, Qt.AlignmentFlag.AlignHCenter)
+        caption = QLabel(detail)
+        caption.setObjectName("cardDetail")
+        caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(caption)
+        self.select_button = QPushButton("Selecionar")
+        self.select_button.setObjectName("selectStyle")
+        layout.addWidget(self.select_button)
+
+    def set_selected(self, selected):
+        self.setProperty("selected", bool(selected))
+        self.select_button.setText("Selecionado ✓" if selected else "Selecionar")
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+
+class _VoiceCard(QFrame):
+    def __init__(self, short_name, name, gender, parent=None):
+        super().__init__(parent)
+        self.short_name = short_name
+        self.setObjectName("choiceCard")
+        self.setMinimumWidth(218)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 18, 16, 16)
+        layout.setSpacing(10)
+        heading = QLabel(name)
+        heading.setObjectName("cardTitle")
+        heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(heading)
+        voice_icon = QLabel("◖  ◗")
+        voice_icon.setObjectName("voiceGlyph")
+        voice_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(voice_icon, 1)
+        self.preview_button = QPushButton("▶  Ouvir prévia")
+        self.preview_button.setObjectName("previewVoice")
+        layout.addWidget(self.preview_button)
+        detail = QLabel(f"{gender} · Português (Brasil)")
+        detail.setObjectName("cardDetail")
+        detail.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(detail)
+        self.radio = QRadioButton("Usar esta voz")
+        self.radio.setObjectName("voiceRadio")
+        self.radio.setStyleSheet("QRadioButton { spacing: 8px; }")
+        layout.addWidget(self.radio, 0, Qt.AlignmentFlag.AlignHCenter)
 
 
 class _VoiceCatalog(QThread):
@@ -78,28 +208,34 @@ class PersonalizationWizard(QDialog):
         self.setWindowTitle("Personalizar a Aurora")
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
         self.setModal(True)
-        self.setMinimumSize(600, 510)
+        self.setMinimumSize(900, 650)
+        self.resize(980, 700)
         self.setStyleSheet("""
-            QDialog { background:#f6f5fb; color:#201d28; }
-            QLabel#eyebrow { color:#655a78; font-size:11px; font-weight:700; letter-spacing:2px; }
-            QLabel#title { color:#201d28; font-size:27px; font-weight:700; }
-            QLabel#subtitle { color:#625d6c; font-size:14px; }
-            QFrame#hero, QFrame#panel { background:#ffffff; border:1px solid #e8e4ef; border-radius:22px; }
-            QLineEdit, QComboBox { background:#fff; border:1px solid #d8d2e2; border-radius:12px; padding:12px; color:#25212c; }
-            QLineEdit:focus, QComboBox:focus { border:2px solid #7554ad; }
-            QPushButton { background:#ede9f4; color:#332c3d; border:0; border-radius:14px; padding:12px 18px; font-weight:600; }
-            QPushButton:hover { background:#e3dced; }
-            QPushButton#primary { background:#6750a4; color:#fff; }
+            QDialog { background:#f3f2f8; color:#1b1b22; }
+            QLabel#eyebrow { color:#625b70; font-size:11px; font-weight:700; letter-spacing:2px; }
+            QLabel#title { color:#1c1b20; font-size:27px; font-weight:700; }
+            QLabel#subtitle { color:#5e5b66; font-size:14px; }
+            QLabel#cardTitle { color:#25232b; font-size:16px; font-weight:700; }
+            QLabel#cardDetail { color:#696673; font-size:12px; }
+            QLabel#voiceGlyph { color:#7960ad; font-size:38px; font-weight:600; }
+            QFrame#panel { background:#fff; border:1px solid #e5e2ec; border-radius:24px; }
+            QFrame#choiceCard { background:#fff; border:1px solid #e2dfe9; border-radius:20px; }
+            QFrame#choiceCard[selected="true"] { background:#faf8ff; border:2px solid #7052a8; }
+            QLineEdit { background:#fbfaff; border:1px solid #d7d3df; border-radius:13px; padding:13px 15px; min-height:24px; color:#25232b; selection-background-color:#ddd3f1; }
+            QLineEdit:focus { background:#fff; border:2px solid #7052a8; padding:12px 14px; }
+            QPushButton { background:#eeecf3; color:#302e37; border:0; border-radius:13px; padding:12px 18px; font-weight:600; }
+            QPushButton:hover { background:#e5e1ed; }
+            QPushButton#primary { background:#6750a4; color:#fff; padding-left:23px; padding-right:23px; }
             QPushButton#primary:hover { background:#7962b4; }
-            QPushButton#style { text-align:left; min-height:94px; border:1px solid #e1dce9; background:#fff; }
-            QPushButton#style:checked { border:2px solid #6750a4; background:#f0ecf7; }
-            QCheckBox { spacing:9px; color:#494451; }
-            QComboBox QAbstractItemView { background:#fff; selection-background-color:#e8e0f2; }
+            QPushButton#selectStyle, QPushButton#previewVoice { background:#f0edf6; border:1px solid #e3deec; }
+            QPushButton#selectStyle:hover, QPushButton#previewVoice:hover { background:#e8e2f2; }
+            QCheckBox, QRadioButton { spacing:9px; color:#494451; }
+            QRadioButton::indicator { width:18px; height:18px; }
         """)
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(30, 26, 30, 24)
-        root.setSpacing(16)
+        root.setContentsMargins(38, 30, 38, 28)
+        root.setSpacing(18)
         self.eyebrow = QLabel("AURORA · PRIMEIRA CONFIGURAÇÃO")
         self.eyebrow.setObjectName("eyebrow")
         root.addWidget(self.eyebrow)
@@ -112,7 +248,7 @@ class PersonalizationWizard(QDialog):
         self._build_loading()
         root.addWidget(self.stack, 1)
         footer = QHBoxLayout()
-        self.step_label = QLabel("Boas-vindas · 1 de 4")
+        self.step_label = QLabel("Boas-vindas  ·  1 de 4")
         self.step_label.setStyleSheet("color:#746d7d;font-size:12px")
         footer.addWidget(self.step_label)
         footer.addStretch(1)
@@ -130,7 +266,6 @@ class PersonalizationWizard(QDialog):
         self._voice_worker.start()
         self._current_page = 0
         self._set_page(0, animated=False)
-        self.adjustSize()
         self._center()
 
     def _panel(self, title, subtitle=""):
@@ -153,18 +288,9 @@ class PersonalizationWizard(QDialog):
     def _build_welcome(self):
         frame, layout = self._panel("Vamos personalizar sua experiência",
                                     "Seu perfil fica salvo apenas neste computador. Você poderá mudar essas escolhas depois.")
-        glow = QLabel("✦")
-        glow.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        glow.setStyleSheet("font-size:72px;color:#8f79c7;background:qradialgradient(cx:.5,cy:.5,radius:.5,stop:0 #ebe5f8,stop:1 #ffffff);border-radius:80px")
-        glow.setFixedSize(150, 150)
-        glow.setGraphicsEffect(QGraphicsOpacityEffect(glow))
+        glow = _AnimatedOrb("boreal")
+        glow.setFixedSize(180, 180)
         layout.addWidget(glow, 0, Qt.AlignmentFlag.AlignHCenter)
-        self._welcome_pulse = QPropertyAnimation(glow.graphicsEffect(), b"opacity", self)
-        self._welcome_pulse.setDuration(1900)
-        self._welcome_pulse.setStartValue(0.62)
-        self._welcome_pulse.setEndValue(1.0)
-        self._welcome_pulse.setEasingCurve(QEasingCurve.Type.InOutSine)
-        self._welcome_pulse.setLoopCount(-1)
         note = QLabel("Uma bolha, uma voz e um nome que combinam com você.")
         note.setObjectName("subtitle")
         note.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -174,15 +300,19 @@ class PersonalizationWizard(QDialog):
     def _build_profile(self):
         frame, layout = self._panel("Quem está por aqui?", "A Aurora usará esse nome nas saudações, em vez do nome da conta do desktop.")
         self.user_name = QLineEdit(str(self.cfg.get("user_name", "")))
-        self.user_name.setPlaceholderText("Como devo te chamar?")
-        layout.addWidget(QLabel("Seu nome")); layout.addWidget(self.user_name)
+        self.user_name.setPlaceholderText("Ex.: Alex")
+        self.user_name.setClearButtonEnabled(True)
+        self.user_name.setMinimumHeight(48)
+        layout.addWidget(QLabel("Como devo te chamar?")); layout.addWidget(self.user_name)
         self.user_name_note = QLabel("Digite como você quer ser chamada na saudação.")
         self.user_name_note.setStyleSheet("color:#746d7d;font-size:12px")
         layout.addWidget(self.user_name_note)
         layout.addSpacing(6)
-        layout.addWidget(QLabel("Nome da assistente"))
+        layout.addWidget(QLabel("Nome de ativação da assistente"))
         self.assistant_name = QLineEdit(str(self.cfg.get("assistant_name", "Aurora")))
-        self.assistant_name.setPlaceholderText("Escolha um nome pronunciável")
+        self.assistant_name.setPlaceholderText("Ex.: Aurora")
+        self.assistant_name.setClearButtonEnabled(True)
+        self.assistant_name.setMinimumHeight(48)
         layout.addWidget(self.assistant_name)
         self.default_name = QCheckBox("Nah, prefiro Aurora")
         self.default_name.setChecked(str(self.cfg.get("assistant_name", "Aurora")).casefold() == "aurora")
@@ -196,45 +326,44 @@ class PersonalizationWizard(QDialog):
         self.stack.addWidget(frame)
 
     def _build_bubble(self):
-        frame, layout = self._panel("Vamos personalizar sua Bolha!", "Três acabamentos para a mesma bolha animada. Mais estilos poderão chegar depois.")
+        frame, layout = self._panel("Vamos personalizar sua bolha", "Veja cada acabamento em movimento e selecione o que combina com você.")
         cards = QHBoxLayout()
-        self.style_group = QButtonGroup(self)
-        self.style_buttons = {}
-        choices = (("boreal", "✦\nNévoa Boreal\nAzul e violeta", "#8bc8e8"),
-                   ("prisma", "✧\nPrisma\nLuz perolada", "#cbeef7"),
-                   ("violeta", "◉\nÓrbita Violeta\nVioleta profundo", "#a98adf"))
-        for key, label, color in choices:
-            button = QPushButton(label)
-            button.setObjectName("style")
-            button.setCheckable(True)
-            button.setMinimumHeight(112)
-            button.setStyleSheet(f"QPushButton#style {{ color:{color}; font-size:15px; }}")
-            button.clicked.connect(lambda _checked=False, value=key: setattr(self, "_selected_style", value))
-            self.style_group.addButton(button)
-            self.style_buttons[key] = button
-            cards.addWidget(button)
-        self.style_buttons.get(self._selected_style, self.style_buttons["boreal"]).setChecked(True)
+        cards.setSpacing(14)
+        self.style_cards = {}
+        choices = (("boreal", "Névoa Boreal", "Reflexos azul-celeste e violeta"),
+                   ("prisma", "Prisma", "Luz perolada com tons de lavanda"),
+                   ("violeta", "Órbita Violeta", "Azul profundo e violeta luminoso"))
+        for key, title, detail in choices:
+            card = _StyleCard(key, title, detail)
+            card.select_button.clicked.connect(lambda _=False, value=key: self._select_style(value))
+            self.style_cards[key] = card
+            cards.addWidget(card, 1)
+        self._select_style(self._selected_style if self._selected_style in self.style_cards else "boreal")
         layout.addLayout(cards)
         self.stack.addWidget(frame)
 
     def _build_voice(self):
-        frame, layout = self._panel("Escolha a voz que mais gostar", "As vozes são carregadas da lista atual do Edge TTS. A síntese usa a internet, conforme explicado no README.")
-        self.voice_combo = QComboBox()
-        self.voice_combo.setEditable(True)
-        self.voice_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        self.voice_combo.setPlaceholderText("Carregando vozes disponíveis…")
-        layout.addWidget(self.voice_combo)
-        row = QHBoxLayout()
-        self.preview_button = QPushButton("▶  Ouvir prévia")
-        self.preview_button.clicked.connect(self.preview_voice)
-        row.addWidget(self.preview_button)
-        soon = QLabel("Em breve, mais vozes")
-        soon.setStyleSheet("color:#746d7d")
-        row.addWidget(soon, 0, Qt.AlignmentFlag.AlignVCenter)
-        row.addStretch(1)
-        layout.addLayout(row)
-        self.voice_status = QLabel("Buscando vozes…")
-        self.voice_status.setStyleSheet("color:#746d7d;font-size:12px")
+        frame, layout = self._panel("Escolha a voz da Aurora", "Três vozes em português do Brasil. Ouça uma prévia e marque sua escolha.")
+        cards = QHBoxLayout(); cards.setSpacing(14)
+        self.voice_group = QButtonGroup(self); self.voice_group.setExclusive(True)
+        self.voice_cards = {}
+        current = str(self.cfg.get("tts_voice", SUPPORTED_VOICES[0][0]))
+        for short, name, gender in SUPPORTED_VOICES:
+            card = _VoiceCard(short, name, gender)
+            card.radio.setChecked(short == current)
+            card.preview_button.clicked.connect(lambda _=False, voice=short: self._preview_voice(voice))
+            card.radio.toggled.connect(lambda checked, voice=short: self._select_voice(voice, checked))
+            self.voice_group.addButton(card.radio)
+            self.voice_cards[short] = card
+            cards.addWidget(card, 1)
+        if not any(card.radio.isChecked() for card in self.voice_cards.values()):
+            self.voice_cards[SUPPORTED_VOICES[0][0]].radio.setChecked(True)
+        layout.addLayout(cards)
+        soon = QLabel("Mais vozes poderão ser adicionadas em versões futuras.")
+        soon.setObjectName("cardDetail"); soon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(soon)
+        self.voice_status = QLabel("A prévia usa Edge TTS e precisa de internet.")
+        self.voice_status.setObjectName("cardDetail")
         layout.addWidget(self.voice_status)
         self.stack.addWidget(frame)
 
@@ -255,28 +384,29 @@ class PersonalizationWizard(QDialog):
         self.stack.addWidget(frame)
 
     def _populate_voices(self, voices):
-        current = str(self.cfg.get("tts_voice", "pt-BR-ThalitaMultilingualNeural"))
-        values = []
-        for voice in voices:
-            short = str(voice.get("ShortName", ""))
-            if not short:
-                continue
-            locale = str(voice.get("Locale", ""))
-            friendly = str(voice.get("FriendlyName", short))
-            gender = str(voice.get("Gender", ""))
-            label = f"{locale} · {friendly} · {gender}".strip(" ·")
-            values.append((label, short))
-        values.sort(key=lambda item: (not item[1].lower().startswith("pt-br-"), item[0].casefold()))
-        self.voice_combo.clear()
-        for label, short in values:
-            self.voice_combo.addItem(label, short)
-            self._voice_map[short] = label
-        index = self.voice_combo.findData(current)
-        if index < 0 and self.voice_combo.count():
-            index = 0
-        if index >= 0:
-            self.voice_combo.setCurrentIndex(index)
-        self.voice_status.setText(f"{len(values)} vozes disponíveis." if values else "Não foi possível carregar a lista agora; sua voz atual será mantida.")
+        # The catalog request is only a reachability check. Keep the UI limited
+        # to the three supported Brazilian voices instead of exposing every
+        # language returned by Edge TTS.
+        available = {str(v.get("ShortName")) for v in voices if isinstance(v, dict)}
+        missing = [name for name, _label, _gender in SUPPORTED_VOICES if name not in available]
+        self.voice_status.setText(
+            "A prévia usa Edge TTS e precisa de internet."
+            if not missing else "Catálogo indisponível; as três vozes brasileiras continuam selecionáveis."
+        )
+
+    def _select_style(self, key):
+        self._selected_style = key
+        for name, card in self.style_cards.items():
+            card.set_selected(name == key)
+
+    def _select_voice(self, voice, checked):
+        if checked:
+            self._selected_voice = voice
+
+    def _preview_voice(self, voice):
+        name = "Aurora" if self.default_name.isChecked() else (self.assistant_name.text().strip() or "Aurora")
+        self.voice_status.setText(f"Reproduzindo prévia de {next((n for s, n, _ in SUPPORTED_VOICES if s == voice), voice)}…")
+        self.speaker.say_with_voice(f"Olá, eu sou {name}. Estou pronta para ajudar.", voice)
 
     def _center(self):
         screen = self.screen() or __import__("PySide6.QtWidgets", fromlist=["QApplication"]).QApplication.primaryScreen()
@@ -285,8 +415,6 @@ class PersonalizationWizard(QDialog):
 
     def showEvent(self, event):
         super().showEvent(event)
-        if self._current_page == 0:
-            self._welcome_pulse.start()
 
     def done(self, result):
         for worker in (getattr(self, "_voice_worker", None), getattr(self, "_name_worker", None)):
@@ -297,10 +425,6 @@ class PersonalizationWizard(QDialog):
 
     def _set_page(self, page, animated=True):
         self._current_page = page
-        if page == 0 and self.isVisible():
-            self._welcome_pulse.start()
-        else:
-            self._welcome_pulse.stop()
         self.stack.setCurrentIndex(page)
         self.back_button.setVisible(page > 0 and page < 4)
         labels = ("Boas-vindas · 1 de 4", "Seu perfil · 2 de 4", "Sua Bolha · 3 de 4", "Sua voz · 4 de 4", "")
@@ -348,16 +472,8 @@ class PersonalizationWizard(QDialog):
         if self._current_page > 0:
             self._set_page(self._current_page - 1)
 
-    def preview_voice(self):
-        voice = self.voice_combo.currentData()
-        if not voice:
-            self.voice_status.setText("A lista de vozes ainda não está disponível.")
-            return
-        name = "Aurora" if self.default_name.isChecked() else (self.assistant_name.text().strip() or "Aurora")
-        self.speaker.say_with_voice(f"Olá, eu sou {name}. Estou pronta para ajudar.", voice)
-
     def _apply(self):
-        voice = self.voice_combo.currentData()
+        voice = getattr(self, "_selected_voice", str(self.cfg.get("tts_voice", SUPPORTED_VOICES[0][0])))
         self.result_settings = {
             "user_name": " ".join(self.user_name.text().split())[:80],
             "profile_configured": True,
