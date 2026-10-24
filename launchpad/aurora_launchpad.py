@@ -53,7 +53,7 @@ from aurora_launchpad_core import (
 
 
 APP_ID = "com.nylofofin.AuroraLaunchpad"
-INSTALLER_VERSION = "0.3.2"
+INSTALLER_VERSION = "0.3.3"
 PKEXEC = "/usr/bin/pkexec"
 SYSTEMCTL = "/usr/bin/systemctl"
 DNF = "/usr/bin/dnf"
@@ -803,7 +803,10 @@ class Launchpad(Adw.Application):
         ignored = {".git", ".venv", "__pycache__", ".pytest_cache", "android-client", "tests", "reports", ".github", "packaging", "launchpad"}
         try:
             reject_symlinks_in_tree(source)
-            reject_symlinks_in_tree(MANAGED_APP)
+            # A venv created by Python legitimately contains interpreter links
+            # (lib64 and python3). It is preserved across upgrades and never
+            # participates in the source merge; every other link is rejected.
+            reject_symlinks_in_tree(MANAGED_APP, ignored_directories={".venv"})
         except ValueError as exc:
             raise RuntimeError(str(exc)) from exc
         MANAGED_APP.mkdir(parents=True, exist_ok=True)

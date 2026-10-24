@@ -369,13 +369,15 @@ def ollama_storage_creation_command(
     ]
 
 
-def reject_symlinks_in_tree(root: Path) -> None:
-    """Reject symlinks before merging a managed install tree, preventing copy-through."""
+def reject_symlinks_in_tree(root: Path, *, ignored_directories: set[str] | None = None) -> None:
+    """Reject symlinks before merging a managed tree, except named data dirs."""
     if root.is_symlink():
         raise ValueError("A pasta da instalação contém um link simbólico.")
     if not root.exists():
         return
+    ignored_directories = ignored_directories or set()
     for current, directories, files in os.walk(root, followlinks=False):
+        directories[:] = [name for name in directories if name not in ignored_directories]
         for name in (*directories, *files):
             if (Path(current) / name).is_symlink():
                 raise ValueError("A instalação contém um link simbólico; nenhum arquivo foi copiado.")

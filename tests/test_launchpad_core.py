@@ -199,6 +199,13 @@ def test_install_tree_rejects_nested_symlinks(tmp_path: Path):
         reject_symlinks_in_tree(tree)
 
 
+def test_install_tree_can_ignore_preserved_python_venv_links(tmp_path: Path):
+    tree = tmp_path / "aurora"
+    (tree / ".venv").mkdir(parents=True)
+    (tree / ".venv" / "python").symlink_to("/usr/bin/python3")
+    reject_symlinks_in_tree(tree, ignored_directories={".venv"})
+
+
 def test_release_recommendations_offer_latest_and_previous_prerelease_then_latest_stable():
     releases = [
         {"tag_name": "v1.5.7", "name": "Altair", "published_at": "2026-10-23T20:00:00Z", "draft": False, "prerelease": True},

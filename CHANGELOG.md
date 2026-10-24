@@ -2,6 +2,7 @@
 
 ## Aurora Desktop 1.8.0 — Sagittarius, 2026-10-24 (release estável)
 
+- Corrige a atualização de instalações existentes preservando os links internos normais do `.venv`.
 - Adiciona transições de página com fade e deslocamento suave no onboarding.
 - Adiciona tema claro/escuro automático baseado na paleta do sistema.
 - Dá movimento contínuo à orb de prévia, com deslocamento de luz, respiração e inclinação sutil.
