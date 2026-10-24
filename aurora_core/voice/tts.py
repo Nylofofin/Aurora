@@ -34,7 +34,7 @@ class Speaker(QThread):
         try:
             player=await asyncio.create_subprocess_exec(self.engine,'-nodisp','-autoexit','-loglevel','quiet','-f','mp3','-i','pipe:0',stdin=asyncio.subprocess.PIPE,stdout=asyncio.subprocess.DEVNULL,stderr=asyncio.subprocess.DEVNULL)
             self.current_player=player; started=time.perf_counter()
-            async for packet in edge_tts.Communicate(text,self.cfg.get('tts_voice','pt-BR-ThalitaMultilingualNeural'),rate='+8%',boundary='WordBoundary').stream():
+            async for packet in edge_tts.Communicate(text,self.cfg.get('tts_voice','pt-BR-ThalitaMultilingualNeural'),rate='+8%').stream():
                 if generation!=self.cancel_generation: raise RuntimeError('speech interrupted')
                 if packet.get('type')=='audio' and packet.get('data'):
                     player.stdin.write(packet['data']); await player.stdin.drain()
@@ -42,20 +42,14 @@ class Speaker(QThread):
                         first_audio=True
                         log_voice_timing('tts_first_audio',elapsed_ms(started))
                         self.playing=True; self.audio_started.emit()
-                elif packet.get('type')=='WordBoundary':
-                    # Edge can deliver text timing just ahead of the first
-                    # playable audio packet. Drop those markers so the orb does
-                    # not pulse before speech is actually audible.
-                    if not first_audio: continue
-                    self.speech_level.emit(self.word_boundary_pulse(packet.get('text','')))
+                    self.speech_level.emit(.42)
                     if pulse_release and not pulse_release.done(): pulse_release.cancel()
-                    duration=max(.06,min(float(packet.get('duration',0))/10_000_000*.72,.42))
-                    async def release_after_word(delay):
+                    async def release_audio_pulse():
                         try:
-                            await asyncio.sleep(delay)
+                            await asyncio.sleep(.24)
                             if generation==self.cancel_generation: self.speech_level.emit(.08)
                         except asyncio.CancelledError: pass
-                    pulse_release=asyncio.create_task(release_after_word(duration))
+                    pulse_release=asyncio.create_task(release_audio_pulse())
             player.stdin.close()
             try: await player.stdin.wait_closed()
             except Exception: pass
@@ -69,6 +63,22 @@ class Speaker(QThread):
             self.speech_level.emit(0.0)
             if player is not None and self.current_player is player: self.current_player=None
             if self.stream_task is task: self.stream_task=None; self.stream_loop=None
+    async def _stream_edge_retry(self,text,generation):
+        """Retry one transient Edge failure before allowing the local fallback."""
+        try:
+            await self._stream_edge(text,generation)
+        except Exception as first_error:
+            if generation!=self.cancel_generation or not self.running:
+                raise
+            # Edge occasionally opens a stream but returns no audio. A short
+            # retry avoids changing Thalita to espeak for a transient outage.
+            print(f'[voice] Edge TTS attempt failed ({type(first_error).__name__}); retrying once', flush=True)
+            await asyncio.sleep(.2)
+            try:
+                await self._stream_edge(text,generation)
+            except Exception as retry_error:
+                print(f'[voice] Edge TTS retry failed ({type(retry_error).__name__}); using local fallback', flush=True)
+                raise
     def run(self):
         while self.running:
             try: item=self.q.get(timeout=.3)
@@ -87,7 +97,7 @@ class Speaker(QThread):
             try:
                 if self.engine:
                     import asyncio
-                    asyncio.run(self._stream_edge(text,generation))
+                    asyncio.run(self._stream_edge_retry(text,generation))
                 elif self.fallback:
                     outcome='fallback'
                     self.playing=True; self.audio_started.emit()
