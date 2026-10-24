@@ -274,6 +274,7 @@ class PersonalizationWizard(QDialog):
         footer.addWidget(self.back_button)
         self.next_button = QPushButton("Começar")
         self.next_button.setObjectName("primary")
+        self.next_button.setMinimumHeight(44)
         self.next_button.clicked.connect(self.next)
         footer.addWidget(self.next_button)
         root.addLayout(footer)
@@ -310,6 +311,7 @@ class PersonalizationWizard(QDialog):
             QPushButton:hover { background:#3d3848; }
             QPushButton#primary { background:#8b6bc2; color:#fff; padding-left:22px; padding-right:22px; }
             QPushButton#primary:hover { background:#a080d8; }
+            QPushButton#primary:pressed { background:#7655ae; }
             QPushButton#selectStyle, QPushButton#previewVoice { background:#2d2937; border:1px solid #4a4258; }
             QPushButton#selectStyle:hover, QPushButton#previewVoice:hover { background:#3b3449; }
             QCheckBox, QRadioButton { spacing:9px; color:#d1cbd9; }
@@ -332,6 +334,7 @@ class PersonalizationWizard(QDialog):
             QPushButton:hover { background:#e5e1ed; }
             QPushButton#primary { background:#6750a4; color:#fff; padding-left:23px; padding-right:23px; }
             QPushButton#primary:hover { background:#7962b4; }
+            QPushButton#primary:pressed { background:#57418e; }
             QPushButton#selectStyle, QPushButton#previewVoice { background:#f0edf6; border:1px solid #e3deec; }
             QPushButton#selectStyle:hover, QPushButton#previewVoice:hover { background:#e8e2f2; }
             QCheckBox, QRadioButton { spacing:9px; color:#494451; }
