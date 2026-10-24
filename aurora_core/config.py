@@ -22,7 +22,7 @@ DEFAULTS = {
     'num_thread':4,
     'num_gpu':99,
     'keep_alive':-1,
-    'tts_voice':'pt-BR-ThalitaMultilingualNeural',
+    'tts_voice':'pt-BR-FranciscaNeural',
     'bubble_position':None,
     'agent_num_ctx':2048,
     'agent_num_predict':384,

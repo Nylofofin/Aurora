@@ -26,7 +26,7 @@ if ! check_api; then
     printf 'Ollama não encontrado. Instale o Ollama e baixe os modelos Gemma descritos no README.\n' >&2
     exit 127
   fi
-  export OLLAMA_HOST=127.0.0.1:11434 OLLAMA_NO_CLOUD=1 OLLAMA_VULKAN=1 OLLAMA_KEEP_ALIVE=5m OLLAMA_NUM_PARALLEL=1 OLLAMA_MAX_LOADED_MODELS=1 GGML_VK_VISIBLE_DEVICES=0
+  export OLLAMA_HOST=127.0.0.1:11434 OLLAMA_NO_CLOUD=1 OLLAMA_VULKAN=1 OLLAMA_KEEP_ALIVE=5m OLLAMA_NUM_PARALLEL=1 OLLAMA_MAX_LOADED_MODELS=2 GGML_VK_VISIBLE_DEVICES=0
   "$OLLAMA_BIN" serve >"$WORK_DIR/aurora-ollama.log" 2>&1 &
   OLLAMA_PID=$!
   for _ in $(seq 1 60); do
