@@ -459,6 +459,135 @@ def test_tapping_pending_approval_interrupts_voice_before_execution():
     assert sequence == ["interrupt", ("resolve", True)]
 
 
+def test_clarification_keeps_the_one_shot_session_listening_until_reply(monkeypatch):
+    timers = []
+    monkeypatch.setattr(service_module.QTimer, "singleShot", lambda delay, callback: timers.append((delay, callback)))
+
+    class Voice:
+        speaking = True
+        def __init__(self): self.requested = 0; self.ended = False
+        def request_once(self): self.requested += 1
+        def end_request(self): self.ended = True
+
+    class Speaker:
+        active = False
+        q = type("Queue", (), {"empty": lambda _self: True})()
+
+    class Orb:
+        def __init__(self): self.modes = []; self.pulses = 0
+        def pulse_complete(self): self.pulses += 1
+        def set_mode(self, mode): self.modes.append(mode)
+        def dismiss(self): raise AssertionError("clarification must keep the orb visible")
+
+    class ServiceStub:
+        activity_generation = 2
+        response_finished = True
+        pending_clarification = {"kind": "open_target", "target": "ChatGPT"}
+        clarification_listening = False
+        voice = Voice()
+        speaker = Speaker()
+        orb = Orb()
+        inf = None
+        def weather_busy(self): return False
+        def _mobile_audio_owned(self): return False
+
+    stub = ServiceStub()
+    service_module.AuroraService.schedule_dismiss(stub, 900)
+    timers[0][1]()
+    assert stub.voice.requested == 1
+    assert not stub.voice.ended
+    assert stub.orb.modes == ["listening"]
+    assert stub.orb.pulses == 1
+    timers[0][1]()
+    assert stub.voice.requested == 1
+
+
+def test_open_target_clarification_turns_spoken_app_choice_into_action(monkeypatch):
+    calls = []
+
+    class ServiceStub:
+        pending_clarification = {"kind": "open_target", "target": "ChatGPT"}
+        clarification_listening = True
+        activity_generation = 4
+        request_generation = 7
+        response_finished = True
+        def run_local_action(self, name, args): calls.append((name, args))
+        def _run_clarified_action(self, name, args, prompt):
+            self.activity_generation += 1
+            self.request_generation += 1
+            self.current_prompt = prompt
+            self.run_local_action(name, args)
+
+    stub = ServiceStub()
+    service_module.AuroraService._handle_clarification_reply(stub, "Ah, aplicativo")
+
+    assert stub.pending_clarification is None
+    assert not stub.clarification_listening
+    assert calls == [("open_application", {"command": "ChatGPT"})]
+
+
+def test_site_choice_requests_domain_then_opens_only_validated_http_url(monkeypatch):
+    calls = []
+
+    class ServiceStub:
+        pending_clarification = {"kind": "open_target", "target": "ChatGPT"}
+        clarification_listening = True
+        activity_generation = 4
+        request_generation = 7
+        response_finished = True
+        def run_local_action(self, name, args): calls.append((name, args))
+        def complete_direct_action(self, text): self.question = text
+        def _run_clarified_action(self, name, args, prompt):
+            self.activity_generation += 1
+            self.request_generation += 1
+            self.current_prompt = prompt
+            self.run_local_action(name, args)
+
+    stub = ServiceStub()
+    service_module.AuroraService._handle_clarification_reply(stub, "o site")
+    assert stub.pending_clarification["kind"] == "site_domain"
+    assert stub.question == "Qual é o domínio ou endereço completo do site?"
+
+    monkeypatch.setattr(service_module.aurora_integrations, "site_url_from_request",
+                        lambda text: "https://chatgpt.com" if "chatgpt.com" in text else None)
+    service_module.AuroraService._handle_clarification_reply(stub, "chatgpt.com")
+    assert stub.pending_clarification is None
+    assert calls == [("open_url", {"url": "https://chatgpt.com"})]
+
+
+def test_agent_action_question_uses_user_answer_as_contextual_followup(monkeypatch):
+    calls = []
+    monkeypatch.setattr(service_module, "route_request", lambda _self, prompt: calls.append(prompt))
+
+    class ServiceStub:
+        pending_clarification = {"kind": "agent", "prompt": "Abra o editor", "question": "Qual editor?"}
+        clarification_listening = True
+
+    stub = ServiceStub()
+    service_module.AuroraService._handle_clarification_reply(stub, "Editor de texto")
+
+    assert stub.pending_clarification is None
+    assert not stub.clarification_listening
+    assert len(calls) == 1
+    assert "Abra o editor" in calls[0]
+    assert "Editor de texto" in calls[0]
+
+
+def test_only_action_questions_arm_a_clarification_turn():
+    class ServiceStub:
+        pending_clarification = None
+
+    stub = ServiceStub()
+    service_module.AuroraService._arm_action_clarification(stub, "Abra o editor", "Qual editor você quer?")
+    assert stub.pending_clarification == {
+        "kind": "agent", "prompt": "Abra o editor", "question": "Qual editor você quer?"
+    }
+
+    stub.pending_clarification = None
+    service_module.AuroraService._arm_action_clarification(stub, "Como você está?", "Quer conversar mais?")
+    assert stub.pending_clarification is None
+
+
 def test_new_wake_defaults_response_language_to_brazilian_portuguese():
     class Voice:
         def begin_request(self): pass

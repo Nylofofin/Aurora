@@ -138,6 +138,7 @@ class AuroraService(QObject):
         super().__init__(app)
         self.app=app; self.cfg=settings_load(); self.hw=hardware_profile(); self.pending=None; self.inf=None; self.inferences=[]; self.action_workers=[]; self.obs_details={}; self.action_cancel_event=threading.Event(); self.companion_request=None; self.companion_server=None; self.screen_stream=DesktopScreenStream()
         self.response_summary=''; self.response_finished=False; self.response_language='Português brasileiro'; self.activity_generation=0; self.request_generation=0; self.last_wake=0.0; self.background_requests=[]; self.context_history=[]; self.current_prompt=''; self.active_search_context=''
+        self.pending_clarification=None; self.clarification_listening=False
         self.system_routine_check=None; self.system_update_worker=None; self.system_routine_pending=None
         self.system_routine_after_speech=None; self.system_routine_generation=0
         self.system_routine_report=None; self.system_routine_last_check=0.0
@@ -366,6 +367,7 @@ class AuroraService(QObject):
     def wake(self):
         if getattr(self,'companion_request',None): return
         if self._mobile_audio_owned(): return
+        self.pending_clarification=None; self.clarification_listening=False
         self.last_wake=time.monotonic()
         # A language requested for a playful turn must not leak into the next
         # activation or into confirmations for a later desktop action.
@@ -584,6 +586,7 @@ class AuroraService(QObject):
         self.activity_generation+=1; self.request_generation+=1
         self.system_routine_generation+=1; self.system_routine_pending=None; self.system_routine_after_speech=None
         self.action_cancel_event.set()
+        self.pending_clarification=None; self.clarification_listening=False
         self.voice.end_request()
         self.voice.disable_control_cancel()
         self.voice.speaking=False
@@ -606,6 +609,8 @@ class AuroraService(QObject):
     def voice_state(self,state):
         if self._mobile_audio_owned(): return
         if state=='hidden':
+            if self.pending_clarification and not self.voice.request_active.is_set():
+                self.pending_clarification=None; self.clarification_listening=False
             if time.monotonic()-self.last_wake<3.0: return
             # A delayed recognizer "hidden" event must not hide the orb during
             # a search or while an answer is still queued. Worker status events
@@ -624,16 +629,80 @@ class AuroraService(QObject):
         self.speak_in_selected_language('Não consegui iniciar o reconhecimento de voz')
     def ask(self,prompt):
         if self._handle_system_routine_confirmation(prompt): return
+        # Keep the short local interrupt recognizer available while the
+        # clarification answer is routed or its selected action is performed.
+        self.voice.interrupt_active.set()
+        if self.pending_clarification:
+            self.clarification_listening=False
+            if self._handle_clarification_reply(prompt): return
         # After command transcription completes, keep a tiny local cancel
         # recognizer active during the request and its spoken response.
-        self.voice.interrupt_active.set()
         route_request(self,prompt)
+    def _arm_action_clarification(self,prompt,answer):
+        if getattr(self,'companion_request',None): return
+        normalized=normalize_words(prompt)
+        action=re.search(r'\b(abra|abrir|abre|acesse|acessar|inicie|iniciar|execute|executar|rode|rodar|clique|clicar|digite|digitar|crie|criar|salve|salvar|lembre|lembrar|esqueca|esquecer|feche|fechar|encerre|encerrar|minimize|minimizar|maximize|maximizar|aumente|aumentar|diminua|diminuir|coloque|colocar|pesquise|pesquisar|busque|buscar|procure|procurar|atualize|atualizar)\b',normalized)
+        if (getattr(self,'pending_clarification',None) or not action
+                or not str(answer).strip().endswith('?')):
+            return
+        self.pending_clarification={'kind':'agent','prompt':prompt,'question':str(answer).strip()}
+    def _handle_clarification_reply(self,prompt):
+        pending=self.pending_clarification
+        if not pending: return False
+        answer=' '.join(str(prompt).split()).strip(' .,!?:;')
+        normalized=normalize_words(answer)
+        if pending.get('kind')=='agent':
+            self.pending_clarification=None
+            self.clarification_listening=False
+            continuation=(f'Continuando a solicitação “{pending["prompt"]}”. '
+                          f'Você perguntou “{pending["question"]}”; '
+                          f'a resposta do usuário é “{answer}”. Conclua a solicitação.')
+            route_request(self,continuation)
+            return True
+        target=pending.get('target','').strip()
+        is_app=bool(re.search(r'\b(app|aplicativo|programa)\b',normalized))
+        is_site=bool(re.search(r'\b(site|pagina|link|endereco|dominio|web)\b',normalized))
+        url=aurora_integrations.site_url_from_request(f'abra o site {answer}')
+        if url:
+            self.pending_clarification=None
+            self.clarification_listening=False
+            self._run_clarified_action('open_url',{'url':url},f'Abra o site {url}')
+            return True
+        if pending.get('kind')=='site_domain':
+            self.complete_direct_action('Diga o domínio completo do site, por exemplo, exemplo.com.')
+            return True
+        if is_app:
+            self.pending_clarification=None
+            self.clarification_listening=False
+            self._run_clarified_action('open_application',{'command':target},f'Abra o aplicativo {target}')
+            return True
+        if is_site:
+            url=aurora_integrations.site_url_from_request(f'abra o site {target}')
+            if url:
+                self.pending_clarification=None
+                self.clarification_listening=False
+                self._run_clarified_action('open_url',{'url':url},f'Abra o site {url}')
+            else:
+                pending['kind']='site_domain'
+                self.complete_direct_action('Qual é o domínio ou endereço completo do site?')
+            return True
+        self.complete_direct_action(f'Você quer abrir o aplicativo “{target}” ou o site dele?')
+        return True
+    def _run_clarified_action(self,name,args,prompt):
+        self.activity_generation+=1; self.request_generation+=1
+        self.response_finished=False; self.current_prompt=prompt
+        self.run_local_action(name,args)
     def queue_sentence(self,text,generation):
         if (not getattr(self,'companion_request',None) and not self._mobile_audio_owned()
                 and generation==self.request_generation and self.voice.request_active.is_set()):
             self.speaker.say(text)
     def run_local_action(self,name,args):
         self.orb.set_mode('thinking')
+        if name=='clarify_open_target' and not getattr(self,'companion_request',None):
+            target=str(args.get('target','')).strip()
+            normalized=normalize_words(target)
+            kind='site_domain' if re.search(r'\b(site|pagina|link|url|endereco)\b',normalized) else 'open_target'
+            self.pending_clarification={'kind':kind,'target':target}
         if requires_user_approval(name,args,explicit_user_request=True):
             if getattr(self,'companion_request',None):
                 self.complete_direct_action('Essa ação exige confirmação na bolha do computador. Não a executei pelo celular.')
@@ -654,6 +723,7 @@ class AuroraService(QObject):
             self.context_history=self.context_history[-6:]
     def complete_direct_action(self,result):
         self.response_summary=' '.join(str(result).split()); self.response_finished=True
+        AuroraService._arm_action_clarification(self,self.current_prompt,self.response_summary)
         self.remember_exchange(self.current_prompt,self.response_summary)
         if self.companion_request:
             self._finish_companion_request(self.response_summary)
@@ -749,6 +819,7 @@ class AuroraService(QObject):
     def quick_summary_done(self,summary,generation=None,context_extra=''):
         if generation is not None and generation!=self.request_generation: return
         self.response_summary=' '.join(str(summary).split()); self.response_finished=True
+        AuroraService._arm_action_clarification(self,self.current_prompt,self.response_summary)
         card_generation=self.request_generation if generation is None else generation
         research_card=getattr(self,'research_card',None)
         if research_card: research_card.finish(card_generation,self.response_summary)
@@ -813,6 +884,7 @@ class AuroraService(QObject):
     def answer_done(self,text,generation=None):
         if generation is not None and generation!=self.request_generation: return
         self.response_summary=Speaker.clean(' '.join(str(text).split())); self.response_finished=True
+        AuroraService._arm_action_clarification(self,self.current_prompt,self.response_summary)
         research_card=getattr(self,'research_card',None)
         if generation is not None and research_card and research_card.generation==generation:
             research_card.finish(generation,self.response_summary)
@@ -839,6 +911,13 @@ class AuroraService(QObject):
         def finish():
             if generation==self.activity_generation and self.response_finished and not self.speaker.active and self.speaker.q.empty() and not (self.inf and self.inf.isRunning()) and not self.weather_busy():
                 self.orb.pulse_complete()
+                if getattr(self,'pending_clarification',None) and not self._mobile_audio_owned():
+                    if not self.clarification_listening:
+                        self.clarification_listening=True
+                        self.voice.speaking=False
+                        self.orb.set_mode('listening')
+                        self.voice.request_once()
+                    return
                 if getattr(self,'continuous_mode',False) and not self._mobile_audio_owned():
                     # No modo contínuo: após responder a pergunta, continua ouvindo o próximo comando
                     self.voice.end_request()
