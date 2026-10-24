@@ -41,6 +41,7 @@ def _tool_progress_label(name):
         'manage_window':'Ajustando janela','inspect_accessible_windows':'Lendo controles da janela',
         'focus_accessible_window':'Focando controle','type_accessible_text':'Digitando texto',
         'volume_control':'Ajustando volume','get_system_info':'Consultando o computador',
+        'check_system_health':'Verificando o estado do sistema',
         'create_file':'Criando arquivo','remember_preference':'Salvando preferência',
         'forget_preference':'Removendo preferência','agenda_add':'Salvando compromisso',
         'agenda_cancel':'Atualizando agenda','agenda_clear':'Limpando agenda',

@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-only
 from __future__ import annotations
 
+import json
+import os
 from pathlib import Path
 from ..memory import user_memory_update
 from ..system.apps import launch_application
@@ -11,7 +13,7 @@ from ..system.windows import manage_window
 from ..system.accessibility import inspect_accessible_windows
 from ..system.audit import audit_action
 from ..system.agenda import agenda_add, agenda_cancel, agenda_clear, agenda_list, agenda_nearest, parse_datetime
-import os
+from ..system.routine import check_system_health, summarize_health
 
 TOOLS=[
  {'type':'function','function':{'name':'search_files','description':'Procurar arquivos pelo nome na pasta pessoal, sem ler o conteúdo.','parameters':{'type':'object','properties':{'query':{'type':'string'}},'required':['query']}}},
@@ -29,6 +31,7 @@ TOOLS=[
  {'type':'function','function':{'name':'type_accessible_text','description':'Inserir texto em campo acessível nomeado. Exige confirmação na bolha; nunca usar em senha, credencial ou campo protegido.','parameters':{'type':'object','properties':{'application':{'type':'string'},'window':{'type':'string'},'field':{'type':'string'},'text':{'type':'string'}},'required':['application','window','field','text']}}},
  {'type':'function','function':{'name':'volume_control','description':'Consultar, silenciar, reativar ou ajustar o volume de saída do PC. Em set value é percentual; em up/down é o passo percentual.','parameters':{'type':'object','properties':{'action':{'type':'string','enum':['status','mute','unmute','set','up','down']},'value':{'type':'integer'}},'required':['action','value']}}},
  {'type':'function','function':{'name':'get_system_info','description':'Identificar hardware e recursos do computador local: CPU, RAM disponível, GPU/VRAM, discos e Vulkan.','parameters':{'type':'object','properties':{},'required':[]}}},
+ {'type':'function','function':{'name':'check_system_health','description':'Consultar o estado atual do computador, sem alterar nada: atualizações RPM/Flatpak/firmware, espaço em disco e componentes essenciais da Aurora. Use quando perguntarem se o PC está em dia ou sobre sua saúde. Informe indisponibilidades sem afirmar que tudo está atualizado.','parameters':{'type':'object','properties':{},'required':[]}}},
  {'type':'function','function':{'name':'create_file','description':'Criar um arquivo novo de texto no local natural solicitado. Nunca substituir arquivos existentes. Resolva área de trabalho, documentos, downloads, pasta do projeto, pasta da Aurora, caminho completo ou nome exato de uma pasta.','parameters':{'type':'object','properties':{'filename':{'type':'string'},'location':{'type':'string'},'content':{'type':'string'}},'required':['filename','location','content']}}},
  {'type':'function','function':{'name':'remember_preference','description':'Salvar uma preferência local persistente somente quando o usuário pedir explicitamente para lembrar, guardar ou seguir isso no futuro.','parameters':{'type':'object','properties':{'preference':{'type':'string'}},'required':['preference']}}},
  {'type':'function','function':{'name':'forget_preference','description':'Apagar da memória local uma preferência específica que o usuário pediu para esquecer.','parameters':{'type':'object','properties':{'preference':{'type':'string'}},'required':['preference']}}},
@@ -44,6 +47,9 @@ def _execute_local_tool(name,args,cfg=None):
     if name=='inspect_accessible_windows':
         return inspect_accessible_windows(args.get('application',''),(cfg or {}).get('screen_control_apps',[]))
     if name=='get_system_info': return system_hardware_summary()
+    if name=='check_system_health':
+        report=check_system_health(cfg or {})
+        return json.dumps({'report':report,'summary':summarize_health(report)},ensure_ascii=False,sort_keys=True)
     if name=='volume_control': return control_volume(args.get('action','status'),args.get('value',5))
     if name=='manage_window' and args.get('action')!='close': return manage_window(args.get('action',''),args.get('target',''))
     if name=='open_application': return launch_application(args.get('command',''))
