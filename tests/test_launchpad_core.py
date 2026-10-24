@@ -11,6 +11,7 @@ from launchpad.aurora_launchpad_core import (
     OLLAMA_INSTALLER_SHA256,
     assess_environment,
     inspect_installation,
+    latest_launchpad_update,
     copy_existing_memory,
     extract_release_tarball,
     format_size,
@@ -226,6 +227,33 @@ def test_release_recommendations_return_only_available_channels_without_duplicat
     assert [(item.channel, item.release["tag_name"]) for item in recommendations] == [
         ("latest_stable", "v2.0.0"),
     ]
+
+
+def test_latest_launchpad_update_requires_newer_signed_metadata():
+    asset = {
+        "name": "aurora-launchpad-0.3.2-1.fc44.noarch.rpm",
+        "browser_download_url": "https://github.com/Nylofofin/Aurora/releases/download/v1.8.0/aurora-launchpad-0.3.2-1.fc44.noarch.rpm",
+        "digest": "sha256:" + "a" * 64,
+        "size": 1234,
+    }
+    releases = [{
+        "tag_name": "v1.8.0", "published_at": "2026-10-24T21:00:00Z",
+        "draft": False, "prerelease": False, "assets": [asset],
+    }]
+    update = latest_launchpad_update(releases, "0.3.1")
+    assert update["asset"] is asset
+    assert latest_launchpad_update(releases, "0.3.2") is None
+
+
+def test_latest_launchpad_update_rejects_untrusted_asset_metadata():
+    bad = {
+        "name": "aurora-launchpad-9.9.9-1.fc44.noarch.rpm",
+        "browser_download_url": "https://evil.example/update.rpm",
+        "digest": "sha256:" + "b" * 64,
+        "size": 1234,
+    }
+    release = {"published_at": "2026-10-24T21:00:00Z", "draft": False, "prerelease": False, "assets": [bad]}
+    assert latest_launchpad_update([release], "0.3.1") is None
 
 
 def _make_tarball(path: Path, *, member_name="project/aurora.py", symlink=False):

@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import os
 import grp
+import hashlib
+import hmac
 from pathlib import Path
 import http.client
 import pwd
@@ -44,12 +46,14 @@ from aurora_launchpad_core import (
     GITHUB_REPOSITORY,
     MAX_RELEASE_ARCHIVE_BYTES,
     inspect_installation,
+    latest_launchpad_update,
+    MAX_LAUNCHPAD_RPM_BYTES,
     prepare_first_boot_onboarding,
 )
 
 
 APP_ID = "com.nylofofin.AuroraLaunchpad"
-INSTALLER_VERSION = "0.3.1"
+INSTALLER_VERSION = "0.3.2"
 PKEXEC = "/usr/bin/pkexec"
 SYSTEMCTL = "/usr/bin/systemctl"
 DNF = "/usr/bin/dnf"
@@ -139,6 +143,55 @@ def fetch_release_recommendations():
     api = f"https://api.github.com/repos/{GITHUB_REPOSITORY}"
     releases = _github_json(api + "/releases?per_page=100")
     return recommend_releases(releases)
+
+
+def fetch_launchpad_update():
+    """Return the newest stable Launchpad RPM, if this copy is outdated."""
+    api = f"https://api.github.com/repos/{GITHUB_REPOSITORY}"
+    releases = _github_json(api + "/releases?per_page=100")
+    return latest_launchpad_update(releases, INSTALLER_VERSION)
+
+
+def download_launchpad_update(workspace: Path, update: dict) -> Path:
+    asset = update.get("asset") if isinstance(update, dict) else None
+    if not isinstance(asset, dict):
+        raise RuntimeError("O GitHub não retornou um pacote válido do Launchpad.")
+    name = asset.get("name")
+    url = asset.get("browser_download_url")
+    digest = asset.get("digest")
+    size = asset.get("size")
+    if (not isinstance(name, str) or not re.fullmatch(r"aurora-launchpad-\d+\.\d+\.\d+-[^/]+\.noarch\.rpm", name)
+            or not isinstance(url, str) or not isinstance(digest, str) or not isinstance(size, int)
+            or size <= 0 or size > MAX_LAUNCHPAD_RPM_BYTES):
+        raise RuntimeError("Os metadados do pacote do Launchpad são inválidos.")
+    target = Path(workspace) / name
+    request = urllib.request.Request(url, headers={
+        "Accept": "application/octet-stream",
+        "User-Agent": f"Aurora-Launchpad/{INSTALLER_VERSION}",
+    })
+    with urllib.request.urlopen(request, timeout=30) as response:
+        final = urlsplit(response.geturl())
+        if response.status != 200 or final.scheme != "https" or final.hostname not in {
+            "github.com", "objects.githubusercontent.com", "github-releases.githubusercontent.com",
+        }:
+            raise RuntimeError("O pacote não veio de um host oficial do GitHub.")
+        received = 0
+        checksum = hashlib.sha256()
+        with target.open("xb") as output:
+            while True:
+                block = response.read(1024 * 1024)
+                if not block:
+                    break
+                received += len(block)
+                if received > MAX_LAUNCHPAD_RPM_BYTES:
+                    raise RuntimeError("O pacote do Launchpad excede o limite permitido.")
+                checksum.update(block)
+                output.write(block)
+    expected = digest.partition(":")[2].lower()
+    if received != size or not hmac.compare_digest(checksum.hexdigest(), expected):
+        target.unlink(missing_ok=True)
+        raise RuntimeError("A assinatura SHA-256 do pacote não confere com o GitHub.")
+    return target
 
 
 def download_release_payload(workspace: Path, release: dict, on_status=None) -> tuple[Path, dict]:
@@ -288,6 +341,10 @@ class Launchpad(Adw.Application):
         self.install_health = None
         self.health_label = None
         self.repair_button = None
+        self.update_panel = None
+        self.update_button = None
+        self.launchpad_update = None
+        self.update_in_progress = False
 
     def _installation_health(self):
         unit = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home()/".config"))) / "systemd/user/aurora.service"
@@ -400,6 +457,16 @@ class Launchpad(Adw.Application):
             health.append(self._label("Nenhuma correção é necessária agora.", "subtle", True))
         col.append(health)
 
+        self.update_panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        self.update_panel.add_css_class("panel")
+        self.update_panel.append(self._label("ATUALIZAÇÃO DO LAUNCHPAD", "caption"))
+        self.update_status = self._label("Verificando se há uma versão nova…", "subtle", True)
+        self.update_panel.append(self.update_status)
+        self.update_button = self._button("Atualizar Launchpad", self._start_launchpad_update, suggested=True)
+        self.update_button.set_visible(False)
+        self.update_panel.append(self.update_button)
+        col.append(self.update_panel)
+
         section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         section.append(self._label("Versões recomendadas", "title-2"))
         self.release_status = self._label("Buscando versões no GitHub…", "subtle", True)
@@ -425,14 +492,18 @@ class Launchpad(Adw.Application):
 
     def _load_releases_worker(self):
         try:
-            options = fetch_release_recommendations()
-            GLib.idle_add(self._show_release_options, options, None)
+            api = f"https://api.github.com/repos/{GITHUB_REPOSITORY}"
+            releases = _github_json(api + "/releases?per_page=100")
+            options = recommend_releases(releases)
+            update = latest_launchpad_update(releases, INSTALLER_VERSION)
+            GLib.idle_add(self._show_release_options, options, None, update)
         except Exception as exc:
-            GLib.idle_add(self._show_release_options, (), str(exc))
+            GLib.idle_add(self._show_release_options, (), str(exc), None)
 
-    def _show_release_options(self, options, error):
+    def _show_release_options(self, options, error, update=None):
         self.loading_releases = False
         self.release_options = options
+        self.launchpad_update = update
         self.release_cards.clear()
         while self.releases_box.get_first_child():
             self.releases_box.remove(self.releases_box.get_first_child())
@@ -441,6 +512,16 @@ class Launchpad(Adw.Application):
             retry = self._button("Tentar novamente", lambda *_: self._load_releases())
             self.releases_box.append(retry)
             return False
+        if update:
+            version = update["asset"]["name"].split("aurora-launchpad-", 1)[1].split("-", 1)[0]
+            self.update_status.set_text(
+                f"Esta cópia é {INSTALLER_VERSION}; a versão {version} está disponível. Atualize antes de instalar uma Aurora."
+            )
+            self.update_button.set_visible(True)
+            self.releases_box.set_sensitive(False)
+            self.release_status.set_text("Atualização obrigatória do Launchpad disponível.")
+            return False
+        self.update_status.set_text(f"Launchpad {INSTALLER_VERSION} está atualizado.")
         if not options:
             self.release_status.set_text("O GitHub não retornou releases publicadas válidas.")
             return False
@@ -477,6 +558,40 @@ class Launchpad(Adw.Application):
             grid.attach(button, index, 0, 1, 1)
             self.release_cards.append((button, option))
 
+        return False
+
+    def _start_launchpad_update(self, *_):
+        if self.update_in_progress or not self.launchpad_update:
+            return
+        self.update_in_progress = True
+        self.update_button.set_sensitive(False)
+        self.update_status.set_text("Baixando e verificando a atualização…")
+        threading.Thread(target=self._launchpad_update_worker, daemon=True).start()
+
+    def _launchpad_update_worker(self):
+        try:
+            with tempfile.TemporaryDirectory(prefix="aurora-launchpad-update-") as workspace:
+                rpm = download_launchpad_update(Path(workspace), self.launchpad_update)
+                run_process([PKEXEC, DNF, "install", "-y", str(rpm)], timeout=600)
+            GLib.idle_add(self._finish_launchpad_update)
+        except Exception as exc:
+            GLib.idle_add(self._launchpad_update_failed, str(exc))
+
+    def _finish_launchpad_update(self):
+        self.update_status.set_text("Launchpad atualizado. Reabrindo a versão nova…")
+        GLib.timeout_add(700, self._restart_launchpad)
+        return False
+
+    def _launchpad_update_failed(self, message):
+        self.update_in_progress = False
+        self.update_button.set_sensitive(True)
+        self.update_status.set_text(f"Não foi possível atualizar: {message}")
+        return False
+
+    @staticmethod
+    def _restart_launchpad():
+        executable = shutil.which("aurora-launchpad", path=SYSTEM_PATH) or "/usr/bin/aurora-launchpad"
+        os.execv(executable, [executable])
         return False
 
     @staticmethod

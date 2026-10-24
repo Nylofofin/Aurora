@@ -26,6 +26,7 @@ GITHUB_REPOSITORY = "Nylofofin/Aurora"
 MAX_RELEASE_ARCHIVE_BYTES = 256 * 1024 * 1024
 MAX_EXTRACTED_BYTES = 768 * 1024 * 1024
 MAX_ARCHIVE_MEMBERS = 20_000
+MAX_LAUNCHPAD_RPM_BYTES = 64 * 1024 * 1024
 
 
 def prepare_first_boot_onboarding(config_path: Path, boot_id: str, *, existing_install: bool) -> bool:
@@ -85,6 +86,47 @@ class InstallationHealth:
     state: str
     details: tuple[str, ...]
     repairable: bool
+
+
+def _rpm_version_key(value: str) -> tuple[int, ...] | None:
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", str(value or "").strip())
+    return tuple(int(part) for part in match.groups()) if match else None
+
+
+def latest_launchpad_update(releases, current_version: str) -> dict | None:
+    """Return the newest published Launchpad RPM newer than ``current_version``.
+
+    Release metadata is untrusted: only an exact RPM filename, a GitHub release
+    download URL and a SHA-256 digest are accepted.  The caller still verifies
+    the bytes before asking dnf to install them.
+    """
+    current = _rpm_version_key(current_version)
+    if current is None:
+        return None
+    candidates: list[tuple[tuple[int, ...], str, dict, dict]] = []
+    for release in releases if isinstance(releases, list) else ():
+        if not isinstance(release, dict) or release.get("draft") or release.get("prerelease"):
+            continue
+        published = str(release.get("published_at") or "")
+        for asset in release.get("assets") if isinstance(release.get("assets"), list) else ():
+            if not isinstance(asset, dict):
+                continue
+            name = asset.get("name")
+            match = re.fullmatch(r"aurora-launchpad-(\d+\.\d+\.\d+)-[^/]+\.noarch\.rpm", str(name or ""))
+            version = _rpm_version_key(match.group(1)) if match else None
+            url = asset.get("browser_download_url")
+            digest = asset.get("digest")
+            size = asset.get("size")
+            if (version is None or version <= current or not isinstance(url, str)
+                    or not re.fullmatch(r"https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/releases/download/[A-Za-z0-9._+-]+/[^/]+", url)
+                    or not isinstance(digest, str) or not re.fullmatch(r"sha256:[0-9a-fA-F]{64}", digest)
+                    or not isinstance(size, int) or size <= 0 or size > MAX_LAUNCHPAD_RPM_BYTES):
+                continue
+            candidates.append((version, published, release, asset))
+    if not candidates:
+        return None
+    _, _, release, asset = max(candidates, key=lambda item: (item[0], item[1]))
+    return {"release": release, "asset": asset}
 
 
 def inspect_installation(managed_app: Path, unit_path: Path, *, service_active: bool) -> InstallationHealth:
