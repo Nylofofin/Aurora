@@ -1,5 +1,16 @@
 # Histórico de versões
 
+## Aurora Desktop 1.5.7 — Altair Routine & Reliability, 2026-10-23 (pré-release)
+
+Build experimental e **não estável**, publicada para testes antes da futura 1.6.0 Stable.
+
+- Adiciona uma rotina local de verificação após desbloquear a sessão, com saudação e checagem de atualizações quando disponíveis.
+- Adiciona timers locais persistentes, retomados após reinício do serviço.
+- Mantém a escuta para respostas de esclarecimento de ações e reduz a latência inicial da voz Edge TTS.
+- Reforça a preferência por português brasileiro e reduz anúncios repetidos de verificações indisponíveis.
+- Adiciona geração local de relatórios de erro com redação de dados sensíveis; o envio exige ação explícita do usuário.
+- Testes cobrem timers, rotina, fluxo de esclarecimento, voz e relatórios. Integrações reais dependem da sessão Fedora/GNOME e ainda requerem validação manual.
+
 ## Aurora Desktop 1.5.0-alpha.1 — Orchestra, 2026-10-23
 
 Pré-release pública para demonstração e avaliação técnica. Não representa uma versão estável nem promete compatibilidade entre distribuições.

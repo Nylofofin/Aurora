@@ -1,9 +1,9 @@
 # Aurora Desktop
 
-**Versão:** `1.5.0-alpha.1` (PC) · `1.2.3` (Android, arquivada) · **Build:** `aurora-desktop-1.5.0-alpha.1-orchestra`
-**Release:** **Aurora Desktop 1.5.0-alpha.1 — Orchestra** — alpha pública de demonstração com coordenação ORC e endurecimento pós-1.4.0.
+**Versão:** `1.5.7` (PC) · `1.2.3` (Android, arquivada) · **Build:** `aurora-desktop-1.5.7-altair-routine-reliability`
+**Release:** **Aurora Desktop 1.5.7 — Altair Routine & Reliability** — pré-release experimental, não estável.
 
-> **Alpha pública de demonstração — não é uma versão estável.** A Aurora é um projeto experimental para Linux desktop. Busca web, voz, OBS, portais GNOME/Wayland e automação variam conforme serviços, permissões e ambiente do usuário. Esta pré-release inclui um RPM experimental do Aurora Launchpad, limitado ao Fedora Workstation com GNOME/Wayland; também oferece código-fonte e scripts.
+> **Pré-release experimental — não é estável.** A Aurora é um projeto experimental para Linux desktop. Esta build acrescenta rotina de verificações ao desbloquear, timers locais persistentes, esclarecimentos por voz mais confiáveis, inicialização de fala mais rápida e relatórios privados de erros. Busca web, voz, OBS, portais GNOME/Wayland e automação variam conforme serviços, permissões e ambiente do usuário. Inclui o RPM experimental do Aurora Launchpad, limitado ao Fedora Workstation com GNOME/Wayland; também oferece código-fonte e scripts.
 
 As releases seguem o formato **Aurora Desktop `<versão>` — `<codinome>`**. O codinome descreve a mudança principal daquela versão; o identificador técnico usa `aurora-desktop-<versão>-<codinome>`, sem siglas ambíguas. A tag SemVer (`vMAJOR.MINOR.PATCH`) continua sendo a referência exata do código. Nomes anteriores permanecem no changelog como registro histórico.
 
