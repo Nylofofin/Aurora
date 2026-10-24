@@ -33,6 +33,14 @@ _AGENT_ACTION = re.compile(
     r'investig\w*|agend(?:a|e|am|o|amos|ar|ou|aram)|marc(?:a|e|am|o|amos|ar|ou|aram))\b'
 )
 
+_LOCAL_CONTEXT = re.compile(
+    r'\b(?:meu|minha|neste|nesse|nesta|nessa|no meu|na minha|aqui no|aqui na)\s+'
+    r'(?:computador|pc|desktop|laptop|notebook|sistema|tela|monitor|janela|janelas|'
+    r'aplicativo|aplicativos|app|apps|programa|programas|arquivo|arquivos|pasta|'
+    r'pastas|documento|documentos|downloads)\b|'
+    r'\b(?:nesta|nessa) m[aá]quina\b|\b(?:instalado|instalada|instalados|instaladas)\b'
+)
+
 
 def _agent_action_intent(normalized_prompt):
     """Recognize broad action language so local requests beat generic web routing."""
@@ -45,6 +53,11 @@ def _agent_action_intent(normalized_prompt):
             and not re.search(r'\b(saber|entender|aprender|explicar|explicacao|informacao|noticia|valor|preco)\b',prefix)):
         return True
     return False
+
+
+def _local_context_intent(normalized_prompt):
+    """Prefer local tools when the request is explicitly scoped to this PC."""
+    return bool(_LOCAL_CONTEXT.search(normalized_prompt))
 
 
 def route_request(self,prompt):
@@ -109,7 +122,8 @@ def route_request(self,prompt):
     if needs_context_search: query=''
     refers_to_source=bool(self.context_history and re.search(r'\b(fonte|link|noticia|artigo|resultado)\b',normalized))
     agent_intent=(source_followup or refers_to_source or needs_context_search
-                  or _agent_action_intent(normalized))
+                  or _agent_action_intent(normalized)
+                  or (not query and _local_context_intent(normalized)))
     # Explicit research wording always remains web research. Inferred freshness
     # and generic factual-question routes yield to action language so a local
     # request such as "Como abro o terminal?" is not sent to search first.

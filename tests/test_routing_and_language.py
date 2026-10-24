@@ -147,12 +147,26 @@ def test_local_action_language_takes_precedence_over_automatic_factual_search(mo
     assert inference.kwargs["model"] == "gemma4:e2b"
     assert inference.kwargs["use_tools"] is True
 
+    for prompt in ("Como está meu computador hoje?", "Meu PC tem quanta memória livre?"):
+        routing.route_request(service, prompt)
+        inference, _ = service.started
+        assert inference.kwargs["model"] == "gemma4:e2b", prompt
+        assert inference.kwargs["use_tools"] is True, prompt
+
 
 def test_agent_action_cue_does_not_mistake_topic_nouns_for_commands():
     assert routing._agent_action_intent("como abro o terminal")
     assert routing._agent_action_intent("quero abrir o navegador")
     assert not routing._agent_action_intent("quais sao os eventos de tecnologia hoje")
     assert not routing._agent_action_intent("qual foi o aumento do setor este ano")
+
+
+def test_explicit_local_context_prefers_the_agent_without_turning_topics_into_commands():
+    assert routing._local_context_intent("como esta meu computador hoje")
+    assert routing._local_context_intent("meu pc tem quanta memoria livre")
+    assert routing._local_context_intent("quais programas estao instalados")
+    assert not routing._local_context_intent("noticias sobre computadores hoje")
+    assert not routing._local_context_intent("qual o melhor computador para jogos")
 
 
 def test_international_news_scope_is_not_mistaken_for_the_topic():
