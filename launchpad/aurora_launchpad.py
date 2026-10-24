@@ -46,6 +46,7 @@ from aurora_launchpad_core import (
     GITHUB_REPOSITORY,
     MAX_RELEASE_ARCHIVE_BYTES,
     inspect_installation,
+    is_official_github_download_url,
     latest_launchpad_update,
     newer_aurora_releases,
     MAX_LAUNCHPAD_RPM_BYTES,
@@ -55,7 +56,7 @@ from aurora_launchpad_core import (
 
 
 APP_ID = "com.nylofofin.AuroraLaunchpad"
-INSTALLER_VERSION = "0.3.4"
+INSTALLER_VERSION = "0.3.5"
 PKEXEC = "/usr/bin/pkexec"
 SYSTEMCTL = "/usr/bin/systemctl"
 DNF = "/usr/bin/dnf"
@@ -183,10 +184,7 @@ def download_launchpad_update(workspace: Path, update: dict) -> Path:
         "User-Agent": f"Aurora-Launchpad/{INSTALLER_VERSION}",
     })
     with urllib.request.urlopen(request, timeout=30) as response:
-        final = urlsplit(response.geturl())
-        if response.status != 200 or final.scheme != "https" or final.hostname not in {
-            "github.com", "objects.githubusercontent.com", "github-releases.githubusercontent.com",
-        }:
+        if response.status != 200 or not is_official_github_download_url(response.geturl()):
             raise RuntimeError("O pacote não veio de um host oficial do GitHub.")
         received = 0
         checksum = hashlib.sha256()

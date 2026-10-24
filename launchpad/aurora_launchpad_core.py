@@ -14,6 +14,7 @@ import shutil
 import tarfile
 from datetime import datetime
 from pathlib import PurePosixPath
+from urllib.parse import urlsplit
 
 
 MODEL_NAMES = ("gemma3:1b-it-qat", "gemma4:e2b-it-q4_K_M")
@@ -27,6 +28,22 @@ MAX_RELEASE_ARCHIVE_BYTES = 256 * 1024 * 1024
 MAX_EXTRACTED_BYTES = 768 * 1024 * 1024
 MAX_ARCHIVE_MEMBERS = 20_000
 MAX_LAUNCHPAD_RPM_BYTES = 64 * 1024 * 1024
+OFFICIAL_GITHUB_DOWNLOAD_HOSTS = frozenset({
+    "github.com",
+    "objects.githubusercontent.com",
+    "github-releases.githubusercontent.com",
+    # GitHub redirects release assets here before streaming the bytes.
+    "release-assets.githubusercontent.com",
+})
+
+
+def is_official_github_download_url(value: str) -> bool:
+    """Accept only HTTPS download hosts used by GitHub's release pipeline."""
+    try:
+        parsed = urlsplit(str(value or ""))
+    except ValueError:
+        return False
+    return parsed.scheme == "https" and parsed.hostname in OFFICIAL_GITHUB_DOWNLOAD_HOSTS
 
 
 def prepare_first_boot_onboarding(config_path: Path, boot_id: str, *, existing_install: bool) -> bool:

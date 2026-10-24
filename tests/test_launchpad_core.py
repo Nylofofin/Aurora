@@ -11,6 +11,7 @@ from launchpad.aurora_launchpad_core import (
     OLLAMA_INSTALLER_SHA256,
     assess_environment,
     inspect_installation,
+    is_official_github_download_url,
     latest_launchpad_update,
     newer_aurora_releases,
     copy_existing_memory,
@@ -262,6 +263,13 @@ def test_latest_launchpad_update_rejects_untrusted_asset_metadata():
     }
     release = {"published_at": "2026-10-24T21:00:00Z", "draft": False, "prerelease": False, "assets": [bad]}
     assert latest_launchpad_update([release], "0.3.1") is None
+
+
+def test_github_release_asset_redirect_hosts_are_strictly_allowlisted():
+    assert is_official_github_download_url("https://github.com/Nylofofin/Aurora/releases/download/v1.8.0/update.rpm")
+    assert is_official_github_download_url("https://release-assets.githubusercontent.com/github-production-release-asset/update.rpm")
+    assert not is_official_github_download_url("http://release-assets.githubusercontent.com/update.rpm")
+    assert not is_official_github_download_url("https://evil.example/update.rpm")
 
 
 def test_newer_aurora_releases_returns_only_three_builds_above_installed():
