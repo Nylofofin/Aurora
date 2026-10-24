@@ -27,6 +27,7 @@ from .system.files import create_user_file, normalize_words, xdg_user_directory
 from .system.hardware import system_hardware_summary
 from .system.routine import (SessionUnlockMonitor,SystemRoutineCheck,SystemUpdateRequest,
                              confirmation_intent,greeting_for,summarize_health)
+from .system.timers import TimerManager, format_duration
 from .system.volume import control_volume
 from .system.windows import manage_window
 from .ui.orb import AuroraOrb
@@ -142,6 +143,7 @@ class AuroraService(QObject):
         self.system_routine_check=None; self.system_update_worker=None; self.system_routine_pending=None
         self.system_routine_after_speech=None; self.system_routine_generation=0
         self.system_routine_report=None; self.system_routine_last_check=0.0
+        self.timer_manager=TimerManager(self._timer_finished,self)
         self.orb=AuroraOrb(self.cfg); self.research_card=ResearchCard(); self.orb.start_voice.connect(self.listen_once); self.orb.hide_requested.connect(self.stop_conversation); self.orb.quit_requested.connect(app.quit)
         # A worker's finished/result signal can be lost during portal/Qt
         # shutdown races. Reconcile the visual state independently so the orb
@@ -716,6 +718,14 @@ class AuroraService(QObject):
             detail={'name':name,'args':args,'event':threading.Event(),'result':'Ação recusada.','direct':True}
             self._start_screenshot_action(detail); return
         self.complete_direct_action(self.execute_action(name,args))
+    def _timer_finished(self,timer_id,seconds):
+        if self._mobile_audio_owned(): return
+        if not self.voice.request_active.is_set():
+            self.activity_generation+=1
+            self.response_finished=True
+            self.response_summary=f'O timer {timer_id} terminou.'
+            self.orb.reveal('speaking')
+        self.speaker.say(f'O timer {timer_id}, de {format_duration(seconds)}, terminou.')
     def remember_exchange(self,user_text,assistant_text):
         user_text=' '.join(str(user_text).split())[:700]; assistant_text=' '.join(str(assistant_text).split())[:1200]
         if user_text and assistant_text:

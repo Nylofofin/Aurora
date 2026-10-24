@@ -6,6 +6,7 @@ import aurora_integrations
 from .apps import find_desktop_app
 from .files import normalize_words
 from .text import strip_wake_word
+from .timers import parse_timer_command
 from .volume import spoken_percentage
 
 def parse_local_command(prompt):
@@ -13,6 +14,8 @@ def parse_local_command(prompt):
     website=aurora_integrations.site_url_from_request(spoken)
     if website: return ('open_url',{'url':website})
     text=normalize_words(spoken)
+    timer=parse_timer_command(text)
+    if timer: return timer
     if re.search(r'\b(?:diagnostico|diagnostique|verifique|cheque|teste)\b',text) and re.search(r'\b(?:aurora|assistente|instalacao)\b',text):
         return ('system_diagnostics',{})
     match=re.fullmatch(r'(?:por favor\s+)?(?:foque|focalize|traga para frente)\s+(?:a janela\s+)?["“](.+?)["”]\s+(?:do|no|da)\s+(?:aplicativo|app)\s+["“](.+?)["”]',spoken,re.I)
