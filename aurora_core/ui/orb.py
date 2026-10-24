@@ -4,12 +4,12 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, QObject, Signal, QTimer, QPoint, QRectF, QUrl, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QColor, QSurfaceFormat
 from PySide6.QtQuickWidgets import QQuickWidget
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QDialog, QLabel, QPushButton, QVBoxLayout
 import sys
 from ..config import APP_DIR, settings_save
 
 class AuroraOrb(QObject):
-    start_voice=Signal(); quit_requested=Signal(); hide_requested=Signal(); hidden=Signal()
+    start_voice=Signal(); quit_requested=Signal(); hide_requested=Signal(); hidden=Signal(); error_report_requested=Signal()
     def __init__(self,cfg):
         super().__init__(); self.cfg=cfg; self.anchor=QRectF(0,0,136,136).toRect(); self.mode='hidden'; self.hiding=False; self.visibility_generation=0; self.visibility_attempts=0; self._completion_pulse_generation=0
         # Embed Quick in a translucent QWidget top-level. QQuickView's scene
@@ -27,6 +27,17 @@ class AuroraOrb(QObject):
             details='; '.join(error.toString() for error in self.view.errors())
             raise RuntimeError('Falha ao carregar a orb Qt Quick: '+details)
         self.root=self.view.rootObject()
+        self.error_notice=QDialog(self.view,Qt.WindowType.Tool|Qt.WindowType.FramelessWindowHint|Qt.WindowType.WindowStaysOnTopHint)
+        self.error_notice.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.error_notice.setFixedSize(276,104)
+        self.error_notice.setStyleSheet('QDialog { background: #171923; border: 1px solid #695e83; border-radius: 16px; } QLabel { color: #f4efff; background: transparent; border: 0; font-size: 14px; font-weight: 600; } QPushButton { color: #ffffff; background: #7458ad; border: 0; border-radius: 9px; padding: 8px 18px; font-weight: 600; } QPushButton:hover { background: #876cc0; }')
+        notice_layout=QVBoxLayout(self.error_notice); notice_layout.setContentsMargins(16,12,16,12); notice_layout.setSpacing(9)
+        self.error_notice_label=QLabel('Aurora encontrou um erro interno.')
+        self.error_notice_label.setWordWrap(True)
+        self.error_report_button=QPushButton('Reportar')
+        notice_layout.addWidget(self.error_notice_label)
+        notice_layout.addWidget(self.error_report_button,0,Qt.AlignmentFlag.AlignRight)
+        self.error_report_button.clicked.connect(self.error_report_requested.emit)
         self.root.startVoice.connect(self.start_voice.emit)
         self.root.hideRequested.connect(self.hide_requested.emit)
         self.root.quitRequested.connect(self.quit_requested.emit)
@@ -98,6 +109,18 @@ class AuroraOrb(QObject):
         # floating orb cannot drift apart during compositor handoff.
         for delay in (0,80,180,360):
             QTimer.singleShot(delay,lambda g=generation:self._ensure_exposed(g))
+    def show_error_notice(self,message='Aurora encontrou um erro interno.'):
+        if self.view.isVisible(): self.set_mode('error')
+        else: self.reveal('error')
+        self.error_notice_label.setText(str(message)[:180])
+        screen=QApplication.screenAt(QPoint(self.view.x()+68,self.view.y()+68)) or QApplication.primaryScreen()
+        area=screen.availableGeometry()
+        x=max(area.left(),min(self.view.x()+self.view.width()-self.error_notice.width(),area.right()-self.error_notice.width()+1))
+        y=max(area.top(),self.view.y()-self.error_notice.height()-10)
+        self.error_notice.move(x,y)
+        self.error_notice.show(); self.error_notice.raise_()
+    def set_error_notice_status(self,message): self.error_notice_label.setText(str(message)[:180])
+    def clear_error_notice(self): self.error_notice.hide()
     def _ensure_exposed(self,generation):
         if generation!=self.visibility_generation or not self.view.isVisible(): return
         self.view.raise_()

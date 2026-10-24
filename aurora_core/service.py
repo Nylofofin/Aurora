@@ -3,11 +3,11 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, QObject, Slot, QTimer, QUrl, QThread, Signal
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtMultimedia import QSoundEffect
+from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer, QSoundEffect
 from PySide6.QtWidgets import QApplication
 from datetime import datetime
 from urllib.parse import urlparse
-import json, os, re, sys, threading, time, urllib.error, urllib.request
+import json, os, re, sys, threading, time, traceback, urllib.error, urllib.request
 import aurora_fx
 import aurora_integrations
 from .config import APP_CONFIG, APP_DIR, hardware_profile, local_endpoint, settings_load, settings_save
@@ -24,6 +24,7 @@ from .system.approval import requires_user_approval
 from .system.screen_stream import DesktopScreenStream
 from .system.commands import parse_local_command
 from .system.files import create_user_file, normalize_words, xdg_user_directory
+from .system.error_reports import user_data_dir, write_error_report, schedule_user_service_restart
 from .system.hardware import system_hardware_summary
 from .system.routine import (SessionUnlockMonitor,SystemRoutineCheck,SystemUpdateRequest,
                              confirmation_intent,greeting_for,summarize_health)
@@ -129,6 +130,7 @@ class AuroraService(QObject):
     companion_message_requested=Signal(str,object,object)
     companion_cancel_requested=Signal(object)
     companion_control_requested=Signal(bool,object)
+    critical_error_requested=Signal(str,str,str,object)
 
     def __init__(self,app):
         # Keep every slot connected to worker-thread signals on the GUI thread.
@@ -138,6 +140,13 @@ class AuroraService(QObject):
         # the feedback sound played, while the orb window was never mapped.
         super().__init__(app)
         self.app=app; self.cfg=settings_load(); self.hw=hardware_profile(); self.pending=None; self.inf=None; self.inferences=[]; self.action_workers=[]; self.obs_details={}; self.action_cancel_event=threading.Event(); self.companion_request=None; self.companion_server=None; self.screen_stream=DesktopScreenStream()
+        self._critical_error=None
+        self._previous_excepthook=sys.excepthook
+        self._previous_thread_excepthook=threading.excepthook
+        self._aurora_excepthook=self._uncaught_exception
+        self._aurora_thread_excepthook=self._uncaught_thread_exception
+        self._last_error_notification=None
+        self.critical_error_requested.connect(self._present_critical_error,Qt.ConnectionType.QueuedConnection)
         self.response_summary=''; self.response_finished=False; self.response_language='Português brasileiro'; self.activity_generation=0; self.request_generation=0; self.last_wake=0.0; self.background_requests=[]; self.context_history=[]; self.current_prompt=''; self.active_search_context=''
         self.pending_clarification=None; self.clarification_listening=False
         self.system_routine_check=None; self.system_update_worker=None; self.system_routine_pending=None
@@ -153,7 +162,12 @@ class AuroraService(QObject):
         self.mode_watchdog.start()
         self.feedback=QSoundEffect(); self.feedback.setSource(QUrl.fromLocalFile(str(APP_DIR/'assets'/'audio'/'entrada.wav'))); self.feedback.setVolume(.34)
         self.exit_feedback=QSoundEffect(); self.exit_feedback.setSource(QUrl.fromLocalFile(str(APP_DIR/'assets'/'audio'/'saida.wav'))); self.exit_feedback.setVolume(.30)
+        self.error_audio=QMediaPlayer(self); self.error_audio_output=QAudioOutput(self); self.error_audio.setAudioOutput(self.error_audio_output); self.error_audio_output.setVolume(.62)
+        error_audio_path=user_data_dir()/'error.mp3'
+        if error_audio_path.is_file(): self.error_audio.setSource(QUrl.fromLocalFile(str(error_audio_path)))
+        else: print(f'[error-report] som opcional não encontrado: {error_audio_path}',file=sys.stderr,flush=True)
         self.orb.hidden.connect(self.play_exit_feedback)
+        self.orb.error_report_requested.connect(self._report_current_error)
         self.speaker=Speaker(self.cfg); self.speaker.speaking.connect(self.speaking_changed); self.speaker.audio_started.connect(self.audio_started); self.speaker.speech_level.connect(self.orb.set_speech_level,Qt.ConnectionType.QueuedConnection)
         if hasattr(self.speaker,'speech_error'): self.speaker.speech_error.connect(self.speech_error,Qt.ConnectionType.QueuedConnection)
         self.speaker.start()
@@ -176,6 +190,8 @@ class AuroraService(QObject):
         self.session_unlock_monitor.unlocked.connect(self.on_session_unlocked,Qt.ConnectionType.QueuedConnection)
         self.session_unlock_monitor.locked.connect(self.on_session_locked,Qt.ConnectionType.QueuedConnection)
         self.speaker.drained.connect(self._system_routine_speech_drained,Qt.ConnectionType.QueuedConnection)
+        sys.excepthook=self._aurora_excepthook
+        threading.excepthook=self._aurora_thread_excepthook
 
     def _start_companion_server(self):
         if not self.cfg.get('companion_enabled',False): return
@@ -193,6 +209,51 @@ class AuroraService(QObject):
         except Exception as exc:
             self.companion_server=None
             print(f'[companion] servidor LAN indisponível ({type(exc).__name__}): {exc}',file=sys.stderr,flush=True)
+
+    def _uncaught_exception(self,exc_type,exc_value,tb):
+        frames=[{'file':frame.filename,'line':frame.lineno,'function':frame.name}
+                for frame in traceback.extract_tb(tb) if 'aurora_core' in frame.filename][-12:]
+        self.critical_error_requested.emit('erro não tratado',exc_type.__name__,str(exc_value),frames)
+        self._previous_excepthook(exc_type,exc_value,tb)
+
+    def _uncaught_thread_exception(self,args):
+        frames=[{'file':frame.filename,'line':frame.lineno,'function':frame.name}
+                for frame in traceback.extract_tb(args.exc_traceback) if 'aurora_core' in frame.filename][-12:] if args.exc_traceback else []
+        self.critical_error_requested.emit('erro em thread interna',args.exc_type.__name__,str(args.exc_value),frames)
+        self._previous_thread_excepthook(args)
+
+    @Slot(str,str,str,object)
+    def _present_critical_error(self,context,error_type,message,frames):
+        self._critical_error={'context':str(context),'error_type':str(error_type),
+                              'message':str(message),'frames':list(frames or ())}
+        key=(str(context),str(error_type),str(message))
+        now=time.monotonic()
+        duplicate=self._last_error_notification and self._last_error_notification[0]==key and now-self._last_error_notification[1]<8
+        self._last_error_notification=(key,now)
+        if not duplicate and self.error_audio.source().isValid():
+            self.error_audio.stop(); self.error_audio.play()
+        self.orb.show_error_notice('Aurora encontrou um erro interno. Toque em Reportar para salvar um diagnóstico local.')
+        print(f'[error-report] contexto={context} tipo={error_type}',file=sys.stderr,flush=True)
+
+    @Slot()
+    def _report_current_error(self):
+        error=self._critical_error
+        if not error or getattr(self,'_reporting_error',False): return
+        try:
+            report=write_error_report(user_data_dir()/'reports',**error)
+        except Exception as exc:
+            self.orb.set_error_notice_status(f'Não consegui salvar o relatório ({type(exc).__name__}).')
+            print(f'[error-report] falha ao salvar relatório: {type(exc).__name__}',file=sys.stderr,flush=True)
+            return
+        self._reporting_error=True
+        self.orb.error_report_button.setEnabled(False)
+        restarted,reason=schedule_user_service_restart()
+        if restarted:
+            self.orb.set_error_notice_status(f'Relatório local salvo. Reiniciando Aurora… ({report.name})')
+            print(f'[error-report] relatório={report.name}; {reason}',file=sys.stderr,flush=True)
+        else:
+            self.orb.set_error_notice_status(f'Relatório salvo; reinício não agendado: {reason}')
+            print(f'[error-report] relatório={report.name}; reinício falhou: {reason}',file=sys.stderr,flush=True)
 
     def _companion_message(self,prompt,history):
         from concurrent.futures import Future, TimeoutError as FutureTimeout
@@ -873,6 +934,7 @@ class AuroraService(QObject):
             self._finish_companion_request(result=self.response_summary)
     def answer_error(self,msg,generation=None):
         if generation is not None and generation!=self.request_generation: return
+        self.critical_error_requested.emit('falha no modelo local','InferenceError',str(msg),[])
         self.response_summary=' '.join(str(msg).split()); self.response_finished=True; self.remember_exchange(self.current_prompt,self.response_summary); self.orb.set_mode('error'); self.speak_in_selected_language(self.response_summary,generation)
         research_card=getattr(self,'research_card',None)
         if generation is not None and research_card: research_card.finish(generation,self.response_summary)
@@ -921,7 +983,8 @@ class AuroraService(QObject):
     def audio_started(self): self.orb.set_mode('speaking')
     def speech_error(self,message):
         print(f'[voice] {message}',file=sys.stderr,flush=True)
-        if self.response_finished: self.orb.set_mode('error')
+        self.orb.set_mode('error')
+        self.critical_error_requested.emit('falha na síntese de voz','EdgeTTS',message,[])
     def schedule_dismiss(self,delay):
         generation=self.activity_generation
         def finish():
@@ -1149,6 +1212,8 @@ class AuroraService(QObject):
             urllib.request.urlopen(req,timeout=5).read()
         except Exception: pass
     def stop(self):
+        if sys.excepthook==self._aurora_excepthook: sys.excepthook=self._previous_excepthook
+        if threading.excepthook==self._aurora_thread_excepthook: threading.excepthook=self._previous_thread_excepthook
         if getattr(self,'session_unlock_monitor',None): self.session_unlock_monitor.close()
         if self.companion_server:
             self.companion_server.close(); self.companion_server=None

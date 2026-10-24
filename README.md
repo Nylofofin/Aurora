@@ -65,6 +65,10 @@ O serviço usa `start-alpha.sh`, que procura Ollama em `PATH` ou no runtime opci
 
 Com `system_routine_enabled` ativo (padrão), Aurora cumprimenta o usuário após um sinal real de desbloqueio da sessão GNOME. Reiniciar apenas o serviço com a sessão já aberta não repete a saudação nem a verificação. Em seguida, verifica atualizações RPM pelo PackageKit com cache de até 24 horas, atualizações Flatpak usando metadados locais, firmware sem atualizar metadados, espaço livre em `/` e na pasta pessoal, e disponibilidade de componentes essenciais da Aurora. Falhas de acesso aos verificadores são tratadas como estado desconhecido, não como atualização ou pendência confirmada. Ela não percorre documentos, fotos ou outros arquivos pessoais e não é uma auditoria completa do sistema.
 
+### Relatório de erro
+
+Erros internos relevantes exibem um aviso acima da bolha e podem tocar `Error.mp3`, se o usuário instalou esse arquivo em `$XDG_DATA_HOME/aurora/error.mp3` (por padrão, `~/.local/share/aurora/error.mp3`). O botão **Reportar** grava um diagnóstico Markdown com tipo, classificação provável e frames internos; o texto livre da exceção é omitido para evitar incluir dados da conversa. O relatório fica em `$XDG_DATA_HOME/aurora/reports/` (por padrão, `~/.local/share/aurora/reports/`), com permissão privada; não inclui prompts, transcrições, áudio nem variáveis de ambiente. Após salvar, Aurora agenda um reinício do serviço. O relatório não é enviado nem commitado automaticamente: revise-o antes de compartilhar.
+
 Só anuncia pendências. Nenhum pacote é instalado sem confirmação falada clara. A instalação mantém a verificação normal de assinaturas e pode abrir a autenticação do Fedora; firmware é apenas reportado nesta versão. Após concluir atualizações RPM, Aurora pede uma segunda confirmação antes de solicitar reinicialização. Resposta ambígua, timeout ou bloqueio da sessão não autorizam mudanças. As consultas dependem da rede e dos repositórios configurados; não garantem que todas as fontes estejam atualizadas.
 
 ### Automação e interrupção
