@@ -21,6 +21,7 @@ ACTION_TOOL_NAMES = {
     'inspect_accessible_windows', 'focus_accessible_window',
     'type_accessible_text', 'volume_control', 'get_system_info',
     'create_file', 'remember_preference', 'forget_preference',
+    'agenda_add', 'agenda_cancel', 'agenda_list', 'agenda_nearest',
 }
 
 class Inference(QThread):

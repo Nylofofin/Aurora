@@ -7,7 +7,28 @@ from .apps import find_desktop_app
 from .files import normalize_words
 from .text import strip_wake_word
 from .timers import parse_timer_command
+from .agenda import parse_datetime
 from .volume import spoken_percentage
+
+def _parse_agenda_command(text: str, original: str):
+    """Try to parse an agenda command from normalised text.
+
+    Returns an action tuple or None if the text is not an agenda request.
+    """
+    # "lista compromissos", "agenda de hoje", "quais são meus compromissos"
+    if re.search(r'\b(agenda|compromisso(?:s)?|evento(?:s)?|reuniao(?:oes)?)\b', text):
+        if re.search(r'\b(cancele|cancelar|cancela|remova|remover|apague|apagar|exclua|excluir)\b', text):
+            m = re.search(r'\b(?:compromisso|evento|item)?\s*(?:numero\s*)?(\d+)\b', text)
+            event_id = int(m.group(1)) if m else None
+            return ('agenda_cancel', {'event_id': event_id})
+        if re.search(r'\b(proximo|proximos|proximo|próximo|próximos)\b', text):
+            return ('agenda_nearest', {})
+        if re.search(r'\b(liste|listar|lista|mostre|mostrar|verifique|quais|tenho|minha)\b', text):
+            return ('agenda_list', {'days': 7})
+        if re.search(r'\b(adicione|adicionar|adiciona|crie|criar|cria|agende|agendar|agenda|marque|marcar|marca|coloque|coloca)\b', text):
+            # Let agent handle it — we need title + datetime extraction from full context
+            return None
+    return None
 
 def parse_local_command(prompt):
     spoken=strip_wake_word(prompt).strip()
@@ -16,6 +37,8 @@ def parse_local_command(prompt):
     text=normalize_words(spoken)
     timer=parse_timer_command(text)
     if timer: return timer
+    agenda=_parse_agenda_command(text, spoken)
+    if agenda: return agenda
     if re.search(r'\b(?:diagnostico|diagnostique|verifique|cheque|teste)\b',text) and re.search(r'\b(?:aurora|assistente|instalacao)\b',text):
         return ('system_diagnostics',{})
     match=re.fullmatch(r'(?:por favor\s+)?(?:foque|focalize|traga para frente)\s+(?:a janela\s+)?["“](.+?)["”]\s+(?:do|no|da)\s+(?:aplicativo|app)\s+["“](.+?)["”]',spoken,re.I)

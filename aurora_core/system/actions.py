@@ -14,6 +14,7 @@ from .diagnostics import run_local_diagnostics
 from .accessibility import focus_accessible_window, inspect_accessible_windows, type_into_accessible_field
 from .volume import control_volume
 from .windows import manage_window
+from .agenda import agenda_add, agenda_cancel, agenda_list, agenda_nearest, parse_datetime
 from ..memory import user_memory_update
 
 def execute_action(self,name,args):
@@ -35,6 +36,12 @@ def execute_action(self,name,args):
     if name=='timer_start': return self.timer_manager.start(args.get('seconds',0))
     if name=='timer_cancel': return self.timer_manager.cancel(args.get('timer_id'))
     if name=='timer_list': return self.timer_manager.list_active()
+    if name=='agenda_add':
+        ts = parse_datetime(str(args.get('when', '')))
+        return agenda_add(str(args.get('title', '')), ts or 0, str(args.get('notes', '')))
+    if name=='agenda_cancel': return agenda_cancel(args.get('event_id'))
+    if name=='agenda_list': return agenda_list(int(args.get('days', 7)))
+    if name=='agenda_nearest': return agenda_nearest()
     if name=='create_file':
         try: return create_user_file(args.get('filename',''),args.get('location',''),args.get('content',''))
         except Exception as exc: return f'Não criei o arquivo: {exc}'
