@@ -127,6 +127,18 @@ class _ScreenshotActionRequest(QThread):
             except Exception: pass
             self.completed.emit(False,f'Não consegui confirmar a captura: {exc}')
 
+class _SystemInfoActionRequest(QThread):
+    completed=Signal(object,object)
+
+    def __init__(self,action):
+        super().__init__()
+        self.action=action
+
+    def run(self):
+        try: self.completed.emit(True,str(self.action()))
+        except Exception as exc:
+            self.completed.emit(False,f'Não consegui consultar os componentes do computador: {type(exc).__name__}.')
+
 class AuroraService(QObject):
     companion_message_requested=Signal(str,object,object)
     companion_cancel_requested=Signal(object)
@@ -756,6 +768,9 @@ class AuroraService(QObject):
         if name=='take_screenshot':
             detail={'name':name,'args':args,'event':threading.Event(),'result':'Ação recusada.','direct':True}
             self._start_screenshot_action(detail); return
+        if name in ('system_info','get_system_info'):
+            detail={'name':name,'args':args,'event':threading.Event(),'result':'Consulta cancelada.','direct':True}
+            self._start_system_info_action(detail); return
         self.complete_direct_action(self.execute_action(name,args))
     def _timer_finished(self,timer_id,seconds):
         if self._mobile_audio_owned(): return
@@ -1112,6 +1127,30 @@ class AuroraService(QObject):
         worker.start()
         self._schedule_action_watchdog(worker,detail,50,
             'A captura excedeu o limite de tempo; não confirmei o arquivo.')
+
+    def _start_system_info_action(self,detail):
+        detail['request_generation']=self.request_generation
+        detail['cancel_event']=self.action_cancel_event
+        worker=_SystemInfoActionRequest(lambda:self.execute_action(detail['name'],detail['args']))
+        self.action_workers.append(worker)
+        self.obs_details[worker]=detail
+        worker.completed.connect(self._system_info_action_result)
+        worker.finished.connect(self._action_worker_finished)
+        worker.start()
+
+    @Slot(object,object)
+    def _system_info_action_result(self,ok,result):
+        worker=self.sender()
+        detail=self.obs_details.pop(worker,None)
+        if detail is None: return
+        detail['result']=str(result)
+        if detail.get('event'): detail['event'].set()
+        current=detail.get('request_generation')==self.request_generation
+        cancelled=bool(detail.get('cancel_event') and detail['cancel_event'].is_set())
+        if current and self.orb.isVisible(): self.orb.set_mode('thinking' if ok else 'error')
+        if detail.get('direct') and current and not cancelled and (self.voice.request_active.is_set() or self.companion_request):
+            self.complete_direct_action(detail['result'])
+        self._settle_stale_controlling_mode()
 
     def _schedule_action_watchdog(self,worker,detail,timeout_seconds,message):
         QTimer.singleShot(timeout_seconds*1000,

@@ -482,6 +482,16 @@ def test_hardware_fast_route_reaches_the_system_info_executor(monkeypatch):
     monkeypatch.setattr(system_actions, "system_hardware_summary", lambda: "hardware confirmado")
     monkeypatch.setattr(service_module, "audit_action", lambda *_args, **_kwargs: None)
     assert aurora.parse_local_command("mostre o hardware do meu PC") == ("system_info", {})
+    for prompt in (
+        "Quais são os componentes do meu PC?",
+        "Quais componentes tem nesse computador?",
+        "Me fala as peças do meu computador",
+        "Quanto de memória RAM tem neste PC?",
+        "O que de hardware está instalado no meu laptop?",
+    ):
+        assert aurora.parse_local_command(prompt) == ("system_info", {}), prompt
+    assert aurora.parse_local_command("Como trocar a placa de vídeo do meu PC?") is None
+    assert aurora.parse_local_command("Pesquise componentes para comprar para meu PC") is None
     assert service_module.AuroraService.execute_action(object(), "system_info", {}) == "hardware confirmado"
 
 

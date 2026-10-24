@@ -42,6 +42,30 @@ def _parse_agenda_command(text: str, original: str):
             return None
     return None
 
+
+def _local_hardware_question(text: str) -> bool:
+    """Recognize natural questions about this computer's own hardware."""
+    hardware = re.search(
+        r'\b(componentes?|pecas?|hardware|especificacoes?|processador|cpu|gpu|'
+        r'placa de video|placa mae|memoria ram|vram|armazenamento|discos?)\b', text,
+    )
+    target = re.search(
+        r'\b(?:meu|minha|seu|sua|desse|deste|nesse|neste|do|da|no|na)\s+'
+        r'(?:pc|computador|desktop|laptop|notebook|sistema|maquina)\b', text,
+    )
+    asks = re.search(
+        r'\b(quais?|quanto|mostre|mostrar|liste|listar|lista|me diga|diga|me fale|'
+        r'me fala|fala|fale|identifique|identificar|tem|possui|o que|qual|'
+        r'instalado|instalados|configuracoes?)\b', text,
+    )
+    procedural = re.search(
+        r'\b(melhor|recomende|recomendar|comprar|upgrade|trocar|substituir|instalar|'
+        r'compatibilidade|compativel|pesquise|pesquisar|busque|buscar|procure|procurar|'
+        r'na internet|na web|no google)\b|\bcomo\s+(?:montar|trocar|instalar|atualizar|'
+        r'melhorar|fazer upgrade)\b', text,
+    )
+    return bool(hardware and target and asks and not procedural)
+
 def parse_local_command(prompt):
     spoken=strip_wake_word(prompt).strip()
     website=aurora_integrations.site_url_from_request(spoken)
@@ -51,6 +75,7 @@ def parse_local_command(prompt):
     if timer: return timer
     agenda=_parse_agenda_command(text, spoken)
     if agenda: return agenda
+    if _local_hardware_question(text): return ('system_info',{})
     if re.search(r'\b(?:diagnostico|diagnostique|verifique|cheque|teste)\b',text) and re.search(r'\b(?:aurora|assistente|instalacao)\b',text):
         return ('system_diagnostics',{})
     match=re.fullmatch(r'(?:por favor\s+)?(?:foque|focalize|traga para frente)\s+(?:a janela\s+)?["“](.+?)["”]\s+(?:do|no|da)\s+(?:aplicativo|app)\s+["“](.+?)["”]',spoken,re.I)

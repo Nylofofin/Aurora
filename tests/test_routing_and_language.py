@@ -169,6 +169,39 @@ def test_explicit_local_context_prefers_the_agent_without_turning_topics_into_co
     assert not routing._local_context_intent("qual o melhor computador para jogos")
 
 
+def test_local_hardware_question_bypasses_model_acknowledgement(monkeypatch):
+    class Voice:
+        def __init__(self):
+            self.request_active = threading.Event()
+            self.request_active.set()
+            self.speaking = False
+
+    class Orb:
+        def isVisible(self): return True
+        def set_mode(self, _mode): pass
+        def reveal(self, _mode): pass
+
+    class Service:
+        voice = Voice()
+        orb = Orb()
+        inf = None
+        context_history = []
+        activity_generation = 0
+        request_generation = 0
+        response_language = "Português brasileiro"
+        companion_request = None
+
+        def run_local_action(self, name, args): self.action = (name, args)
+        def start_inference(self, *_args): raise AssertionError("hardware lookup must skip Gemma")
+        def start_background_request(self, *_args): raise AssertionError("hardware lookup must stay local")
+
+    monkeypatch.setattr(routing, "parse_local_command", aurora.parse_local_command)
+    service = Service()
+    routing.route_request(service, "Quais são os componentes do meu PC?")
+
+    assert service.action == ("system_info", {})
+
+
 def test_international_news_scope_is_not_mistaken_for_the_topic():
     query = "notícias internacionais de tecnologia hoje"
     assert aurora._fresh_query_terms(query) == {"internacionais", "tecnologia"}
