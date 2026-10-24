@@ -8,12 +8,14 @@ import os
 import re
 import shutil
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, QTimer, Signal, Slot, SLOT
 
 from . import diagnostics
 from .files import normalize_words
+from ..web.orchestra import local_worker_limit
 from PySide6.QtDBus import QDBusConnection, QDBusInterface, QDBusMessage
 
 
@@ -93,6 +95,15 @@ def _firmware_updates(runner=subprocess.run):
     return {'ok':True,'devices':devices,'available':True}
 
 
+def _flatpak_update_summary(runner):
+    """Check user and system installations sequentially to avoid Flatpak lock races."""
+    system=_flatpak_updates('system',runner)
+    user=_flatpak_updates('user',runner)
+    return {'ok':system['ok'] and user['ok'],
+            'apps':sorted(set(system['apps'])|set(user['apps'])),
+            'available':system['available'] or user['available']}
+
+
 def _disk_warnings():
     warnings=[]
     seen_devices=set()
@@ -119,18 +130,31 @@ def _aurora_warnings(cfg):
 
 def check_system_health(cfg, *, runner=subprocess.run):
     """Inspect update sources and essential local prerequisites without changing them."""
-    rpm=_packagekit_updates(runner)
-    system_flatpak=_flatpak_updates('system',runner)
-    user_flatpak=_flatpak_updates('user',runner)
-    flatpak_apps=sorted(set(system_flatpak['apps'])|set(user_flatpak['apps']))
-    firmware=_firmware_updates(runner)
+    probes={
+        'rpm':lambda:_packagekit_updates(runner),
+        'flatpak':lambda:_flatpak_update_summary(runner),
+        'firmware':lambda:_firmware_updates(runner),
+    }
+    results={}
+    with ThreadPoolExecutor(max_workers=local_worker_limit(len(probes)),
+                            thread_name_prefix='aurora-health') as pool:
+        futures={name:pool.submit(probe) for name,probe in probes.items()}
+        for name,future in futures.items():
+            try:
+                results[name]=future.result()
+            except Exception:
+                if name=='rpm': results[name]={'ok':False,'packages':[],'security_count':0}
+                elif name=='flatpak': results[name]={'ok':False,'apps':[],'available':True}
+                else: results[name]={'ok':False,'devices':[],'available':True}
+    rpm=results['rpm']
+    flatpak=results['flatpak']
+    firmware=results['firmware']
     try: warnings=_disk_warnings()
     except Exception: warnings=['não consegui verificar o espaço em disco']
     try: warnings.extend(_aurora_warnings(cfg))
     except Exception: warnings.append('não consegui verificar os componentes da Aurora')
     return {
-        'rpm':rpm,'flatpak':{'ok':system_flatpak['ok'] and user_flatpak['ok'],'apps':flatpak_apps,
-                             'available':system_flatpak['available'] or user_flatpak['available']},
+        'rpm':rpm,'flatpak':flatpak,
         'firmware':firmware,'warnings':warnings,
     }
 

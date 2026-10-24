@@ -2,7 +2,7 @@
 import re
 from pathlib import Path
 
-from aurora_core.version import BUILD_ID, __version__
+from aurora_core.version import BUILD_ID, CODENAME, __version__
 
 
 def test_readme_release_identity_matches_application_version():
@@ -21,7 +21,7 @@ def test_readme_release_identity_matches_application_version():
     changelog = (Path(__file__).resolve().parents[1] / "CHANGELOG.md").read_text(
         encoding="utf-8"
     )
-    assert changelog.splitlines()[2] == (
-        "## Aurora Desktop 1.6.0 — Bellatrix Stability Baseline, "
-        "2026-10-24 (release estável)"
+    assert changelog.splitlines()[2].startswith(
+        f"## Aurora Desktop {__version__} — {CODENAME.title()}, "
     )
+    assert "## Aurora Desktop 1.6.0 — Bellatrix Stability Baseline" in changelog

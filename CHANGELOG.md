@@ -1,5 +1,12 @@
 # Histórico de versões
 
+## Aurora Desktop 1.7.0-alpha.1 — Cygnus X-1 Local Health Parallelism, 2026-10-24 (pré-release)
+
+- Experimenta verificações paralelas de PackageKit, Flatpak e firmware na rotina local, limitadas a dois workers e reduzidas ainda mais sob carga ou memória baixa.
+- Mantém a consulta de Flatpak do usuário e do sistema sequencial para evitar concorrência em seus serviços locais.
+- Preserva resultados parciais quando uma fonte local falha; a rotina não instala nem altera nada durante a checagem.
+- Não é estável; mede a responsividade da rotina no Fedora real antes da próxima promoção.
+
 ## Aurora Desktop 1.6.0 — Bellatrix Stability Baseline, 2026-10-24 (release estável)
 
 - Declara a primeira release estável da geração Altair, com versão/build sincronizadas entre aplicação, README e Launchpad.

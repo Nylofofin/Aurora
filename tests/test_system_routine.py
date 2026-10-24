@@ -116,6 +116,45 @@ def test_health_summary_only_reports_actionable_findings():
     ]
 
 
+def test_health_probes_run_in_parallel_with_the_adaptive_local_worker_limit(monkeypatch):
+    from threading import Barrier, Lock
+
+    barrier = Barrier(2)
+    lock = Lock()
+    active = 0
+    max_active = 0
+
+    def probe(result):
+        nonlocal active, max_active
+        with lock:
+            active += 1
+            max_active = max(max_active, active)
+        barrier.wait(timeout=2)
+        with lock:
+            active -= 1
+        return result
+
+    monkeypatch.setattr(routine, "local_worker_limit", lambda count: min(2, count))
+    monkeypatch.setattr(routine, "_packagekit_updates", lambda _runner: probe(
+        {"ok": True, "packages": [], "security_count": 0}
+    ))
+    monkeypatch.setattr(routine, "_flatpak_update_summary", lambda _runner: probe(
+        {"ok": True, "apps": [], "available": True}
+    ))
+    monkeypatch.setattr(routine, "_firmware_updates", lambda _runner: {
+        "ok": True, "devices": [], "available": False
+    })
+    monkeypatch.setattr(routine, "_disk_warnings", lambda: [])
+    monkeypatch.setattr(routine, "_aurora_warnings", lambda _cfg: [])
+
+    result = routine.check_system_health({})
+
+    assert max_active == 2
+    assert result["rpm"]["ok"]
+    assert result["flatpak"]["ok"]
+    assert result["firmware"]["ok"]
+
+
 def test_proactive_health_summary_omits_failed_probes_as_pending_items():
     report = {
         'rpm': {'ok': False, 'packages': [], 'security_count': 0},
