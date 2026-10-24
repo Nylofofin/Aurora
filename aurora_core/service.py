@@ -211,12 +211,18 @@ class AuroraService(QObject):
             print(f'[companion] servidor LAN indisponível ({type(exc).__name__}): {exc}',file=sys.stderr,flush=True)
 
     def _uncaught_exception(self,exc_type,exc_value,tb):
+        if issubclass(exc_type,(KeyboardInterrupt,SystemExit)):
+            self._previous_excepthook(exc_type,exc_value,tb)
+            return
         frames=[{'file':frame.filename,'line':frame.lineno,'function':frame.name}
                 for frame in traceback.extract_tb(tb) if 'aurora_core' in frame.filename][-12:]
         self.critical_error_requested.emit('erro não tratado',exc_type.__name__,str(exc_value),frames)
         self._previous_excepthook(exc_type,exc_value,tb)
 
     def _uncaught_thread_exception(self,args):
+        if args.exc_type and issubclass(args.exc_type,(KeyboardInterrupt,SystemExit)):
+            self._previous_thread_excepthook(args)
+            return
         frames=[{'file':frame.filename,'line':frame.lineno,'function':frame.name}
                 for frame in traceback.extract_tb(args.exc_traceback) if 'aurora_core' in frame.filename][-12:] if args.exc_traceback else []
         self.critical_error_requested.emit('erro em thread interna',args.exc_type.__name__,str(args.exc_value),frames)
