@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import math
+import json
+import os
 import re
 import time
+from pathlib import Path
 
 from PySide6.QtCore import QTimer
 
@@ -73,12 +76,14 @@ def parse_timer_command(prompt: str):
             return ('timer_cancel', {'timer_id': None})
         match = re.search(r'\b(?:timers?|temporizador(?:es)?)\s+(?:numero\s+)?(\d+)\b', text)
         return ('timer_cancel', {'timer_id': int(match.group(1)) if match else None})
-    if re.search(r'\b(quantos|quais|liste|listar|mostre|mostrar|ver|status|ativos|ativo|falta|faltam|resta|restam|tempo)\b', text):
-        return ('timer_list', {})
     seconds = parse_timer_duration(text)
     if seconds is not None:
         return ('timer_start', {'seconds': seconds})
-    return None
+    # Any remaining explicit timer reference is a request to inspect it. This
+    # keeps short questions such as "tem timer?" out of the language model.
+    if re.search(r'\b(coloque|coloca|crie|cria|inicie|inicia|defina|define|configure|configura|programe|programa|arme|armar)\b', text):
+        return ('timer_missing_duration', {})
+    return ('timer_list', {})
 
 
 def format_duration(seconds: int) -> str:
@@ -94,12 +99,61 @@ def format_duration(seconds: int) -> str:
 class TimerManager:
     """Small in-process countdown timers; no worker thread or external service."""
 
-    def __init__(self, on_finish, parent=None, timer_factory=QTimer):
+    def __init__(self, on_finish, parent=None, timer_factory=QTimer, state_path=None):
         self.on_finish = on_finish
         self.parent = parent
         self.timer_factory = timer_factory
         self._timers = {}
         self._next_id = 1
+        self.state_path = Path(state_path) if state_path else (
+            Path(os.environ.get('XDG_STATE_HOME', Path.home() / '.local/state'))
+            / 'aurora' / 'timers.json'
+        )
+        self._restore()
+
+    def _new_timer(self, timer_id, deadline, seconds):
+        timer = self.timer_factory(self.parent)
+        timer.setSingleShot(True)
+        timer.timeout.connect(lambda identifier=timer_id: self._finish(identifier))
+        self._timers[timer_id] = {'timer': timer, 'deadline': deadline, 'seconds': seconds}
+        remaining_ms = max(1, math.ceil((deadline - time.time()) * 1000))
+        timer.start(remaining_ms)
+
+    def _persist(self):
+        self.state_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        os.chmod(self.state_path.parent, 0o700)
+        state = {
+            'next_id': self._next_id,
+            'timers': [
+                {'id': timer_id, 'deadline': item['deadline'], 'seconds': item['seconds']}
+                for timer_id, item in sorted(self._timers.items())
+            ],
+        }
+        temporary = self.state_path.with_suffix('.tmp')
+        temporary.write_text(json.dumps(state), encoding='utf-8')
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, self.state_path)
+
+    def _restore(self):
+        try:
+            state = json.loads(self.state_path.read_text(encoding='utf-8'))
+            if not isinstance(state, dict) or not isinstance(state.get('timers'), list):
+                raise ValueError('invalid timer state')
+            self._next_id = max(1, int(state.get('next_id', 1)))
+            for item in state['timers']:
+                timer_id = int(item['id'])
+                deadline = float(item['deadline'])
+                seconds = int(item['seconds'])
+                if timer_id < 1 or seconds < 1 or seconds > MAX_TIMER_SECONDS or not math.isfinite(deadline):
+                    continue
+                self._new_timer(timer_id, deadline, seconds)
+                self._next_id = max(self._next_id, timer_id + 1)
+        except FileNotFoundError:
+            return
+        except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+            self._timers.clear()
+            self._next_id = 1
+            print('[timer] saved timer state could not be read; starting empty', flush=True)
 
     def start(self, seconds: int) -> str:
         try:
@@ -110,20 +164,32 @@ class TimerManager:
             return 'O timer precisa ter uma duração entre um segundo e sete dias.'
         timer_id = self._next_id
         self._next_id += 1
-        timer = self.timer_factory(self.parent)
-        timer.setSingleShot(True)
-        timer.timeout.connect(lambda identifier=timer_id: self._finish(identifier))
-        deadline = time.monotonic() + seconds
-        self._timers[timer_id] = {'timer': timer, 'deadline': deadline, 'seconds': seconds}
-        timer.start(seconds * 1000)
+        deadline = time.time() + seconds
+        self._new_timer(timer_id, deadline, seconds)
+        try:
+            self._persist()
+        except OSError:
+            item = self._timers.pop(timer_id)
+            item['timer'].stop()
+            print('[timer] could not save state; timer was not started', flush=True)
+            return 'Não consegui salvar o timer; não o iniciei.'
+        print(f'[timer] started id={timer_id} seconds={seconds}', flush=True)
         return f'Timer {timer_id} iniciado para {format_duration(seconds)}.'
 
     def cancel(self, timer_id=None) -> str:
         if timer_id is None:
+            previous = self._timers.copy()
             timers = list(self._timers.values())
             for item in timers:
                 item['timer'].stop()
             self._timers.clear()
+            try:
+                self._persist()
+            except OSError:
+                self._timers = previous
+                for item in self._timers.values():
+                    item['timer'].start(max(1, math.ceil((item['deadline'] - time.time()) * 1000)))
+                return 'Não consegui salvar o cancelamento; os timers continuam ativos.'
             return 'Cancelei todos os timers ativos.' if timers else 'Não há timers ativos para cancelar.'
         try:
             timer_id = int(timer_id)
@@ -133,12 +199,18 @@ class TimerManager:
         if item is None:
             return f'Não encontrei o timer {timer_id} ativo.'
         item['timer'].stop()
+        try:
+            self._persist()
+        except OSError:
+            self._timers[timer_id] = item
+            item['timer'].start(max(1, math.ceil((item['deadline'] - time.time()) * 1000)))
+            return f'Não consegui salvar o cancelamento; o timer {timer_id} continua ativo.'
         return f'Cancelado o timer {timer_id}.'
 
     def list_active(self) -> str:
         if not self._timers:
             return 'Não há timers ativos.'
-        now = time.monotonic()
+        now = time.time()
         lines = [
             f'Timer {timer_id}: faltam {format_duration(math.ceil(item["deadline"] - now))}.'
             for timer_id, item in sorted(self._timers.items())
@@ -148,4 +220,8 @@ class TimerManager:
     def _finish(self, timer_id):
         item = self._timers.pop(timer_id, None)
         if item is not None:
+            try:
+                self._persist()
+            except OSError:
+                print(f'[timer] could not persist completion id={timer_id}', flush=True)
             self.on_finish(timer_id, item['seconds'])

@@ -31,9 +31,11 @@ def test_timer_commands_are_local_and_support_start_cancel_and_list():
     )
     assert parse_local_command("quais timers estão ativos?") == ("timer_list", {})
     assert parse_local_command("quanto tempo falta no temporizador?") == ("timer_list", {})
+    assert parse_local_command("Aurora, tem timer?") == ("timer_list", {})
+    assert parse_local_command("Aurora, coloque um timer") == ("timer_missing_duration", {})
 
 
-def test_timer_manager_handles_multiple_start_cancel_list_and_completion():
+def test_timer_manager_handles_multiple_start_cancel_list_and_completion(tmp_path):
     finished = []
     made = []
 
@@ -51,7 +53,8 @@ def test_timer_manager_handles_multiple_start_cancel_list_and_completion():
         def stop(self): self.stopped = True
         def fire(self): self.timeout.callback()
 
-    manager = TimerManager(lambda timer_id, seconds: finished.append((timer_id, seconds)), timer_factory=FakeTimer)
+    manager = TimerManager(lambda timer_id, seconds: finished.append((timer_id, seconds)), timer_factory=FakeTimer,
+                           state_path=tmp_path / "timers.json")
     assert manager.start(60) == "Timer 1 iniciado para 1 minuto."
     assert manager.start(90) == "Timer 2 iniciado para 1 minuto e 30 segundos."
     assert made[0].started == 60_000 and made[0].single_shot
@@ -63,7 +66,7 @@ def test_timer_manager_handles_multiple_start_cancel_list_and_completion():
     assert manager.list_active() == "Não há timers ativos."
 
 
-def test_timer_manager_rejects_invalid_duration_and_can_cancel_all():
+def test_timer_manager_rejects_invalid_duration_and_can_cancel_all(tmp_path):
     made = []
 
     class Signal:
@@ -75,12 +78,37 @@ def test_timer_manager_rejects_invalid_duration_and_can_cancel_all():
         def start(self, _milliseconds): pass
         def stop(self): self.stopped = True
 
-    manager = TimerManager(lambda *_args: None, timer_factory=FakeTimer)
+    manager = TimerManager(lambda *_args: None, timer_factory=FakeTimer, state_path=tmp_path / "timers.json")
     assert "entre um segundo" in manager.start(0)
     assert manager.start(10) == "Timer 1 iniciado para 10 segundos."
     assert manager.start(20) == "Timer 2 iniciado para 20 segundos."
     assert manager.cancel() == "Cancelei todos os timers ativos."
     assert all(timer.stopped for timer in made)
+
+
+def test_timer_manager_restores_active_timer_after_restart(tmp_path):
+    made = []
+
+    class Signal:
+        def connect(self, callback): self.callback = callback
+
+    class FakeTimer:
+        def __init__(self, _parent): self.timeout = Signal(); self.started = None; made.append(self)
+        def setSingleShot(self, value): self.single_shot = value
+        def start(self, milliseconds): self.started = milliseconds
+        def stop(self): pass
+
+    state_path = tmp_path / "timers.json"
+    first = TimerManager(lambda *_args: None, timer_factory=FakeTimer, state_path=state_path)
+    assert first.start(60) == "Timer 1 iniciado para 1 minuto."
+
+    restored = TimerManager(lambda *_args: None, timer_factory=FakeTimer, state_path=state_path)
+    assert "Timer 1:" in restored.list_active()
+    assert made[-1].started > 0
+
+    restored.cancel(1)
+    after_cancel = TimerManager(lambda *_args: None, timer_factory=FakeTimer, state_path=state_path)
+    assert after_cancel.list_active() == "Não há timers ativos."
 
 
 def test_timer_duration_speech_is_compact_and_pluralized():
@@ -98,6 +126,7 @@ def test_timer_actions_use_the_local_manager_without_the_model():
     assert actions.execute_action(service, "timer_start", {"seconds": 30}) == "started 30"
     assert actions.execute_action(service, "timer_cancel", {"timer_id": 2}) == "cancelled 2"
     assert actions.execute_action(service, "timer_list", {}) == "active timers"
+    assert actions.execute_action(service, "timer_missing_duration", {}) == "Qual duração você quer para o timer?"
 
 
 def test_timer_completion_announces_locally_and_does_not_reset_an_active_request():

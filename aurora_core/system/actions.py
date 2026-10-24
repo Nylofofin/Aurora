@@ -35,6 +35,7 @@ def execute_action(self,name,args):
     if name=='timer_start': return self.timer_manager.start(args.get('seconds',0))
     if name=='timer_cancel': return self.timer_manager.cancel(args.get('timer_id'))
     if name=='timer_list': return self.timer_manager.list_active()
+    if name=='timer_missing_duration': return 'Qual duração você quer para o timer?'
     if name=='create_file':
         try: return create_user_file(args.get('filename',''),args.get('location',''),args.get('content',''))
         except Exception as exc: return f'Não criei o arquivo: {exc}'
