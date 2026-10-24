@@ -10,6 +10,7 @@ from launchpad.aurora_launchpad_core import (
     MODEL_NAMES,
     OLLAMA_INSTALLER_SHA256,
     assess_environment,
+    inspect_installation,
     copy_existing_memory,
     extract_release_tarball,
     format_size,
@@ -45,6 +46,28 @@ def test_updating_existing_install_does_not_reschedule_first_run_wizard(tmp_path
     config.write_text('{"keep":true}')
     assert not prepare_first_boot_onboarding(config, "boot-1", existing_install=True)
     assert __import__("json").loads(config.read_text()) == {"keep": True}
+
+
+def test_installation_health_detects_stopped_service_as_repairable(tmp_path: Path):
+    app = tmp_path / "aurora"
+    app.mkdir()
+    for name in ("aurora.py", "run.sh", "start-alpha.sh", "install-desktop.sh"):
+        (app / name).write_text("# test", encoding="utf-8")
+    unit = tmp_path / "aurora.service"
+    unit.write_text(
+        f"WorkingDirectory={app}\nExecStart={app}/start-alpha.sh\n",
+        encoding="utf-8",
+    )
+    health = inspect_installation(app, unit, service_active=False)
+    assert health.state == "repairable"
+    assert health.repairable
+    assert any("não está ativo" in detail for detail in health.details)
+
+
+def test_installation_health_rejects_missing_payload(tmp_path: Path):
+    health = inspect_installation(tmp_path / "missing", tmp_path / "aurora.service", service_active=False)
+    assert health.state == "missing"
+    assert not health.repairable
 
 
 def test_environment_accepts_only_fedora_workstation_gnome_wayland():

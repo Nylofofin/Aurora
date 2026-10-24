@@ -78,6 +78,45 @@ class ReleaseRecommendation:
     release: dict
 
 
+@dataclass(frozen=True)
+class InstallationHealth:
+    """Read-only diagnosis of the managed Aurora payload and user service."""
+
+    state: str
+    details: tuple[str, ...]
+    repairable: bool
+
+
+def inspect_installation(managed_app: Path, unit_path: Path, *, service_active: bool) -> InstallationHealth:
+    """Classify an installation without starting processes or changing files."""
+    managed_app = Path(managed_app)
+    unit_path = Path(unit_path)
+    required = ("aurora.py", "run.sh", "start-alpha.sh", "install-desktop.sh")
+    missing = tuple(name for name in required if not (managed_app / name).is_file())
+    details: list[str] = []
+    if not managed_app.is_dir():
+        return InstallationHealth("missing", ("A pasta gerenciada da Aurora não existe.",), False)
+    if missing:
+        details.append("Arquivos ausentes: " + ", ".join(missing) + ".")
+    if not unit_path.is_file():
+        details.append("O serviço aurora.service não está configurado.")
+    else:
+        try:
+            unit = unit_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            unit = ""
+        expected = str(managed_app)
+        if f"WorkingDirectory={expected}" not in unit or f"ExecStart={expected}/start-alpha.sh" not in unit:
+            details.append("O serviço aponta para uma pasta diferente da instalação gerenciada.")
+    if not service_active:
+        details.append("O serviço não está ativo.")
+    if missing:
+        return InstallationHealth("broken", tuple(details), False)
+    if details:
+        return InstallationHealth("repairable", tuple(details), True)
+    return InstallationHealth("healthy", ("Arquivos e serviço estão coerentes.",), True)
+
+
 def assess_environment(
     os_release: dict[str, str],
     env: dict[str, str],

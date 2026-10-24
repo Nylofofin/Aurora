@@ -43,6 +43,7 @@ from aurora_launchpad_core import (
     validate_ollama_installer,
     GITHUB_REPOSITORY,
     MAX_RELEASE_ARCHIVE_BYTES,
+    inspect_installation,
     prepare_first_boot_onboarding,
 )
 
@@ -284,6 +285,17 @@ class Launchpad(Adw.Application):
         self.failed_operation = "install"
         self.last_uninstall_options = (False, False, False)
         self.lines: list[str] = []
+        self.install_health = None
+        self.health_label = None
+        self.repair_button = None
+
+    def _installation_health(self):
+        unit = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home()/".config"))) / "systemd/user/aurora.service"
+        active = subprocess.run(
+            [SYSTEMCTL, "--user", "is-active", "--quiet", "aurora.service"],
+            timeout=5,
+        ).returncode == 0
+        return inspect_installation(MANAGED_APP, unit, service_active=active)
 
     def on_activate(self, _app):
         if self.window:
@@ -294,6 +306,7 @@ class Launchpad(Adw.Application):
         provider.load_from_data(CSS.encode())
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self.report = assess_environment(read_os_release(), dict(os.environ), memory_total_bytes(), disk_free_bytes(Path.home()))
+        self.install_health = self._installation_health()
         self.window = Adw.ApplicationWindow(application=self, title="Aurora Launchpad", default_width=1040, default_height=800)
         self.window.add_css_class("launchpad")
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
@@ -366,6 +379,26 @@ class Launchpad(Adw.Application):
         if not self.ollama and not Path(PKEXEC).is_file():
             status.append(self._label("Ollama não está instalado e pkexec não está disponível para instalá-lo.", "status-bad", True))
         col.append(status)
+
+        health = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        health.add_css_class("panel")
+        health.append(self._label("ESTADO DA INSTALAÇÃO", "caption"))
+        health_title = {
+            "healthy": "Instalação íntegra",
+            "repairable": "Instalação precisa de reparo",
+            "broken": "Instalação incompleta",
+            "missing": "Aurora ainda não instalada",
+        }.get(self.install_health.state, "Estado desconhecido")
+        self.health_label = self._label(health_title, "status-good" if self.install_health.state == "healthy" else "status-warn", True)
+        health.append(self.health_label)
+        for detail in self.install_health.details:
+            health.append(self._label(detail, "subtle", True))
+        if self.install_health.repairable and self.install_health.state != "healthy":
+            self.repair_button = self._button("Parar e reparar", self._repair_install, suggested=True)
+            health.append(self.repair_button)
+        elif self.install_health.state == "healthy":
+            health.append(self._label("Nenhuma correção é necessária agora.", "subtle", True))
+        col.append(health)
 
         section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         section.append(self._label("Versões recomendadas", "title-2"))
@@ -800,6 +833,39 @@ class Launchpad(Adw.Application):
         box.append(view)
         dialog.connect("response", lambda d, _r: d.close())
         dialog.present()
+
+    def _repair_install(self, *_):
+        """Stop the current service and rebuild its user unit without downloading."""
+        if self.repair_button:
+            self.repair_button.set_sensitive(False)
+        self.failed_operation = "repair"
+        self.stack.set_visible_child_name("progress")
+        self.lines.clear()
+        self._append("Parando a Aurora com segurança…")
+        self.cancel_button.set_sensitive(False)
+        threading.Thread(target=self._repair_worker, daemon=True).start()
+
+    def _repair_worker(self):
+        try:
+            self._set_stage("1/3 · Parando a Aurora", "Encerrando o serviço atual antes de corrigir a unidade.", .20)
+            stop = subprocess.run([SYSTEMCTL, "--user", "stop", "aurora.service"], capture_output=True, text=True, timeout=30)
+            if stop.returncode:
+                raise RuntimeError((stop.stderr or stop.stdout or "Não consegui parar aurora.service.").strip())
+            self._set_stage("2/3 · Reinstalando o serviço", "Recriando o arquivo do serviço a partir da instalação gerenciada.", .55)
+            run_process([str(MANAGED_APP / "install-desktop.sh")], self._stream_line, cwd=MANAGED_APP, timeout=180)
+            self._set_stage("3/3 · Confirmando", "Aguardando o serviço ficar ativo.", .85)
+            active = subprocess.run([SYSTEMCTL, "--user", "is-active", "--quiet", "aurora.service"], timeout=15).returncode == 0
+            if not active:
+                raise RuntimeError("O serviço foi reparado, mas não ficou ativo; confira o status e o journal.")
+            GLib.idle_add(self._repair_done)
+        except Exception as exc:
+            GLib.idle_add(self._install_failed, str(exc))
+
+    def _repair_done(self):
+        self._set_stage("Reparo concluído", "A Aurora foi iniciada novamente.", 1.0)
+        self.cancel_button.set_sensitive(True)
+        self.cancel_button.set_label("Fechar janela")
+        return False
 
     def _confirm_uninstall(self, *_):
         dialog = Gtk.Dialog(title="Remover Aurora", transient_for=self.window, modal=True)
