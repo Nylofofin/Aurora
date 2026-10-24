@@ -90,9 +90,9 @@ def launch_application(name, *, background=False):
     app_id=_flatpak_app_id(app) if app else None
     flatpak=shutil.which('flatpak')
     if app_id and flatpak:
-        # gio launch can return success when the desktop request was accepted
-        # even though the Flatpak never starts. Launch the app ID directly;
-        # callers that need readiness must still verify their own endpoint.
+        # Launch the exported app ID directly, then inspect whether the
+        # Flatpak launcher already failed. A live launcher is not proof that a
+        # visible window appeared, so keep the spoken result explicit.
         try:
             env = os.environ.copy()
             # Aurora pins Qt to X11 for its own overlay. OBS's Qt platform
@@ -101,12 +101,19 @@ def launch_application(name, *, background=False):
             if app_id == 'com.obsproject.Studio':
                 env.pop('QT_QPA_PLATFORM', None)
             arguments = ['--minimize-to-tray'] if background and app_id == 'com.obsproject.Studio' else []
-            subprocess.Popen([flatpak,'run',app_id,*arguments],start_new_session=True,
-                             stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL,env=env)
+            process=subprocess.Popen([flatpak,'run',app_id,*arguments],start_new_session=True,
+                                     stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,
+                                     stderr=subprocess.DEVNULL,env=env)
         except OSError:
             return f'Não consegui iniciar {app["name"]} pelo Flatpak.'
-        return f'Solicitei a abertura de {app["name"]}; vou verificar quando o serviço estiver pronto.'
+        poll=getattr(process,'poll',None)
+        try: returncode=poll() if callable(poll) else None
+        except Exception: returncode=None
+        if returncode not in (None,0):
+            return f'O Flatpak encerrou com erro ao tentar iniciar {app["name"]} (código {returncode}).'
+        if returncode==0:
+            return f'O Flatpak aceitou abrir {app["name"]}, mas não confirmei se a janela apareceu.'
+        return f'Iniciei o processo Flatpak de {app["name"]}; ainda não confirmei se a janela apareceu.'
     gio=shutil.which('gio')
     if app and gio:
         try:
