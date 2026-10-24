@@ -1,5 +1,13 @@
 # Histórico de versões
 
+## Aurora Desktop 1.7.1-beta.1 — Gaia BH1 Resumable Local Timers, 2026-10-24 (pré-release beta)
+
+- Revisita a rotina de saúde local: as consultas continuam somente de leitura, paralelas e limitadas; estados parciais e fontes indisponíveis permanecem explícitos.
+- Melhora o controle local de aplicativos Flatpak: falhas imediatas do processo não são anunciadas como sucesso, e início do processo não é confundido com janela visível.
+- Adiciona pausa e retomada por voz para timers persistentes: diga “pause o timer 2”, “retome o timer 2” ou omita o número quando existir exatamente um timer.
+- A pausa conserva o tempo restante mesmo após reinício do serviço; com vários timers ativos, Aurora pede o número em vez de escolher um.
+- Não é uma versão estável; a compatibilidade de Flatpak, PackageKit, firmware e voz ainda depende do sistema local.
+
 ## Aurora Desktop 1.7.0-alpha.1 — Cygnus X-1 Local Health Parallelism, 2026-10-24 (pré-release)
 
 - Experimenta verificações paralelas de PackageKit, Flatpak e firmware na rotina local, limitadas a dois workers e reduzidas ainda mais sob carga ou memória baixa.

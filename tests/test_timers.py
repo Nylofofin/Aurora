@@ -38,6 +38,13 @@ def test_timer_commands_are_local_and_support_start_cancel_and_list():
     ) == ("timer_start", {"seconds": 600})
 
 
+def test_timer_pause_and_resume_commands_are_local_and_accept_timer_id():
+    assert parse_local_command("pausa o timer 2") == ("timer_pause", {"timer_id": 2})
+    assert parse_local_command("suspenda o temporizador") == ("timer_pause", {"timer_id": None})
+    assert parse_local_command("retome o timer número 3") == ("timer_resume", {"timer_id": 3})
+    assert parse_local_command("continue o temporizador") == ("timer_resume", {"timer_id": None})
+
+
 def test_timer_manager_handles_multiple_start_cancel_list_and_completion(tmp_path):
     finished = []
     made = []
@@ -114,6 +121,94 @@ def test_timer_manager_restores_active_timer_after_restart(tmp_path):
     assert after_cancel.list_active() == "Não há timers ativos."
 
 
+def test_timer_manager_pause_resume_persists_and_restores_paused_state(tmp_path, monkeypatch):
+    made = []
+
+    class Signal:
+        def connect(self, callback): self.callback = callback
+
+    class FakeTimer:
+        def __init__(self, _parent): self.timeout = Signal(); self.started = None; self.stopped = False; made.append(self)
+        def setSingleShot(self, _value): pass
+        def start(self, milliseconds): self.started = milliseconds; self.stopped = False
+        def stop(self): self.stopped = True
+
+    now = [1000.0]
+    monkeypatch.setattr("aurora_core.system.timers.time.time", lambda: now[0])
+    state_path = tmp_path / "timers.json"
+    first = TimerManager(lambda *_args: None, timer_factory=FakeTimer, state_path=state_path)
+    assert first.start(60) == "Timer 1 iniciado para 1 minuto."
+    now[0] += 12.2
+    assert first.pause() == "Pausei o timer 1; faltavam 48 segundos."
+    assert made[0].stopped
+    assert "Timer 1: pausado, faltam 48 segundos." == first.list_active()
+
+    restored = TimerManager(lambda *_args: None, timer_factory=FakeTimer, state_path=state_path)
+    assert "Timer 1: pausado, faltam 48 segundos." == restored.list_active()
+    assert made[-1].started is None
+    now[0] += 500
+    assert restored.resume(1) == "Retomei o timer 1 por mais 48 segundos."
+    assert made[-1].started == 48_000
+    now[0] += 10
+    assert restored.pause(1) == "Pausei o timer 1; faltavam 38 segundos."
+
+
+def test_timer_pause_requires_unambiguous_timer_and_resume_requires_paused_state(tmp_path):
+    class Signal:
+        def connect(self, _callback): pass
+
+    class FakeTimer:
+        def __init__(self, _parent): self.timeout = Signal()
+        def setSingleShot(self, _value): pass
+        def start(self, _milliseconds): pass
+        def stop(self): pass
+
+    manager = TimerManager(lambda *_args: None, timer_factory=FakeTimer, state_path=tmp_path / "timers.json")
+    assert manager.pause() == "Não há timers ativos."
+    manager.start(60); manager.start(90)
+    assert manager.pause() == "Há vários timers ativos; diga o número do timer."
+    assert manager.resume(1) == "O timer 1 já está em andamento."
+    assert "Pausei o timer 1" in manager.pause(1)
+    assert manager.resume() == "Há vários timers ativos; diga o número do timer."
+
+
+def test_timer_pause_and_resume_roll_back_when_state_cannot_be_saved(tmp_path, monkeypatch):
+    made = []
+
+    class Signal:
+        def connect(self, _callback): pass
+
+    class FakeTimer:
+        def __init__(self, _parent): self.timeout = Signal(); self.started = None; self.stopped = False; made.append(self)
+        def setSingleShot(self, _value): pass
+        def start(self, milliseconds): self.started = milliseconds; self.stopped = False
+        def stop(self): self.stopped = True
+
+    monkeypatch.setattr("aurora_core.system.timers.time.time", lambda: 1000.0)
+    manager = TimerManager(lambda *_args: None, timer_factory=FakeTimer, state_path=tmp_path / "timers.json")
+    manager.start(60)
+    monkeypatch.setattr(manager, "_persist", lambda: (_ for _ in ()).throw(OSError("disk full")))
+    assert "continua ativo" in manager.pause(1)
+    assert not made[0].stopped and manager._timers[1]["paused_remaining"] is None
+
+    monkeypatch.undo()
+    assert "Pausei o timer 1" in manager.pause(1)
+    monkeypatch.setattr(manager, "_persist", lambda: (_ for _ in ()).throw(OSError("disk full")))
+    assert "continua pausado" in manager.resume(1)
+    assert made[0].stopped and manager._timers[1]["paused_remaining"] is not None
+
+
+def test_corrupt_nonfinite_paused_timer_state_does_not_break_startup(tmp_path):
+    state_path = tmp_path / "timers.json"
+    state_path.write_text(
+        '{"next_id": 2, "timers": [{"id": 1, "deadline": 1000, '
+        '"seconds": 60, "paused_remaining": 1e999}]}',
+        encoding="utf-8",
+    )
+    manager = TimerManager(lambda *_args: None, state_path=state_path)
+    assert manager.list_active() == "Não há timers ativos."
+
+
 def test_timer_duration_speech_is_compact_and_pluralized():
     assert format_duration(3661) == "1 hora e 1 minuto e 1 segundo"
     assert format_duration(120) == "2 minutos"
@@ -124,11 +219,15 @@ def test_timer_actions_use_the_local_manager_without_the_model():
         def start(self, seconds): return f"started {seconds}"
         def cancel(self, timer_id): return f"cancelled {timer_id}"
         def list_active(self): return "active timers"
+        def pause(self, timer_id): return f"paused {timer_id}"
+        def resume(self, timer_id): return f"resumed {timer_id}"
 
     service = type("Service", (), {"timer_manager": Manager()})()
     assert actions.execute_action(service, "timer_start", {"seconds": 30}) == "started 30"
     assert actions.execute_action(service, "timer_cancel", {"timer_id": 2}) == "cancelled 2"
     assert actions.execute_action(service, "timer_list", {}) == "active timers"
+    assert actions.execute_action(service, "timer_pause", {"timer_id": 1}) == "paused 1"
+    assert actions.execute_action(service, "timer_resume", {"timer_id": 1}) == "resumed 1"
 
 
 def test_timer_completion_announces_locally_and_does_not_reset_an_active_request():

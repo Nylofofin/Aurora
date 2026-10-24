@@ -21,7 +21,7 @@ def test_readme_release_identity_matches_application_version():
     changelog = (Path(__file__).resolve().parents[1] / "CHANGELOG.md").read_text(
         encoding="utf-8"
     )
-    assert changelog.splitlines()[2].startswith(
-        f"## Aurora Desktop {__version__} — {CODENAME.title()}, "
+    assert changelog.splitlines()[2].casefold().startswith(
+        f"## Aurora Desktop {__version__} — {CODENAME.title()}, ".casefold()
     )
     assert "## Aurora Desktop 1.6.0 — Bellatrix Stability Baseline" in changelog

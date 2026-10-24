@@ -36,6 +36,8 @@ def execute_action(self,name,args):
     if name=='timer_start': return self.timer_manager.start(args.get('seconds',0))
     if name=='timer_cancel': return self.timer_manager.cancel(args.get('timer_id'))
     if name=='timer_list': return self.timer_manager.list_active()
+    if name=='timer_pause': return self.timer_manager.pause(args.get('timer_id'))
+    if name=='timer_resume': return self.timer_manager.resume(args.get('timer_id'))
     if name=='agenda_add':
         ts = parse_datetime(str(args.get('when', '')))
         return agenda_add(str(args.get('title', '')), ts or 0, str(args.get('notes', '')))

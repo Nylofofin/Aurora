@@ -71,11 +71,18 @@ def parse_timer_command(prompt: str):
     text = normalize_words(prompt)
     if not re.search(r'\b(timers?|temporizador(?:es)?|cronometros?|contagem regressiva)\b', text):
         return None
+    timer_id = None
+    match = re.search(r'\b(?:timers?|temporizador(?:es)?)\s+(?:numero\s+)?(\d+)\b', text)
+    if match:
+        timer_id = int(match.group(1))
+    if re.search(r'\b(pause|pausa|pausar|suspenda|suspender|suspende)\b', text):
+        return ('timer_pause', {'timer_id': timer_id})
+    if re.search(r'\b(retome|retomar|retoma|continue|continuar|resume)\b', text):
+        return ('timer_resume', {'timer_id': timer_id})
     if re.search(r'\b(cancele|cancelar|cancela|interrompa|interromper|interrompe|pare|parar|encerre|encerrar)\b', text):
         if re.search(r'\b(todos|todas|geral|gerais)\b', text):
             return ('timer_cancel', {'timer_id': None})
-        match = re.search(r'\b(?:timers?|temporizador(?:es)?)\s+(?:numero\s+)?(\d+)\b', text)
-        return ('timer_cancel', {'timer_id': int(match.group(1)) if match else None})
+        return ('timer_cancel', {'timer_id': timer_id})
     seconds = parse_timer_duration(text)
     if seconds is not None:
         return ('timer_start', {'seconds': seconds})
@@ -114,13 +121,15 @@ class TimerManager:
         )
         self._restore()
 
-    def _new_timer(self, timer_id, deadline, seconds):
+    def _new_timer(self, timer_id, deadline, seconds, paused_remaining=None):
         timer = self.timer_factory(self.parent)
         timer.setSingleShot(True)
         timer.timeout.connect(lambda identifier=timer_id: self._finish(identifier))
-        self._timers[timer_id] = {'timer': timer, 'deadline': deadline, 'seconds': seconds}
-        remaining_ms = max(1, math.ceil((deadline - time.time()) * 1000))
-        timer.start(remaining_ms)
+        self._timers[timer_id] = {'timer': timer, 'deadline': deadline, 'seconds': seconds,
+                                  'paused_remaining': paused_remaining}
+        if paused_remaining is None:
+            remaining_ms = max(1, math.ceil((deadline - time.time()) * 1000))
+            timer.start(remaining_ms)
 
     def _persist(self):
         self.state_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -128,7 +137,9 @@ class TimerManager:
         state = {
             'next_id': self._next_id,
             'timers': [
-                {'id': timer_id, 'deadline': item['deadline'], 'seconds': item['seconds']}
+                {'id': timer_id, 'deadline': item['deadline'], 'seconds': item['seconds'],
+                 **({'paused_remaining': item['paused_remaining']}
+                    if item['paused_remaining'] is not None else {})}
                 for timer_id, item in sorted(self._timers.items())
             ],
         }
@@ -149,11 +160,16 @@ class TimerManager:
                 seconds = int(item['seconds'])
                 if timer_id < 1 or seconds < 1 or seconds > MAX_TIMER_SECONDS or not math.isfinite(deadline):
                     continue
-                self._new_timer(timer_id, deadline, seconds)
+                paused_remaining = item.get('paused_remaining')
+                if paused_remaining is not None:
+                    paused_remaining = int(paused_remaining)
+                    if not 1 <= paused_remaining <= MAX_TIMER_SECONDS:
+                        continue
+                self._new_timer(timer_id, deadline, seconds, paused_remaining)
                 self._next_id = max(self._next_id, timer_id + 1)
         except FileNotFoundError:
             return
-        except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        except (OSError, ValueError, TypeError, OverflowError, KeyError, json.JSONDecodeError):
             self._timers.clear()
             self._next_id = 1
             print('[timer] saved timer state could not be read; starting empty', flush=True)
@@ -191,7 +207,8 @@ class TimerManager:
             except OSError:
                 self._timers = previous
                 for item in self._timers.values():
-                    item['timer'].start(max(1, math.ceil((item['deadline'] - time.time()) * 1000)))
+                    if item['paused_remaining'] is None:
+                        item['timer'].start(max(1, math.ceil((item['deadline'] - time.time()) * 1000)))
                 return 'Não consegui salvar o cancelamento; os timers continuam ativos.'
             return 'Cancelei todos os timers ativos.' if timers else 'Não há timers ativos para cancelar.'
         try:
@@ -206,18 +223,76 @@ class TimerManager:
             self._persist()
         except OSError:
             self._timers[timer_id] = item
-            item['timer'].start(max(1, math.ceil((item['deadline'] - time.time()) * 1000)))
+            if item['paused_remaining'] is None:
+                item['timer'].start(max(1, math.ceil((item['deadline'] - time.time()) * 1000)))
             return f'Não consegui salvar o cancelamento; o timer {timer_id} continua ativo.'
         return f'Cancelado o timer {timer_id}.'
+
+    def _resolve_timer(self, timer_id):
+        if timer_id is not None:
+            try:
+                timer_id = int(timer_id)
+            except (TypeError, ValueError, OverflowError):
+                return None, 'Diga o número do timer que deseja alterar.'
+            if timer_id not in self._timers:
+                return None, f'Não encontrei o timer {timer_id} ativo.'
+            return timer_id, None
+        if not self._timers:
+            return None, 'Não há timers ativos.'
+        if len(self._timers) > 1:
+            return None, 'Há vários timers ativos; diga o número do timer.'
+        return next(iter(self._timers)), None
+
+    def pause(self, timer_id=None) -> str:
+        timer_id, error = self._resolve_timer(timer_id)
+        if error:
+            return error
+        item = self._timers[timer_id]
+        if item['paused_remaining'] is not None:
+            return f'O timer {timer_id} já está pausado.'
+        remaining = max(1, math.ceil(item['deadline'] - time.time()))
+        item['timer'].stop()
+        item['paused_remaining'] = remaining
+        try:
+            self._persist()
+        except OSError:
+            item['paused_remaining'] = None
+            item['timer'].start(max(1, math.ceil((item['deadline'] - time.time()) * 1000)))
+            return f'Não consegui salvar a pausa; o timer {timer_id} continua ativo.'
+        return f'Pausei o timer {timer_id}; faltavam {format_duration(remaining)}.'
+
+    def resume(self, timer_id=None) -> str:
+        timer_id, error = self._resolve_timer(timer_id)
+        if error:
+            return error
+        item = self._timers[timer_id]
+        remaining = item['paused_remaining']
+        if remaining is None:
+            return f'O timer {timer_id} já está em andamento.'
+        old_deadline = item['deadline']
+        item['deadline'] = time.time() + remaining
+        item['paused_remaining'] = None
+        item['timer'].start(max(1, math.ceil(remaining * 1000)))
+        try:
+            self._persist()
+        except OSError:
+            item['timer'].stop()
+            item['deadline'] = old_deadline
+            item['paused_remaining'] = remaining
+            return f'Não consegui salvar a retomada; o timer {timer_id} continua pausado.'
+        return f'Retomei o timer {timer_id} por mais {format_duration(remaining)}.'
 
     def list_active(self) -> str:
         if not self._timers:
             return 'Não há timers ativos.'
         now = time.time()
-        lines = [
-            f'Timer {timer_id}: faltam {format_duration(math.ceil(item["deadline"] - now))}.'
-            for timer_id, item in sorted(self._timers.items())
-        ]
+        lines = []
+        for timer_id, item in sorted(self._timers.items()):
+            remaining = item['paused_remaining']
+            if remaining is not None:
+                lines.append(f'Timer {timer_id}: pausado, faltam {format_duration(remaining)}.')
+            else:
+                lines.append(f'Timer {timer_id}: faltam {format_duration(math.ceil(item["deadline"] - now))}.')
         return ' '.join(lines)
 
     def _finish(self, timer_id):
