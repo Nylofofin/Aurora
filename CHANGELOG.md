@@ -1,5 +1,11 @@
 # Histórico de versões
 
+## Aurora Desktop 1.8.2 — Sirius Orb Motion, 2026-10-24 (release estável)
+
+- Reimagina o movimento da superfície da bolha com refração e reflexo contínuos.
+- Alinha as prévias animadas dos três estilos do onboarding à bolha real.
+- Preserva a seleção de estilo, voz e perfil de ativação durante a personalização.
+
 ## Aurora Desktop 1.8.1 — Sirius Wake Profile, 2026-10-24 (patch estável)
 
 - Sincroniza a instalação local com o perfil de wake word personalizado.
