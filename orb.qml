@@ -68,8 +68,13 @@ Item {
         transformOrigin: Item.Center
         property real breathing: 0.0
         property real sheenTravel: 0.0
+        property real sway: 0.0
         scale: 0.99 + breathing * 0.012 + root.activeEnergy * 0.026
-        Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+        // A restrained tilt and counter-tilt sell a living glass surface while
+        // keeping the silhouette perfectly round to the eye.
+        rotation: sway * 1.15 + root.activeEnergy * 1.4
+        Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+        Behavior on rotation { NumberAnimation { duration: 260; easing.type: Easing.InOutSine } }
 
         SequentialAnimation on breathing {
             running: root.motionEnabled
@@ -102,6 +107,12 @@ Item {
                     : root.mode === "thinking" || root.mode === "preparing" ? 3600 : 5600
                 easing.type: Easing.InOutSine
             }
+        }
+        SequentialAnimation on sway {
+            running: root.motionEnabled
+            loops: Animation.Infinite
+            NumberAnimation { from: -1; to: 1; duration: 3900; easing.type: Easing.InOutSine }
+            NumberAnimation { from: 1; to: -1; duration: 4300; easing.type: Easing.InOutSine }
         }
 
         // Pearlescent shell with a style-specific tonal gradient.

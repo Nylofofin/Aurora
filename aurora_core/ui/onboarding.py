@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 import math
 import time
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QThread, Signal, QTimer, QUrl
+from PySide6.QtCore import (QEasingCurve, QParallelAnimationGroup, QPropertyAnimation,
+                            QPoint, Qt, QThread, Signal, QTimer, QUrl)
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QRadialGradient, QLinearGradient, QPen
 from PySide6.QtMultimedia import QSoundEffect
 from PySide6.QtWidgets import (
@@ -38,7 +39,9 @@ class _AnimatedOrb(QWidget):
         self._timer.start()
 
     def _tick(self):
-        self.phase = (self.phase + 0.018) % (math.tau)
+        # 60/30 Hz friendly motion: two incommensurate waves keep the light
+        # field moving continuously without making the orb wobble or jump.
+        self.phase = (self.phase + 0.026) % (math.tau)
         self.update()
 
     def paintEvent(self, _event):
@@ -212,39 +215,25 @@ class PersonalizationWizard(QDialog):
         self.setWindowTitle("Personalizar a Aurora")
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
         self.setModal(True)
-        self.setMinimumSize(900, 650)
-        self.resize(980, 700)
-        self.setStyleSheet("""
-            QDialog { background:#f3f2f8; color:#1b1b22; }
-            QLabel#eyebrow { color:#625b70; font-size:11px; font-weight:700; letter-spacing:2px; }
-            QLabel#title { color:#1c1b20; font-size:27px; font-weight:700; }
-            QLabel#subtitle { color:#5e5b66; font-size:14px; }
-            QLabel#cardTitle { color:#25232b; font-size:16px; font-weight:700; }
-            QLabel#cardDetail { color:#696673; font-size:12px; }
-            QLabel#voiceGlyph { color:#7960ad; font-size:38px; font-weight:600; }
-            QFrame#panel { background:#fff; border:1px solid #e5e2ec; border-radius:24px; }
-            QFrame#choiceCard { background:#fff; border:1px solid #e2dfe9; border-radius:20px; }
-            QFrame#choiceCard[selected="true"] { background:#faf8ff; border:2px solid #7052a8; }
-            QLineEdit { background:#fbfaff; border:1px solid #d7d3df; border-radius:13px; padding:13px 15px; min-height:24px; color:#25232b; selection-background-color:#ddd3f1; }
-            QLineEdit:focus { background:#fff; border:2px solid #7052a8; padding:12px 14px; }
-            QPushButton { background:#eeecf3; color:#302e37; border:0; border-radius:13px; padding:12px 18px; font-weight:600; }
-            QPushButton:hover { background:#e5e1ed; }
-            QPushButton#primary { background:#6750a4; color:#fff; padding-left:23px; padding-right:23px; }
-            QPushButton#primary:hover { background:#7962b4; }
-            QPushButton#selectStyle, QPushButton#previewVoice { background:#f0edf6; border:1px solid #e3deec; }
-            QPushButton#selectStyle:hover, QPushButton#previewVoice:hover { background:#e8e2f2; }
-            QCheckBox, QRadioButton { spacing:9px; color:#494451; }
-            QRadioButton::indicator { width:18px; height:18px; }
-        """)
+        self.setMinimumSize(760, 560)
+        self.resize(900, 620)
+        self._dark_theme = self._system_prefers_dark()
+        self.setStyleSheet(self._stylesheet(self._dark_theme))
+
+        # Keep the wizard compact on small screens and let the platform palette
+        # decide whether text and surfaces should be light or dark.
+        self._transition_group = None
+        self._selected_voice = str(cfg.get("tts_voice", SUPPORTED_VOICES[0][0]))
+
         for name in ("select", "step", "success", "error"):
             effect = QSoundEffect(self)
             effect.setSource(QUrl.fromLocalFile(str(__import__("pathlib").Path(__file__).resolve().parents[2] / "assets" / "audio" / f"{name}.wav")))
-            effect.setVolume(0.22 if name != "error" else 0.30)
+            effect.setVolume(0.16 if name in {"select", "step"} else (0.22 if name != "error" else 0.30))
             self._sfx[name] = effect
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(38, 30, 38, 28)
-        root.setSpacing(18)
+        root.setContentsMargins(30, 24, 30, 22)
+        root.setSpacing(14)
         self.eyebrow = QLabel("AURORA · PRIMEIRA CONFIGURAÇÃO")
         self.eyebrow.setObjectName("eyebrow")
         root.addWidget(self.eyebrow)
@@ -258,7 +247,6 @@ class PersonalizationWizard(QDialog):
         root.addWidget(self.stack, 1)
         footer = QHBoxLayout()
         self.step_label = QLabel("Boas-vindas  ·  1 de 4")
-        self.step_label.setStyleSheet("color:#746d7d;font-size:12px")
         footer.addWidget(self.step_label)
         footer.addStretch(1)
         self.back_button = QPushButton("Voltar")
@@ -276,6 +264,65 @@ class PersonalizationWizard(QDialog):
         self._current_page = 0
         self._set_page(0, animated=False)
         self._center()
+
+    def _system_prefers_dark(self):
+        from PySide6.QtWidgets import QApplication
+        palette = QApplication.instance().palette()
+        return palette.color(palette.ColorRole.Window).lightness() < 128
+
+    @staticmethod
+    def _stylesheet(dark):
+        if dark:
+            return """
+            QDialog { background:#111117; color:#f5f2fa; }
+            QLabel#eyebrow { color:#b6acc8; font-size:11px; font-weight:700; letter-spacing:2px; }
+            QLabel#title { color:#faf8ff; font-size:25px; font-weight:700; }
+            QLabel#subtitle { color:#c5bfce; font-size:14px; }
+            QLabel#cardTitle { color:#f4f0fa; font-size:16px; font-weight:700; }
+            QLabel#cardDetail { color:#b5afbd; font-size:12px; }
+            QLabel#voiceGlyph { color:#c6a8f2; font-size:38px; font-weight:600; }
+            QFrame#panel { background:#1b1a22; border:1px solid #35313f; border-radius:22px; }
+            QFrame#choiceCard { background:#211f29; border:1px solid #3a3546; border-radius:18px; }
+            QFrame#choiceCard[selected="true"] { background:#292238; border:2px solid #b89be9; }
+            QLineEdit { background:#24212d; border:1px solid #514961; border-radius:12px; padding:12px 14px; min-height:24px; color:#faf8ff; selection-background-color:#5d477e; }
+            QLineEdit:focus { background:#2a2634; border:2px solid #b89be9; padding:11px 13px; }
+            QPushButton { background:#302d38; color:#f2eff7; border:0; border-radius:12px; padding:11px 17px; font-weight:600; }
+            QPushButton:hover { background:#3d3848; }
+            QPushButton#primary { background:#8b6bc2; color:#fff; padding-left:22px; padding-right:22px; }
+            QPushButton#primary:hover { background:#a080d8; }
+            QPushButton#selectStyle, QPushButton#previewVoice { background:#2d2937; border:1px solid #4a4258; }
+            QPushButton#selectStyle:hover, QPushButton#previewVoice:hover { background:#3b3449; }
+            QCheckBox, QRadioButton { spacing:9px; color:#d1cbd9; }
+            QRadioButton::indicator { width:18px; height:18px; }
+            """
+        return """
+            QDialog { background:#f3f2f8; color:#1b1b22; }
+            QLabel#eyebrow { color:#625b70; font-size:11px; font-weight:700; letter-spacing:2px; }
+            QLabel#title { color:#1c1b20; font-size:25px; font-weight:700; }
+            QLabel#subtitle { color:#5e5b66; font-size:14px; }
+            QLabel#cardTitle { color:#25232b; font-size:16px; font-weight:700; }
+            QLabel#cardDetail { color:#696673; font-size:12px; }
+            QLabel#voiceGlyph { color:#7960ad; font-size:38px; font-weight:600; }
+            QFrame#panel { background:#fff; border:1px solid #e5e2ec; border-radius:24px; }
+            QFrame#choiceCard { background:#fff; border:1px solid #e2dfe9; border-radius:20px; }
+            QFrame#choiceCard[selected="true"] { background:#faf8ff; border:2px solid #7052a8; }
+            QLineEdit { background:#fbfaff; border:1px solid #d7d3df; border-radius:13px; padding:13px 15px; min-height:24px; color:#25232b; selection-background-color:#ddd3f1; }
+            QLineEdit:focus { background:#fff; border:2px solid #7052a8; padding:12px 14px; }
+            QPushButton { background:#eeecf3; color:#302e37; border:0; border-radius:13px; padding:12px 18px; font-weight:600; }
+            QPushButton:hover { background:#e5e1ed; }
+            QPushButton#primary { background:#6750a4; color:#fff; padding-left:23px; padding-right:23px; }
+            QPushButton#primary:hover { background:#7962b4; }
+            QPushButton#selectStyle, QPushButton#previewVoice { background:#f0edf6; border:1px solid #e3deec; }
+            QPushButton#selectStyle:hover, QPushButton#previewVoice:hover { background:#e8e2f2; }
+            QCheckBox, QRadioButton { spacing:9px; color:#494451; }
+            QRadioButton::indicator { width:18px; height:18px; }
+            """
+
+    def _apply_system_theme(self):
+        dark = self._system_prefers_dark()
+        if dark != self._dark_theme:
+            self._dark_theme = dark
+            self.setStyleSheet(self._stylesheet(dark))
 
     def _panel(self, title, subtitle=""):
         frame = QFrame()
@@ -426,6 +473,7 @@ class PersonalizationWizard(QDialog):
 
     def showEvent(self, event):
         super().showEvent(event)
+        self._apply_system_theme()
 
     def done(self, result):
         for worker in (getattr(self, "_voice_worker", None), getattr(self, "_name_worker", None)):
@@ -435,6 +483,7 @@ class PersonalizationWizard(QDialog):
         super().done(result)
 
     def _set_page(self, page, animated=True):
+        previous = self._current_page
         self._current_page = page
         self.stack.setCurrentIndex(page)
         self.back_button.setVisible(page > 0 and page < 4)
@@ -444,14 +493,26 @@ class PersonalizationWizard(QDialog):
         self.next_button.setText(("Começar", "Próximo", "Próximo", "Finalizar", "")[page])
         if animated:
             effect = self.stack.graphicsEffect()
-            effect.setOpacity(0.12)
-            animation = QPropertyAnimation(effect, b"opacity", self)
-            animation.setDuration(320)
-            animation.setStartValue(0.12)
-            animation.setEndValue(1.0)
-            animation.setEasingCurve(QEasingCurve.Type.OutCubic)
-            self._page_animation = animation
-            animation.start()
+            effect.setOpacity(0.0)
+            fade = QPropertyAnimation(effect, b"opacity", self)
+            fade.setDuration(420)
+            fade.setStartValue(0.0)
+            fade.setEndValue(1.0)
+            fade.setEasingCurve(QEasingCurve.Type.OutCubic)
+            # A small directional glide makes the page change feel connected
+            # instead of replacing the entire panel in one frame.
+            origin = self.stack.pos()
+            direction = 1 if page >= previous else -1
+            slide = QPropertyAnimation(self.stack, b"pos", self)
+            slide.setDuration(420)
+            slide.setStartValue(origin + QPoint(18 * direction, 0))
+            slide.setEndValue(origin)
+            slide.setEasingCurve(QEasingCurve.Type.OutCubic)
+            group = QParallelAnimationGroup(self)
+            group.addAnimation(fade)
+            group.addAnimation(slide)
+            self._transition_group = group
+            group.start()
             self._play_sfx("step")
 
     def _set_name_checked(self, name, ok, message):
@@ -476,8 +537,13 @@ class PersonalizationWizard(QDialog):
             self._name_worker.start()
             return
         if self._current_page < 3:
+            if self._current_page == 2 and not self._selected_style:
+                return
             self._set_page(self._current_page + 1)
         elif self._current_page == 3:
+            if not getattr(self, "_selected_voice", None):
+                self.voice_status.setText("Escolha uma voz para continuar.")
+                return
             self._apply()
 
     def back(self):
