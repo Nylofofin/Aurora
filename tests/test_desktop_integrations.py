@@ -12,7 +12,6 @@ import aurora
 import aurora_integrations as integrations
 import aurora_core.system.obs as obs
 import aurora_core.system.screenshot as screenshot
-import aurora_core.system.spotify as spotify
 import aurora_core.service as service_module
 import aurora_core.system.actions as system_actions
 import aurora_core.system.apps as apps_module
@@ -462,10 +461,6 @@ def test_window_manager_applies_action_once_to_active_window(monkeypatch):
 
 
 def test_local_fast_router_handles_media_capture_and_obs_requests():
-    assert aurora.parse_local_command("toca a música Dreams") == (
-        "spotify_play", {"query": "dreams"}
-    )
-    assert aurora.parse_local_command("conectar Spotify")[0] == "spotify_authorize"
     assert aurora.parse_local_command("faça uma captura de tela")[0] == "take_screenshot"
     assert aurora.parse_local_command("comece a gravar minha tela") == (
         "obs_record", {"action": "start"}
@@ -551,18 +546,6 @@ def test_action_log_permissions_are_private(monkeypatch, tmp_path):
     root = tmp_path / "aurora"
     assert stat.S_IMODE(root.stat().st_mode) == 0o700
     assert stat.S_IMODE((root / "actions.jsonl").stat().st_mode) == 0o600
-
-
-def test_spotify_pkce_challenge_is_url_safe():
-    challenge = spotify.spotify_code_challenge("A" * 64)
-    assert len(challenge) == 43
-    assert "+" not in challenge and "/" not in challenge and "=" not in challenge
-
-
-def test_spotify_reports_missing_local_configuration_without_network(monkeypatch):
-    monkeypatch.setattr(spotify, "_append_action_log", lambda *_args, **_kwargs: None)
-    assert "spotify_client_id" in spotify.start_spotify_authorization("", lambda _url: True)
-    assert "não conectado" in spotify.play_spotify_track("Faixa", "").casefold()
 
 
 def test_obs_is_loopback_only_and_never_claims_unconfirmed_success(monkeypatch):

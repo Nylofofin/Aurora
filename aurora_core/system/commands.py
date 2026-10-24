@@ -89,13 +89,6 @@ def parse_local_command(prompt):
     if re.search(r'\b(?:e(?: depois| tambem| entao)?|depois|em seguida|entao)\s+(?:abra|abrir|abre|feche|fechar|fecha|maximize|maximizar|minimize|minimizar|aumente|aumentar|diminua|diminuir|crie|criar|salve|salvar|mude|coloque|ajuste)\b',text): return None
     if re.search(r'\b(hardware|especificacoes? (?:do|deste) (?:meu )?(?:pc|computador)|configuracoes? do sistema|componentes? do (?:meu )?(?:pc|computador)|quanto de ram|qual (?:e )?(?:meu )?(?:processador|placa de video|gpu))\b',text):
         return ('system_info',{})
-    if re.search(r'\b(?:conectar|conecte|conecta|autorizar|autorize|vincular|vincule)\s+(?:o\s+)?spotify\b',text):
-        return ('spotify_authorize',{})
-    music=re.search(r'^\s*(?:por favor\s+)?(?:toque|toca|tocar|quero ouvir|coloque para tocar|coloca pra tocar|bote para tocar|bota pra tocar)\s+(?:a musica\s+)?(.+?)\s*$',text)
-    if music:
-        track=music.group(1).strip(' .,!?:;')
-        if track and track not in ('uma musica','musica'):
-            return ('spotify_play',{'query':track})
     if re.search(r'\b(?:tire|tira|faca|faca um|faca uma|captura|capture|print|screenshot)\b',text) and re.search(r'\b(?:print|screenshot|captura|captura de tela|tela)\b',text):
         return ('take_screenshot',{})
     if re.search(r'\b(?:pare|parar|para|encerre|encerrar|finalize|finalizar|interrompa|interromper|interrompe)\b.*\b(?:gravacao|gravar|gravando|registro)\b',text):

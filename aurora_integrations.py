@@ -17,11 +17,6 @@ from aurora_core.system.screenshot import (
     _portal_response_slot, _recover_gnome_saved_screenshot, capture_screenshot,
     save_screenshot_uri, screenshot_parent_identifier, unique_screenshot_path,
 )
-from aurora_core.system.spotify import (
-    SPOTIFY_REDIRECT_URI, SPOTIFY_SCOPES, _spotify_access_token,
-    _spotify_request, _store_token, _token_path, play_spotify_track,
-    spotify_code_challenge, start_spotify_authorization,
-)
 
 def site_url_from_request(prompt: str) -> str | None:
     """Return a safe HTTP(S) URL only when speech clearly asks for a site."""

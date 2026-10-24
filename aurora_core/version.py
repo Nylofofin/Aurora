@@ -3,8 +3,8 @@ from __future__ import annotations
 
 """Release identity for the Aurora local desktop build."""
 
-__version__ = "1.8.2"
+__version__ = "1.8.3"
 
-CODENAME = "SIRIUS ORB MOTION"
+CODENAME = "SIRIUS CLEAN DESKTOP"
 
-BUILD_ID = "aurora-desktop-1.8.2-sirius-orb-motion"
+BUILD_ID = "aurora-desktop-1.8.3-sirius-clean-desktop"

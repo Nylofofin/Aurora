@@ -16,7 +16,7 @@ def requires_user_approval(name: str, args: dict | None = None,
         or (name == "manage_window" and args.get("action") == "close")
         or (name == "obs_record" and (
             args.get("action") == "start" or not explicit_user_request))
-        or (name in {"take_screenshot", "open_url", "spotify_play"}
+        or (name in {"take_screenshot", "open_url"}
             and not explicit_user_request)
         or name in {"focus_accessible_window", "type_accessible_text"}
     )

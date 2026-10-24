@@ -16,7 +16,7 @@ from ..web.pipeline import search_public_web
 from ..web.orchestra import local_parallel_tool_calls, local_worker_limit
 
 ACTION_TOOL_NAMES = {
-    'open_url', 'take_screenshot', 'spotify_play', 'obs_record',
+    'open_url', 'take_screenshot', 'obs_record',
     'open_application', 'close_application', 'manage_window',
     'inspect_accessible_windows', 'focus_accessible_window',
     'type_accessible_text', 'volume_control', 'get_system_info',
@@ -40,7 +40,7 @@ def _tool_progress_label(name):
     labels={
         'web_search':'Consultando a web','read_web_page':'Lendo página',
         'open_url':'Abrindo site','take_screenshot':'Capturando tela',
-        'spotify_play':'Preparando reprodução','obs_record':'Controlando OBS',
+        'obs_record':'Controlando OBS',
         'open_application':'Abrindo aplicativo','close_application':'Encerrando aplicativo',
         'manage_window':'Ajustando janela','inspect_accessible_windows':'Lendo controles da janela',
         'focus_accessible_window':'Focando controle','type_accessible_text':'Digitando texto',
@@ -303,7 +303,7 @@ class Inference(QThread):
             except Exception as exc: output=f'Busca não concluída: {exc}'
             self.search.emit(query,output)
             return output
-        if name not in ('close_application','manage_window','open_url','take_screenshot','spotify_play','obs_record','focus_accessible_window','type_accessible_text','agenda_clear'): return 'Ferramenta indisponível.'
+        if name not in ('close_application','manage_window','open_url','take_screenshot','obs_record','focus_accessible_window','type_accessible_text','agenda_clear'): return 'Ferramenta indisponível.'
         parsed_request=parse_local_command(self.prompt)
         explicit_request=bool(parsed_request and parsed_request[0]==name)
         if name=='obs_record' and explicit_request:

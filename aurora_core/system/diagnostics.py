@@ -107,4 +107,4 @@ def run_local_diagnostics(cfg: dict) -> str:
         cfg = {}
     return "Diagnóstico experimental, somente leitura: " + "; ".join(
         (_ollama_status(cfg), _voice_status(), _desktop_status(), _service_status())
-    ) + ". Não testei reconhecimento online, voz Edge, OBS ou Spotify."
+    ) + ". Não testei reconhecimento online, voz Edge ou OBS."

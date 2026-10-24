@@ -73,11 +73,6 @@ def execute_action(self,name,args):
             aurora_integrations._append_action_log('screenshot','failed',
                 {'error_type':type(exc).__name__,'phase':getattr(exc,'phase','unknown')})
             return f'Não consegui confirmar a captura: {exc}'
-    if name=='spotify_authorize':
-        return aurora_integrations.start_spotify_authorization(
-            self.cfg.get('spotify_client_id',''), lambda url: QDesktopServices.openUrl(QUrl(url)))
-    if name=='spotify_play':
-        return aurora_integrations.play_spotify_track(args.get('query',''),self.cfg.get('spotify_client_id',''))
     if name=='obs_record':
         self.orb.set_mode('controlling')
         QApplication.processEvents()

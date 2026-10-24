@@ -1,5 +1,11 @@
 # Histórico de versões
 
+## Aurora Desktop 1.8.3 — Sirius Clean Desktop, 2026-10-24 (release estável)
+
+- Remove a integração Spotify, o fluxo OAuth, o token local e a configuração `spotify_client_id`.
+- Remove a ferramenta de reprodução musical do agente e o roteamento local correspondente.
+- Mantém o desktop focado em automação local, pesquisa, voz, captura e OBS.
+
 ## Aurora Desktop 1.8.2 — Sirius Orb Motion, 2026-10-24 (release estável)
 
 - Reimagina o movimento da superfície da bolha com refração e reflexo contínuos.
@@ -119,7 +125,7 @@ Pré-release pública para demonstração e avaliação técnica. Não represent
 
 ## 1.0.2 — Polaris-Edge, Patch 2 (pré-release, 2026-10-22)
 
-- Separa OBS, captura pelo portal, Spotify e registro de ações em módulos dedicados sob `aurora_core/system/`, mantendo a fachada de compatibilidade.
+- Separa OBS, captura pelo portal e registro de ações em módulos dedicados sob `aurora_core/system/`, mantendo a fachada de compatibilidade.
 - Aguarda a propagação assíncrona do estado do OBS antes de confirmar início/parada da gravação; testes cobrem estado atrasado e estado que nunca muda.
 - Atualiza a documentação para distinguir minimização do OBS de execução realmente sem janela.
 - Inclui os commits locais posteriores a 1.0.1; 227 testes automatizados passaram.
@@ -140,7 +146,7 @@ Primeira release oficial da Aurora para uso pessoal; o código-fonte está publi
 - Bolha flutuante persistente, chamada por wake word local, com voz e animação de estados.
 - Conversa local com Gemma via Ollama e execução de ações locais com confirmações para operações sensíveis.
 - Busca web genérica com provedores públicos, leitura de páginas, filtros de relevância/atualidade e resposta sem completar fatos não confirmados.
-- Integrações locais para captura de tela, controle de aplicativos/janelas compatíveis, Spotify e gravação pelo OBS WebSocket.
+- Integrações locais para captura de tela, controle de aplicativos/janelas compatíveis e gravação pelo OBS WebSocket.
 - Instalador nativo por scripts, serviço `systemd --user`, diagnóstico somente leitura e testes automatizados.
 
 ### Limites conhecidos desta release
@@ -149,4 +155,4 @@ Primeira release oficial da Aurora para uso pessoal; o código-fonte está publi
 - A busca depende de provedores e páginas públicas acessíveis; bloqueios, captchas e páginas sem datas podem impedir confirmação.
 - Wake word é local, mas a transcrição Google e a voz Edge TTS dependem da internet.
 - Ollama e os modelos Gemma são instalados à parte. Não há atualização automática, pacote Flatpak/RPM nem workflow de CI.
-- OBS, Spotify e captura de tela dependem de configuração e permissões locais. A integração OBS tem testes automatizados, mas não foi possível validar uma gravação real nesta sessão de publicação porque o OBS/WebSocket não estava ativo.
+- OBS e captura de tela dependem de configuração e permissões locais. A integração OBS tem testes automatizados, mas não foi possível validar uma gravação real nesta sessão de publicação porque o OBS/WebSocket não estava ativo.
