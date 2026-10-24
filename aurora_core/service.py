@@ -26,6 +26,7 @@ from .system.commands import parse_local_command
 from .system.files import create_user_file, normalize_words, xdg_user_directory
 from .system.error_reports import user_data_dir, write_error_report, schedule_user_service_restart
 from .system.hardware import system_hardware_summary
+from .system.agenda import agenda_take_due
 from .system.routine import (SessionUnlockMonitor,SystemRoutineCheck,SystemUpdateRequest,
                              confirmation_intent,greeting_for,summarize_health)
 from .system.timers import TimerManager, format_duration
@@ -153,6 +154,9 @@ class AuroraService(QObject):
         self.system_routine_after_speech=None; self.system_routine_generation=0
         self.system_routine_report=None; self.system_routine_last_check=0.0
         self.timer_manager=TimerManager(self._timer_finished,self)
+        self.agenda_poll=QTimer(self); self.agenda_poll.setInterval(1000)
+        self.agenda_poll.timeout.connect(self._check_due_agenda)
+        self.agenda_poll.start()
         self.orb=AuroraOrb(self.cfg); self.research_card=ResearchCard(); self.orb.start_voice.connect(self.listen_once); self.orb.hide_requested.connect(self.stop_conversation); self.orb.quit_requested.connect(app.quit)
         # A worker's finished/result signal can be lost during portal/Qt
         # shutdown races. Reconcile the visual state independently so the orb
@@ -761,6 +765,23 @@ class AuroraService(QObject):
             self.response_summary=f'O timer {timer_id} terminou.'
             self.orb.reveal('speaking')
         self.speaker.say(f'O timer {timer_id}, de {format_duration(seconds)}, terminou.')
+    def _check_due_agenda(self):
+        if self._mobile_audio_owned(): return
+        monitor=getattr(self,'session_unlock_monitor',None)
+        if monitor is not None and monitor.active is True: return
+        if (self.voice.request_active.is_set() or self.speaker.active or not self.speaker.q.empty()
+                or (self.inf and self.inf.isRunning()) or self.pending
+                or any(request.isRunning() for request in self.background_requests)):
+            return
+        for event in agenda_take_due():
+            when=datetime.fromtimestamp(event['when']).astimezone()
+            moment=when.strftime('%d/%m às %H:%M')
+            announcement=f'{greeting_for()} Passando para lembrar: {event["title"]}, marcado para {moment}.'
+            self.activity_generation+=1
+            self.response_finished=True
+            self.response_summary=f'Lembrete: {event["title"]}, {moment}.'
+            self.orb.reveal('speaking')
+            self.speaker.say(announcement)
     def remember_exchange(self,user_text,assistant_text):
         user_text=' '.join(str(user_text).split())[:700]; assistant_text=' '.join(str(assistant_text).split())[:1200]
         if user_text and assistant_text:

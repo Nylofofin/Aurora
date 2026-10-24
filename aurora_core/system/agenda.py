@@ -5,6 +5,7 @@ import json
 import math
 import os
 import re
+import threading
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -21,6 +22,7 @@ _WEEKDAYS = {
     'quinta': 3, 'quinta-feira': 3, 'sexta': 4, 'sexta-feira': 4,
     'sabado': 5, 'sábado': 5, 'domingo': 6,
 }
+_AGENDA_LOCK = threading.RLock()
 
 
 def _state_path() -> Path:
@@ -42,15 +44,18 @@ def _load() -> list[dict]:
                     event_id = int(event['id'])
                     when = float(event['when'])
                     created = float(event.get('created', 0))
+                    notified_at = float(event.get('notified_at', 0))
                 except (KeyError, TypeError, ValueError, OverflowError):
                     continue
                 title = event.get('title')
                 if (event_id < 1 or not math.isfinite(when) or not math.isfinite(created)
+                        or not math.isfinite(notified_at) or notified_at < 0
                         or not isinstance(title, str)
                         or not title.strip()):
                     continue
                 valid.append({'id': event_id, 'when': when, 'created': created,
-                              'title': title[:200], 'notes': str(event.get('notes', ''))[:500]})
+                              'notified_at': notified_at, 'title': title[:200],
+                              'notes': str(event.get('notes', ''))[:500]})
             return valid
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         pass
@@ -176,17 +181,19 @@ def agenda_add(title: str, when_ts: float, notes: str = '') -> str:
         when_ts = 0
     if not math.isfinite(when_ts) or when_ts < time.time() - 60:
         return 'A data ou hora do compromisso não foi reconhecida ou já passou.'
-    events = _load()
-    event = {
-        'id': _next_id(events),
-        'title': title.strip()[:200],
-        'when': when_ts,
-        'notes': str(notes).strip()[:500],
-        'created': time.time(),
-    }
-    events.append(event)
-    events.sort(key=lambda e: e['when'])
-    _save(events)
+    with _AGENDA_LOCK:
+        events = _load()
+        event = {
+            'id': _next_id(events),
+            'title': title.strip()[:200],
+            'when': when_ts,
+            'notes': str(notes).strip()[:500],
+            'created': time.time(),
+            'notified_at': 0,
+        }
+        events.append(event)
+        events.sort(key=lambda e: e['when'])
+        _save(events)
     return f'Compromisso "{event["title"]}" adicionado para {_format_dt(when_ts)}.'
 
 
@@ -221,21 +228,23 @@ def agenda_cancel(event_id: Optional[int] = None) -> str:
         return 'O identificador do compromisso é inválido.'
     if event_id < 1:
         return 'O identificador do compromisso é inválido.'
-    events = _load()
-    remaining = [e for e in events if e.get('id') != event_id]
-    if len(remaining) == len(events):
-        return f'Não encontrei o compromisso {event_id}.'
-    _save(remaining)
+    with _AGENDA_LOCK:
+        events = _load()
+        remaining = [e for e in events if e.get('id') != event_id]
+        if len(remaining) == len(events):
+            return f'Não encontrei o compromisso {event_id}.'
+        _save(remaining)
     return f'Compromisso {event_id} removido.'
 
 
 def agenda_clear() -> str:
     """Clear all events completely."""
-    events = _load()
-    if not events:
-        return 'A agenda já está vazia.'
-    count = len(events)
-    _save([])
+    with _AGENDA_LOCK:
+        events = _load()
+        if not events:
+            return 'A agenda já está vazia.'
+        count = len(events)
+        _save([])
     return f'Limpei todos os {count} compromisso(s) da sua agenda.'
 
 
@@ -251,3 +260,25 @@ def agenda_nearest() -> str:
         return 'Não há compromissos agendados.'
     e = upcoming[0]
     return f'Próximo compromisso: {e["title"]}, {_format_dt(e["when"])}.'
+
+
+def agenda_take_due(now: Optional[float] = None, grace_seconds: int = 120) -> list[dict]:
+    """Atomically claim due events once; stale events are not announced late."""
+    now = time.time() if now is None else float(now)
+    try:
+        grace_seconds = max(0, min(3600, int(grace_seconds)))
+    except (TypeError, ValueError, OverflowError):
+        grace_seconds = 120
+    with _AGENDA_LOCK:
+        events = _load()
+        due = []
+        changed = False
+        for event in events:
+            if event.get('notified_at', 0) or not (0 <= now - event['when'] <= grace_seconds):
+                continue
+            event['notified_at'] = now
+            due.append(dict(event))
+            changed = True
+        if changed:
+            _save(events)
+        return due

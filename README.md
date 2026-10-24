@@ -27,7 +27,7 @@ O código-fonte próprio da Aurora é distribuído sob **GNU GPL versão 3 apena
 
 **Temporizadores locais experimentais:** diga “Aurora, timer de dez minutos”, “quanto falta no timer” ou “cancele o timer 1”. É possível manter mais de uma contagem ao mesmo tempo e cancelar todas dizendo “cancele todos os timers”. Ao terminar, Aurora anuncia o timer por voz. Os timers ativos são salvos localmente em `~/.local/state/aurora/timers.json` (ou em `$XDG_STATE_HOME/aurora/timers.json`) e retomados quando o serviço reinicia. Se o prazo vencer enquanto o serviço estiver parado, o aviso é emitido quando ele voltar.
 
-**Agenda local experimental:** peça para criar, listar ou cancelar compromissos; Aurora entende datas e horários comuns em português e guarda os dados em `~/.local/state/aurora/agenda.json`, com permissões privadas. Excluir toda a agenda exige confirmação explícita na bolha. Esta versão ainda não dispara avisos quando chega a hora do compromisso, nem sincroniza com calendário externo; para avisos automáticos, use os temporizadores enquanto o agendamento de lembretes não estiver implementado.
+**Agenda local experimental:** peça para criar, listar ou cancelar compromissos; Aurora entende datas e horários comuns em português e guarda os dados em `~/.local/state/aurora/agenda.json`, com permissões privadas. Se a sessão desktop estiver desbloqueada, avisa por voz no horário do compromisso; a verificação roda a cada segundo e evita interromper fala, automações ou pesquisas ativas. Um aviso pode atrasar até dois minutos enquanto Aurora está ocupada; compromissos vencidos há mais tempo não são anunciados. Excluir toda a agenda exige confirmação explícita na bolha. Ainda não há sincronização com calendário externo.
 
 ## Histórico Android
 

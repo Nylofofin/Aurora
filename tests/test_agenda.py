@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import json
+import queue
 import time
 from pathlib import Path
+from threading import Event
+from types import SimpleNamespace
 from aurora_core.system.agenda import (
     agenda_add,
     agenda_cancel,
@@ -11,6 +14,7 @@ from aurora_core.system.agenda import (
     agenda_list,
     agenda_nearest,
     parse_datetime,
+    agenda_take_due,
     _load,
     _state_path,
 )
@@ -18,6 +22,7 @@ from aurora_core.system.commands import parse_local_command
 from aurora_core.system.approval import requires_user_approval
 from aurora_core.llm.inference import _agenda_add_needs_followup
 from aurora_core.llm.warmup import ModelWarmup
+from aurora_core import service as service_module
 
 
 def test_parse_datetime_relative(monkeypatch, tmp_path):
@@ -138,3 +143,37 @@ def test_warmup_loads_conversation_model_before_agent_model(monkeypatch):
     monkeypatch.setattr(warmup, "_warmup_one", lambda model, ctx: calls.append((model, ctx)))
     warmup.run()
     assert calls == [("gemma3:1b-it-qat", 4096), ("gemma4:e2b-it-q4_K_M", 4096)]
+
+
+def test_due_agenda_event_is_claimed_once_with_small_lateness_window(monkeypatch, tmp_path):
+    state_file = tmp_path / "agenda.json"
+    monkeypatch.setattr("aurora_core.system.agenda._state_path", lambda: state_file)
+    due_at = time.time() + 3600
+    assert "adicionado" in agenda_add("Consulta", due_at)
+    claimed = agenda_take_due(now=due_at + 30)
+    assert len(claimed) == 1
+    assert claimed[0]["title"] == "Consulta"
+    assert claimed[0]["notified_at"] == due_at + 30
+    assert agenda_take_due(now=due_at + 30) == []
+    assert agenda_take_due(now=due_at + 3600) == []
+
+
+def test_service_announces_due_agenda_event_when_idle(monkeypatch):
+    spoken = []
+    modes = []
+    stub = SimpleNamespace(
+        _mobile_audio_owned=lambda: False,
+        session_unlock_monitor=SimpleNamespace(active=False),
+        voice=SimpleNamespace(request_active=Event()),
+        speaker=SimpleNamespace(active=False, q=queue.Queue(), say=spoken.append),
+        inf=None, pending=None, background_requests=[], activity_generation=0,
+        response_finished=False, response_summary="",
+        orb=SimpleNamespace(reveal=modes.append),
+    )
+    monkeypatch.setattr(service_module, "agenda_take_due", lambda: [{
+        "id": 1, "title": "Dentista", "when": time.time(),
+    }])
+    service_module.AuroraService._check_due_agenda(stub)
+    assert spoken and "Dentista" in spoken[0] and "Passando para lembrar" in spoken[0]
+    assert modes == ["speaking"]
+    assert stub.response_finished and stub.activity_generation == 1
