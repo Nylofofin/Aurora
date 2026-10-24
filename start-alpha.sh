@@ -7,6 +7,9 @@ WORK_DIR="${AURORA_WORK_DIR:-$STATE_HOME/aurora}"
 OLLAMA_RUNTIME_DIR="${AURORA_OLLAMA_RUNTIME_DIR:-$WORK_DIR/ollama-runtime}"
 OLLAMA_MODELS_DIR="${AURORA_OLLAMA_MODELS_DIR:-$WORK_DIR/ollama-models}"
 mkdir -p "$WORK_DIR"
+if [ "${QT_QPA_PLATFORM:-}" = 'xcb' ]; then
+  python3 "$APP_DIR/scripts/wait_for_x11.py" "${DISPLAY:-}"
+fi
 API='http://127.0.0.1:11434/api/tags'
 OLLAMA_PID=''
 check_api() { python3 - "$API" <<'PYCODE' >/dev/null 2>&1

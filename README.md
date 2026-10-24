@@ -137,7 +137,7 @@ As respostas comuns mantêm o Gemma 3 1B rápido, com mais espaço de saída qua
 - A busca e leitura de páginas usam conexões HTTP(S) diretas, sem proxies definidos por variáveis de ambiente, para conectar ao IP público validado e impedir que uma mudança de DNS redirecione a chamada para uma rede privada. Resoluções públicas verificadas ficam em cache por 10 segundos, com limite de 256 domínios.
 - O RPM do Launchpad é experimental e só oferece suporte ao Fedora Workstation/GNOME/Wayland; apresenta até três versões recomendadas e instala apenas a escolha confirmada, mas não atualiza automaticamente uma Aurora já instalada. Ainda não há Flatpak. O CI não testa hardware, voz real, OBS, Spotify nem a instalação completa em uma máquina limpa.
 - Gemma 3 1B e Gemma 4 E2B são pré-aquecidos em segundo plano no endpoint local; o Gemma 4 atende tarefas com ferramentas. O aquecimento acontece na inicialização, sem reenviar chamadas redundantes depois de cada tarefa de agente. A latência depende do hardware e do pedido.
-- O serviço fixa `QT_QPA_PLATFORM=xcb` para permitir a bolha transparente e sempre no topo em ambientes compatíveis com XWayland. Transparência, posicionamento e always-on-top dependem do compositor e do gerenciador de janelas.
+- O serviço fixa `QT_QPA_PLATFORM=xcb` para permitir a bolha transparente e sempre no topo em ambientes compatíveis com XWayland. Antes de iniciar a interface, `start-alpha.sh` aguarda até 30 segundos por uma conexão X11 autenticada; se o display não ficar disponível, o serviço falha com um erro explícito e o systemd tenta novamente. Transparência, posicionamento e always-on-top dependem do compositor e do gerenciador de janelas.
 
 ## Referências de compatibilidade
 
