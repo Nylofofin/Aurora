@@ -8,7 +8,11 @@ import hmac
 import json
 import os
 from pathlib import Path
+import re
 import shutil
+import tarfile
+from datetime import datetime
+from pathlib import PurePosixPath
 
 
 MODEL_NAMES = ("gemma3:1b-it-qat", "gemma4:e2b-it-q4_K_M")
@@ -17,6 +21,10 @@ MINIMUM_FREE_GIB = 10
 # on 2026-10-23. Changing this pin requires reviewing the new root-level actions.
 OLLAMA_INSTALLER_SHA256 = "25f64b810b947145095956533e1bdf56eacea2673c55a7e586be4515fc882c9f"
 OLLAMA_INSTALLER_MAX_BYTES = 1_000_000
+GITHUB_REPOSITORY = "Nylofofin/Aurora"
+MAX_RELEASE_ARCHIVE_BYTES = 256 * 1024 * 1024
+MAX_EXTRACTED_BYTES = 768 * 1024 * 1024
+MAX_ARCHIVE_MEMBERS = 20_000
 
 
 @dataclass(frozen=True)
@@ -70,6 +78,84 @@ def format_size(num_bytes: int) -> str:
             return f"{value:.1f} {unit}" if unit != "B" else f"{int(value)} B"
         value /= 1024
     return f"{value:.1f} TiB"
+
+
+def select_latest_release(releases):
+    """Return the newest published release, stable or prerelease; never a draft."""
+    candidates = []
+    for release in releases if isinstance(releases, list) else ():
+        if not isinstance(release, dict) or release.get("draft"):
+            continue
+        tag = release.get("tag_name")
+        published = release.get("published_at")
+        if not isinstance(tag, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,99}", tag):
+            continue
+        if not isinstance(published, str):
+            continue
+        try:
+            timestamp = datetime.fromisoformat(published.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if timestamp.tzinfo is None:
+            continue
+        candidates.append((timestamp, release))
+    if not candidates:
+        raise ValueError("Não encontrei uma release publicada válida no GitHub.")
+    return max(candidates, key=lambda item: item[0])[1]
+
+
+def extract_release_tarball(archive: Path, destination: Path) -> Path:
+    """Safely extract a bounded GitHub source tarball without links or traversal."""
+    archive = Path(archive)
+    destination = Path(destination)
+    if archive.stat().st_size > MAX_RELEASE_ARCHIVE_BYTES:
+        raise ValueError("O arquivo da release excede o limite permitido.")
+    destination.mkdir(parents=True, exist_ok=False, mode=0o700)
+    total_size = 0
+    files_seen = set()
+    root_name = None
+    try:
+        with tarfile.open(archive, mode="r:gz") as bundle:
+            members = bundle.getmembers()
+            if not members or len(members) > MAX_ARCHIVE_MEMBERS:
+                raise ValueError("A release está vazia ou contém itens demais.")
+            safe_members = []
+            for member in members:
+                name = member.name
+                path = PurePosixPath(name)
+                if path.is_absolute() or ".." in path.parts or "\\" in name or not path.parts:
+                    raise ValueError("A release contém um caminho inseguro.")
+                if root_name is None:
+                    root_name = path.parts[0]
+                if path.parts[0] != root_name or member.issym() or member.islnk() or not (member.isdir() or member.isfile()):
+                    raise ValueError("A release contém um item ou link não permitido.")
+                if member.isfile():
+                    total_size += member.size
+                    if total_size > MAX_EXTRACTED_BYTES or name in files_seen:
+                        raise ValueError("O conteúdo da release excede os limites ou tem caminhos duplicados.")
+                    files_seen.add(name)
+                safe_members.append((member, path))
+            if not root_name or not any(member.isfile() for member, _ in safe_members):
+                raise ValueError("A release não contém arquivos de projeto.")
+            for member, relative in safe_members:
+                target = destination.joinpath(*relative.parts)
+                if member.isdir():
+                    target.mkdir(parents=True, exist_ok=True, mode=0o700)
+                    continue
+                target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                source = bundle.extractfile(member)
+                if source is None:
+                    raise ValueError("Não consegui ler um arquivo da release.")
+                with source, target.open("xb") as output:
+                    shutil.copyfileobj(source, output, length=1024 * 1024)
+                target.chmod(0o755 if member.mode & 0o111 else 0o644)
+    except (tarfile.TarError, OSError) as exc:
+        shutil.rmtree(destination, ignore_errors=True)
+        raise ValueError("Não consegui validar ou extrair o arquivo da release.") from exc
+    except Exception:
+        shutil.rmtree(destination, ignore_errors=True)
+        raise
+    return destination / root_name
 
 
 def remove_owned_models(ollama_binary: str, manifest_path: Path, run) -> list[str]:

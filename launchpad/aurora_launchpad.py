@@ -12,6 +12,9 @@ import subprocess
 import tempfile
 import threading
 import time
+import json
+import re
+from urllib.parse import quote, urlsplit
 import urllib.request
 
 import gi
@@ -27,26 +30,25 @@ from aurora_launchpad_core import (
     assess_environment,
     copy_existing_memory,
     disk_free_bytes,
+    extract_release_tarball,
     format_size,
     missing_models,
     ollama_tags_response_ready,
     reject_symlinks_in_tree,
     remove_owned_models,
+    select_latest_release,
     validate_ollama_installer,
+    GITHUB_REPOSITORY,
+    MAX_RELEASE_ARCHIVE_BYTES,
 )
 
 
 APP_ID = "com.nylofofin.AuroraLaunchpad"
-INSTALLER_VERSION = "0.1.0"
+INSTALLER_VERSION = "0.2.0"
 PKEXEC = "/usr/bin/pkexec"
 SYSTEMCTL = "/usr/bin/systemctl"
 DNF = "/usr/bin/dnf"
 SYSTEM_PATH = "/usr/local/bin:/usr/bin:/bin"
-PAYLOAD_CANDIDATES = (
-    Path("/usr/share/aurora-launchpad/payload"),
-    Path(__file__).resolve().parents[1] / "payload",
-    Path(__file__).resolve().parents[1],
-)
 MANAGED_APP = Path.home() / ".local/share/aurora"
 OWNED_MODELS = Path.home() / ".local/share/aurora-launchpad/owned-models.txt"
 PRESERVED_MEMORY = Path.home() / ".local/share/aurora-launchpad/aurora-memory.json"
@@ -106,11 +108,66 @@ def ollama_api_ready(timeout: float = 1.0) -> bool:
         connection.close()
 
 
-def payload_root() -> Path:
-    for candidate in PAYLOAD_CANDIDATES:
-        if (candidate / "aurora.py").is_file():
-            return candidate
-    raise RuntimeError("Não encontrei os arquivos da Aurora incluídos no pacote.")
+def _github_json(url: str, *, maximum: int = 4 * 1024 * 1024) -> dict | list:
+    request = urllib.request.Request(url, headers={
+        "Accept": "application/vnd.github+json",
+        "User-Agent": f"Aurora-Launchpad/{INSTALLER_VERSION}",
+        "X-GitHub-Api-Version": "2022-11-28",
+    })
+    with urllib.request.urlopen(request, timeout=20) as response:
+        if response.status != 200:
+            raise RuntimeError(f"GitHub respondeu HTTP {response.status}.")
+        content = response.read(maximum + 1)
+    if len(content) > maximum:
+        raise RuntimeError("A resposta do GitHub excede o limite permitido.")
+    try:
+        return json.loads(content)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("O GitHub retornou metadados inválidos.") from exc
+
+
+def download_latest_release_payload(workspace: Path, on_status=None) -> tuple[Path, dict]:
+    """Fetch the newest published release and extract its immutable commit archive."""
+    api = f"https://api.github.com/repos/{GITHUB_REPOSITORY}"
+    releases = _github_json(api + "/releases?per_page=100")
+    release = select_latest_release(releases)
+    tag = release["tag_name"]
+    if on_status:
+        channel = "pré-release" if release.get("prerelease") else "release"
+        on_status(f"Release mais recente: {tag} ({channel}). Resolvendo commit…")
+    commit = _github_json(api + "/commits/" + quote(tag, safe=""))
+    sha = commit.get("sha") if isinstance(commit, dict) else None
+    if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", sha):
+        raise RuntimeError("O GitHub não confirmou o commit da release escolhida.")
+
+    archive_path = Path(workspace) / "aurora-source.tar.gz"
+    url = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/tarball/{sha}"
+    request = urllib.request.Request(url, headers={
+        "Accept": "application/vnd.github+json",
+        "User-Agent": f"Aurora-Launchpad/{INSTALLER_VERSION}",
+        "X-GitHub-Api-Version": "2022-11-28",
+    })
+    with urllib.request.urlopen(request, timeout=30) as response:
+        final = urlsplit(response.geturl())
+        if response.status != 200 or final.scheme != "https" or final.hostname != "codeload.github.com":
+            raise RuntimeError("O download da release não veio do host oficial do GitHub.")
+        length = response.headers.get("Content-Length")
+        if length and int(length) > MAX_RELEASE_ARCHIVE_BYTES:
+            raise RuntimeError("O arquivo da release excede o limite permitido.")
+        received = 0
+        with archive_path.open("xb") as output:
+            while True:
+                block = response.read(1024 * 1024)
+                if not block:
+                    break
+                received += len(block)
+                if received > MAX_RELEASE_ARCHIVE_BYTES:
+                    raise RuntimeError("O arquivo da release excede o limite permitido.")
+                output.write(block)
+    extracted = extract_release_tarball(archive_path, Path(workspace) / "source")
+    if not (extracted / "aurora.py").is_file() or not (extracted / "aurora_core").is_dir():
+        raise RuntimeError("A release do GitHub não contém o payload de desktop esperado.")
+    return extracted, release
 
 
 def is_rpm_install() -> bool:
@@ -356,7 +413,7 @@ class Launchpad(Adw.Application):
         panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
         panel.add_css_class("panel")
         items = [
-            ("Aurora Desktop", "Copiar a aplicação para ~/.local/share/aurora e manter preferências existentes."),
+            ("Aurora Desktop", "Baixar do GitHub a release publicada mais recente, incluindo pré-releases, e instalar em ~/.local/share/aurora. Preferências existentes serão preservadas."),
             ("Dependências Python", "Criar um ambiente virtual privado e instalar os pacotes usados pela Aurora."),
             ("Voz local", "Baixar o modelo português Vosk (aprox. 31 MiB). Google STT e Edge TTS continuam usando internet quando chamados."),
             ("Motor local", "Se faltar, instalar a versão auditada do script oficial. A etapa administrativa pode substituir arquivos do Ollama, criar seu usuário/serviço, ajustar grupos e instalar suporte de GPU; em alguns casos, adiciona repositório e driver NVIDIA."),
@@ -468,9 +525,18 @@ class Launchpad(Adw.Application):
 
     def _install_worker(self):
         try:
-            source = payload_root()
-            self._set_stage("1/7 · Preparando os arquivos", "Copiando o pacote para a pasta privada deste usuário.", .06)
-            self._install_payload(source)
+            self._set_stage("1/7 · Baixando a Aurora", "Buscando a release publicada mais recente no GitHub.", .03)
+            with tempfile.TemporaryDirectory(prefix="aurora-release-") as workspace:
+                source, release = download_latest_release_payload(
+                    Path(workspace),
+                    on_status=lambda message: self._stream_line(message),
+                )
+                self._set_stage(
+                    "1/7 · Preparando os arquivos",
+                    f"Instalando {release['tag_name']} ({'pré-release' if release.get('prerelease') else 'release'}).",
+                    .07,
+                )
+                self._install_payload(source)
             self._migrate_existing_memory()
             self._set_stage("2/7 · Preparando dependências", "Criando o ambiente Python e instalando os pacotes da Aurora.", .16)
             run_process([str(MANAGED_APP / "run.sh"), "--setup-only"], self._stream_line, cwd=MANAGED_APP, timeout=1800)

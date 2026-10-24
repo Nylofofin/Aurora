@@ -9,24 +9,17 @@ trap 'rm -rf -- "$WORK"' EXIT
 SOURCE_COMMIT="$(git -C "$ROOT" rev-parse "$SOURCE_REF^{commit}")"
 SOURCE_TREE="$WORK/source"
 mkdir -p "$SOURCE_TREE"
-git -C "$ROOT" archive "$SOURCE_COMMIT" -- launchpad packaging/rpm/aurora-launchpad.spec | tar -x -C "$SOURCE_TREE"
+git -C "$ROOT" archive "$SOURCE_COMMIT" -- launchpad packaging/rpm/aurora-launchpad.spec packaging/rpm/README.md LICENSE | tar -x -C "$SOURCE_TREE"
 VERSION="$(awk '/^Version:/ {print $2; exit}' "$SOURCE_TREE/packaging/rpm/aurora-launchpad.spec")"
 PKG="$WORK/aurora-launchpad-$VERSION"
-mkdir -p "$PKG/launchpad" "$PKG/payload" "$ROOT/dist"
+mkdir -p "$PKG/launchpad" "$PKG/packaging/rpm" "$ROOT/dist"
 
 for file in aurora-launchpad aurora_launchpad.py aurora_launchpad_core.py aurora-launchpad.desktop; do
   cp "$SOURCE_TREE/launchpad/$file" "$PKG/launchpad/"
 done
 cp -a "$SOURCE_TREE/launchpad/icons" "$PKG/launchpad/"
-
-git -C "$ROOT" archive "$SOURCE_COMMIT" -- \
-  aurora.py aurora_core aurora_fx.py aurora_integrations.py aurora-settings.json \
-  orb.qml requirements.txt requirements-voice.txt run.sh start-alpha.sh \
-  install-service.sh install-desktop.sh setup-voice.sh uninstall-service.sh \
-  aurora.desktop README.md LICENSE assets/audio | tar -x -C "$PKG/payload"
-printf 'source_ref=%s\nsource_commit=%s\nbuild_utc=%s\n' \
-  "$SOURCE_REF" "$SOURCE_COMMIT" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  > "$PKG/payload/BUILDINFO.txt"
+cp "$SOURCE_TREE/LICENSE" "$PKG/LICENSE"
+cp "$SOURCE_TREE/packaging/rpm/README.md" "$PKG/packaging/rpm/README.md"
 
 tar -C "$WORK" -czf "$WORK/aurora-launchpad-$VERSION.tar.gz" "aurora-launchpad-$VERSION"
 TOPDIR="$WORK/rpmbuild"

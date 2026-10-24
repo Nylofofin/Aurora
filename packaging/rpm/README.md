@@ -1,32 +1,34 @@
 # Aurora Launchpad RPM
 
-Aurora Launchpad is an experimental, graphical per-user installer. The RPM itself installs only the GTK/libadwaita wizard and a read-only copy of the Aurora payload under `/usr/share/aurora-launchpad`; the wizard then prepares the current user's application under `~/.local/share/aurora`.
+Aurora Launchpad is an experimental graphical installer for Fedora Workstation with GNOME on Wayland. The RPM contains only the GTK/libadwaita wizard and its license. It no longer bundles Aurora's application payload.
 
-## Supported environment
+After the user reviews and confirms the installation plan, Launchpad selects the most recently published GitHub release, whether stable or pre-release. It resolves the release tag to a commit SHA, downloads the archive for that immutable commit over HTTPS, checks the final host, enforces download and extraction limits, rejects links and unsafe archive paths, and verifies that the expected desktop files exist before copying them to the user's application directory.
 
-Only Fedora Workstation with GNOME on Wayland is accepted by this initial build. It checks available RAM, disk space, session type and desktop, lists the installation actions before downloads, and requires explicit acknowledgement of the model download and administrator prompt.
+Because the newest published release is selected across both channels, this installer may install experimental pre-releases. The selected tag and channel are shown during installation. GitHub access is required.
 
-The installer creates a Python virtual environment, installs Aurora's Python requirements, downloads its Portuguese Vosk model, installs Ollama if needed, pulls the configured Gemma models, migrates the local memory file from the currently configured user service if one exists, then enables and starts `aurora.service`. The privileged Ollama script is accepted only when its SHA-256 matches the version reviewed and pinned in the Launchpad. Its possible system-wide effects (Ollama service/account, group membership, GPU packages, and in some cases NVIDIA repository/driver changes) are disclosed before the user confirms. Ollama/model downloads require network access.
+## Installation
 
-## Removal behavior
+The wizard checks Fedora Workstation, GNOME/Wayland, available RAM and disk space before enabling the install flow. It explains the planned downloads and requires acknowledgement before model downloads or privileged Ollama installation.
 
-The Launchpad can remove the managed application and service. Preference/memory/log removal and deletion of only Gemma models newly downloaded by Launchpad are separate opt-in checkboxes. Pre-existing Ollama models are never removed. The system-wide Ollama installation is preserved because other software may use it. The optional RPM removal uses Fedora's DNF with an administrator prompt.
+The installer prepares a private Python environment, downloads the Portuguese Vosk model, installs Ollama if needed, downloads the configured Gemma models, migrates existing local memory without deleting its source, then configures and starts aurora.service. The privileged Ollama script is accepted only when its SHA-256 matches the reviewed version pinned in the wizard.
 
-## Build
+## Removal
 
-On Fedora 44, install the Fedora package `rpm-build`, then run:
+Launchpad can remove its managed Aurora files and service. Removing preferences, memory, logs, newly downloaded models, or the RPM itself are separate options. Existing Ollama models and the system-wide Ollama installation are preserved.
 
-```sh
-SOURCE_REF=master packaging/rpm/build-rpm.sh
-```
+## Building the RPM
 
-The resulting RPM and `SHA256SUMS` appear under `dist/`. The script resolves `SOURCE_REF` to a Git commit first and assembles both the wizard and Aurora payload from that same commit; uncommitted working-tree changes are not included. The repository currently has no automated RPM publishing workflow.
+On Fedora, install rpm-build and run:
+
+    SOURCE_REF=master packaging/rpm/build-rpm.sh
+
+The output RPM and SHA256SUMS are written to dist/. The build script resolves SOURCE_REF to a commit and packages only the Launchpad sources. Aurora code changes no longer require rebuilding the installer; Launchpad changes do. RPM publishing is not automated yet.
 
 ## Limits
 
-- This is a first experimental installer; it is not an OS-level transaction manager. A failed step leaves downloaded caches and the current per-user app files so the wizard can be run again.
-- A changed upstream Ollama installer intentionally blocks installation until its privileged effects are reviewed and the new digest is committed. The installer still downloads Ollama's runtime and optional hardware components from upstream over HTTPS.
-- Python dependency versions are currently specified as minimums rather than a fully hash-locked environment; this remains a supply-chain hardening item.
-- The wizard reports stage-level progress; individual pip/Vosk stages do not expose byte-accurate progress.
-- A reboot is not required by design. The user service is started when setup succeeds.
-- The RPM does not bundle Ollama, Gemma weights, Python wheels, or Vosk model data.
+- This is an experimental installer, not an OS transaction manager. A failed step can leave downloaded caches and application files so installation can be retried.
+- An upstream Ollama installer change blocks installation until its privileged effects are reviewed and its pinned digest is updated.
+- Python dependencies are minimum-version constraints, not a hash-locked environment.
+- Stage-level progress is shown, but individual downloads do not expose byte-accurate progress.
+- A reboot is not required by design. The user service starts when setup succeeds.
+- The RPM does not bundle Aurora, Ollama, Gemma weights, Python wheels, or Vosk model data.

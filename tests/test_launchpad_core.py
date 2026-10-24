@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-only
 from pathlib import Path
 import hashlib
+import io
+import tarfile
 
 import pytest
 
@@ -9,12 +11,14 @@ from launchpad.aurora_launchpad_core import (
     OLLAMA_INSTALLER_SHA256,
     assess_environment,
     copy_existing_memory,
+    extract_release_tarball,
     format_size,
     missing_models,
     ollama_tags_response_ready,
     parse_ollama_models,
     reject_symlinks_in_tree,
     remove_owned_models,
+    select_latest_release,
     validate_ollama_installer,
 )
 
@@ -119,3 +123,41 @@ def test_install_tree_rejects_nested_symlinks(tmp_path: Path):
     (nested / "outside-link").symlink_to(tmp_path / "outside")
     with pytest.raises(ValueError, match="link simbólico"):
         reject_symlinks_in_tree(tree)
+
+
+def test_latest_release_selects_newest_published_including_prereleases():
+    stable = {"tag_name": "v1.5.0", "published_at": "2026-10-20T10:00:00Z", "draft": False, "prerelease": False}
+    preview = {"tag_name": "v1.5.7", "published_at": "2026-10-23T20:00:00Z", "draft": False, "prerelease": True}
+    draft = {"tag_name": "v9.0.0", "published_at": "2026-10-24T20:00:00Z", "draft": True}
+    assert select_latest_release([stable, draft, preview]) is preview
+
+
+def _make_tarball(path: Path, *, member_name="project/aurora.py", symlink=False):
+    with tarfile.open(path, "w:gz") as bundle:
+        info = tarfile.TarInfo(member_name)
+        if symlink:
+            info.type = tarfile.SYMTYPE
+            info.linkname = "outside"
+            bundle.addfile(info)
+        else:
+            content = b"aurora"
+            info.size = len(content)
+            bundle.addfile(info, io.BytesIO(content))
+
+
+def test_release_tarball_extracts_only_project_files(tmp_path: Path):
+    archive = tmp_path / "source.tar.gz"
+    _make_tarball(archive)
+    root = extract_release_tarball(archive, tmp_path / "extracted")
+    assert root.name == "project"
+    assert (root / "aurora.py").read_bytes() == b"aurora"
+
+
+@pytest.mark.parametrize("member_name,symlink", [("../outside", False), ("project/link", True)])
+def test_release_tarball_rejects_traversal_and_links(tmp_path: Path, member_name, symlink):
+    archive = tmp_path / "source.tar.gz"
+    _make_tarball(archive, member_name=member_name, symlink=symlink)
+    destination = tmp_path / "extracted"
+    with pytest.raises(ValueError, match="inseguro|link"):
+        extract_release_tarball(archive, destination)
+    assert not destination.exists()
