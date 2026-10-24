@@ -25,6 +25,8 @@ from .system.screen_stream import DesktopScreenStream
 from .system.commands import parse_local_command
 from .system.files import create_user_file, normalize_words, xdg_user_directory
 from .system.hardware import system_hardware_summary
+from .system.routine import (SessionUnlockMonitor,SystemRoutineCheck,SystemUpdateRequest,
+                             confirmation_intent,greeting_for,summarize_health)
 from .system.volume import control_volume
 from .system.windows import manage_window
 from .ui.orb import AuroraOrb
@@ -136,6 +138,9 @@ class AuroraService(QObject):
         super().__init__(app)
         self.app=app; self.cfg=settings_load(); self.hw=hardware_profile(); self.pending=None; self.inf=None; self.inferences=[]; self.action_workers=[]; self.obs_details={}; self.action_cancel_event=threading.Event(); self.companion_request=None; self.companion_server=None; self.screen_stream=DesktopScreenStream()
         self.response_summary=''; self.response_finished=False; self.response_language='Português brasileiro'; self.activity_generation=0; self.request_generation=0; self.last_wake=0.0; self.background_requests=[]; self.context_history=[]; self.current_prompt=''; self.active_search_context=''
+        self.system_routine_check=None; self.system_update_worker=None; self.system_routine_pending=None
+        self.system_routine_after_speech=None; self.system_routine_generation=0
+        self.system_routine_report=None; self.system_routine_last_check=0.0
         self.orb=AuroraOrb(self.cfg); self.research_card=ResearchCard(); self.orb.start_voice.connect(self.listen_once); self.orb.hide_requested.connect(self.stop_conversation); self.orb.quit_requested.connect(app.quit)
         # A worker's finished/result signal can be lost during portal/Qt
         # shutdown races. Reconcile the visual state independently so the orb
@@ -162,6 +167,10 @@ class AuroraService(QObject):
         self.companion_control_requested.connect(self._set_companion_control,Qt.ConnectionType.QueuedConnection)
         self._start_companion_server()
         self.orb.hide(); self.check_ollama()
+        self.session_unlock_monitor=SessionUnlockMonitor(self)
+        self.session_unlock_monitor.unlocked.connect(self.on_session_unlocked,Qt.ConnectionType.QueuedConnection)
+        self.session_unlock_monitor.locked.connect(self.on_session_locked,Qt.ConnectionType.QueuedConnection)
+        self.speaker.drained.connect(self._system_routine_speech_drained,Qt.ConnectionType.QueuedConnection)
 
     def _start_companion_server(self):
         if not self.cfg.get('companion_enabled',False): return
@@ -372,6 +381,190 @@ class AuroraService(QObject):
     def play_exit_feedback(self):
         if self._mobile_audio_owned(): return
         self.exit_feedback.play()
+    @Slot()
+    def on_session_unlocked(self):
+        if not self.cfg.get('system_routine_enabled',True) or self._mobile_audio_owned(): return
+        self.system_routine_generation+=1
+        generation=self.system_routine_generation
+        QTimer.singleShot(1200,lambda g=generation:self._begin_system_routine(g))
+    @Slot()
+    def on_session_locked(self):
+        # Never leave an update/reboot approval waiting across a locked session.
+        if not self.system_routine_pending and not self.system_routine_after_speech: return
+        self.system_routine_generation+=1
+        self.system_routine_pending=None; self.system_routine_after_speech=None
+        self.voice.end_request()
+        self.speaker.interrupt()
+        self.orb.dismiss()
+    def _begin_system_routine(self,generation,attempt=0):
+        if generation!=self.system_routine_generation or not self.cfg.get('system_routine_enabled',True): return
+        if self.system_routine_pending or (self.system_update_worker and self.system_update_worker.isRunning()): return
+        busy=(self.voice.request_active.is_set() or self.speaker.active or not self.speaker.q.empty()
+              or bool(self.system_routine_check and self.system_routine_check.isRunning())
+              or any(inference.isRunning() for inference in self.inferences))
+        if busy:
+            if attempt<8: QTimer.singleShot(5000,lambda g=generation,a=attempt+1:self._begin_system_routine(g,a))
+            return
+        self.response_language='Português brasileiro'; self.response_finished=False
+        self.system_routine_after_speech=('check',generation)
+        self.orb.reveal('speaking')
+        self.speaker.say(greeting_for())
+    def _say_system_routine(self,text,after,generation=None):
+        generation=self.system_routine_generation if generation is None else generation
+        self.response_finished=False
+        self.system_routine_after_speech=(after,generation)
+        self.orb.reveal('speaking')
+        self.speaker.say(text)
+    @Slot()
+    def _system_routine_speech_drained(self):
+        action=self.system_routine_after_speech
+        if not action: return
+        self.system_routine_after_speech=None
+        kind,generation=action
+        if generation!=self.system_routine_generation: return
+        if kind=='check':
+            self.orb.dismiss()
+            # Avoid hammering package metadata when the user locks and unlocks
+            # repeatedly; PackageKit itself is also queried cache-first.
+            now=time.monotonic()
+            if now-self.system_routine_last_check<600 and self.system_routine_report is not None:
+                self._system_routine_check_complete(self.system_routine_report,generation)
+                return
+            self.system_routine_last_check=now
+            worker=SystemRoutineCheck(self.cfg,self)
+            self.system_routine_check=worker
+            worker.completed.connect(lambda report,g=generation:self._system_routine_check_complete(report,g))
+            worker.finished.connect(lambda g=generation:self._clear_system_routine_check(g))
+            worker.start()
+        elif kind=='listen':
+            if not self.system_routine_pending: self.orb.dismiss(); return
+            if time.monotonic()>=self.system_routine_pending['expires']:
+                self.system_routine_pending=None; self.orb.dismiss(); return
+            self.voice.begin_request(); self.voice.request_once(); self.voice.speaking=False
+            self.orb.set_mode('listening')
+        elif kind=='dismiss':
+            self.voice.end_request(); self.orb.dismiss()
+        elif kind=='reboot':
+            QTimer.singleShot(1500,lambda g=generation:self._system_routine_reboot(g))
+        elif kind=='update':
+            report=getattr(self,'system_routine_approved_report',{})
+            rpm=report.get('rpm',{}); flatpak=report.get('flatpak',{})
+            update_rpm=bool(rpm.get('ok') and rpm.get('packages'))
+            update_flatpak=bool(flatpak.get('ok') and flatpak.get('apps'))
+            self.orb.set_mode('controlling'); self.voice.speaking=True
+            worker=SystemUpdateRequest(update_rpm,update_flatpak,self)
+            self.system_update_worker=worker
+            worker.completed.connect(lambda result,g=generation:self._system_updates_complete(result,g))
+            worker.start()
+    def _clear_system_routine_check(self,generation):
+        if generation==self.system_routine_generation: self.system_routine_check=None
+    def _system_routine_check_complete(self,report,generation,attempt=0):
+        if generation!=self.system_routine_generation or not self.cfg.get('system_routine_enabled',True): return
+        busy=(self.voice.request_active.is_set() or self.speaker.active or not self.speaker.q.empty()
+              or any(inference.isRunning() for inference in self.inferences)
+              or any(request.isRunning() for request in self.background_requests))
+        if busy:
+            if attempt<12:
+                QTimer.singleShot(5000,lambda r=report,g=generation,a=attempt+1:self._system_routine_check_complete(r,g,a))
+            return
+        if not isinstance(report,dict) or report.get('error'):
+            report={'rpm':{'ok':False,'packages':[],'security_count':0},
+                    'flatpak':{'ok':False,'apps':[],'available':True},
+                    'firmware':{'ok':False,'devices':[],'available':True},
+                    'warnings':['não consegui concluir a verificação local']}
+        self.system_routine_report=report
+        findings=summarize_health(report)
+        rpm=report.get('rpm',{}); flatpak=report.get('flatpak',{})
+        rpm_count=len(rpm.get('packages',[])) if rpm.get('ok') else 0
+        flatpak_count=len(flatpak.get('apps',[])) if flatpak.get('ok') else 0
+        components=[]
+        if rpm_count: components.append(f'{rpm_count} {"pacote" if rpm_count==1 else "pacotes"} RPM')
+        if flatpak_count: components.append(f'{flatpak_count} {"aplicativo" if flatpak_count==1 else "aplicativos"} Flatpak')
+        if components:
+            security=int(rpm.get('security_count',0)) if rpm.get('ok') else 0
+            detail=f'Encontrei {" e ".join(components)} com atualizações disponíveis'
+            if security: detail+=f', incluindo {security} de segurança'
+            firmware=report.get('firmware',{})
+            if firmware.get('devices'):
+                count=len(firmware['devices']); noun='atualização' if count==1 else 'atualizações'
+                detail+=f'. Também há {count} {noun} de firmware; vou apenas avisar, sem instalá-las automaticamente'
+            other=[item for item in findings if 'atualizações' not in item and 'atualizações de pacotes' not in item]
+            if other: detail+='. Também encontrei: '+', '.join(other[:3])
+            detail+='. Quer que eu instale as atualizações de software agora? Diga sim ou não.'
+            self.system_routine_pending={'stage':'update','report':report,'expires':time.monotonic()+35,'attempts':0}
+            self._schedule_system_routine_expiry('update',generation)
+            self._say_system_routine(detail,'listen',generation)
+        elif findings:
+            self._say_system_routine('Minha verificação encontrou pendências: '+', '.join(findings[:5])+'.','dismiss',generation)
+        else:
+            self.orb.dismiss()
+    def _schedule_system_routine_expiry(self,stage,generation):
+        def expire():
+            pending=self.system_routine_pending
+            if (generation==self.system_routine_generation and pending
+                    and pending.get('stage')==stage and time.monotonic()>=pending['expires']):
+                self.system_routine_pending=None
+                self.voice.end_request()
+                self.orb.dismiss()
+        QTimer.singleShot(36000,expire)
+    def _handle_system_routine_confirmation(self,prompt):
+        pending=self.system_routine_pending
+        if not pending: return False
+        self.voice.end_request(); self.voice.speaking=False
+        if time.monotonic()>=pending['expires']:
+            self.system_routine_pending=None
+            self._say_system_routine('O tempo para confirmar acabou. Não alterei o sistema.','dismiss')
+            return True
+        answer=confirmation_intent(prompt)
+        if answer is None:
+            pending['attempts']+=1
+            if pending['attempts']<2:
+                self._say_system_routine('Não entendi. Diga sim para confirmar ou não para cancelar.','listen')
+            else:
+                self.system_routine_pending=None
+                self._say_system_routine('Não consegui confirmar por voz. Não alterei o sistema.','dismiss')
+            return True
+        stage=pending['stage']; self.system_routine_pending=None
+        if not answer:
+            message=('Tudo bem. Não instalei as atualizações.' if stage=='update'
+                     else 'Tudo bem. Não vou reiniciar o computador.')
+            self._say_system_routine(message,'dismiss')
+            return True
+        if stage=='update':
+            self.system_routine_approved_report=pending['report']
+            self._say_system_routine('Vou iniciar as atualizações. O Fedora pode pedir sua autenticação.','update')
+            return True
+        if stage=='reboot':
+            self._say_system_routine('Certo. Vou solicitar a reinicialização em alguns segundos.','reboot')
+            return True
+        return True
+    def _system_updates_complete(self,result,generation):
+        if generation!=self.system_routine_generation: return
+        self.system_update_worker=None
+        outcomes=result.get('outcomes',[]) if isinstance(result,dict) else []
+        succeeded=[name for name,ok,_message in outcomes if ok]
+        failed=[message for _name,ok,message in outcomes if not ok and message]
+        if not succeeded:
+            self.voice.speaking=False
+            self._say_system_routine('Não consegui concluir as atualizações. '+(' '.join(failed[:2]) if failed else 'Confira o gerenciador de software.'),'dismiss',generation)
+            return
+        phrase='Atualizações concluídas para '+', '.join(succeeded)+'.'
+        if failed: phrase+=' Algumas etapas falharam: '+' '.join(failed[:2])
+        if 'RPM' in succeeded:
+            phrase+=' Quer que eu reinicie o computador agora? Se preferir, diga não e reinicie mais tarde.'
+            self.system_routine_pending={'stage':'reboot','expires':time.monotonic()+35,'attempts':0}
+            self._schedule_system_routine_expiry('reboot',generation)
+            self._say_system_routine(phrase,'listen',generation)
+        else:
+            self._say_system_routine(phrase,'dismiss',generation)
+    def _system_routine_reboot(self,generation):
+        if generation!=self.system_routine_generation: return
+        try: result=subprocess.run(['systemctl','reboot'],capture_output=True,text=True,timeout=8,check=False)
+        except (OSError,subprocess.SubprocessError):
+            self._say_system_routine('O sistema recusou a reinicialização. Não reiniciei o computador.','dismiss',generation)
+            return
+        if result.returncode:
+            self._say_system_routine('O sistema recusou a reinicialização. Não reiniciei o computador.','dismiss',generation)
     def dismiss(self):
         # Soft-dismissal is used when a one-shot listening attempt expires.
         if self.pending:
@@ -389,6 +582,7 @@ class AuroraService(QObject):
             self._finish_companion_request(error=RuntimeError('Solicitação Android interrompida no PC'))
             return
         self.activity_generation+=1; self.request_generation+=1
+        self.system_routine_generation+=1; self.system_routine_pending=None; self.system_routine_after_speech=None
         self.action_cancel_event.set()
         self.voice.end_request()
         self.voice.disable_control_cancel()
@@ -429,6 +623,7 @@ class AuroraService(QObject):
         self.response_finished=True; self.response_summary='Não consegui iniciar o reconhecimento de voz.'; self.orb.reveal('error')
         self.speak_in_selected_language('Não consegui iniciar o reconhecimento de voz')
     def ask(self,prompt):
+        if self._handle_system_routine_confirmation(prompt): return
         # After command transcription completes, keep a tiny local cancel
         # recognizer active during the request and its spoken response.
         self.voice.interrupt_active.set()
@@ -633,7 +828,8 @@ class AuroraService(QObject):
     def speaking_changed(self,on):
         model_busy=bool(self.inf and self.inf.isRunning())
         request_busy=any(request.isRunning() for request in self.background_requests)
-        self.voice.speaking=on or model_busy or request_busy or not self.speaker.q.empty()
+        update_busy=bool(self.system_update_worker and self.system_update_worker.isRunning())
+        self.voice.speaking=on or model_busy or request_busy or update_busy or not self.speaker.q.empty()
         if on: self.orb.set_mode('speaking' if self.speaker.playing else 'preparing')
         elif not self.speaker.active and self.speaker.q.empty() and self.response_finished:
             self.schedule_dismiss(750)
@@ -858,6 +1054,7 @@ class AuroraService(QObject):
             urllib.request.urlopen(req,timeout=5).read()
         except Exception: pass
     def stop(self):
+        if getattr(self,'session_unlock_monitor',None): self.session_unlock_monitor.close()
         if self.companion_server:
             self.companion_server.close(); self.companion_server=None
         self.action_cancel_event.set()

@@ -15,5 +15,6 @@
   "obs_port": 4455,
   "screen_control_apps": [],
   "companion_enabled": false,
-  "companion_port": 8765
+  "companion_port": 8765,
+  "system_routine_enabled": true
 }

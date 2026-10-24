@@ -59,6 +59,12 @@ Aurora também pode ser instalada por scripts versionados, sem instalar arquivos
 
 O serviço usa `start-alpha.sh`, que procura Ollama em `PATH` ou no runtime opcional definido por `AURORA_OLLAMA_RUNTIME_DIR`. O diretório de estado e logs padrão é `~/.local/state/aurora`; para usar um runtime/modelos locais alternativos, configure `AURORA_WORK_DIR`, `AURORA_OLLAMA_RUNTIME_DIR` e, se necessário, `AURORA_OLLAMA_MODELS_DIR` em `~/.config/aurora/runtime.env` (formato `NOME=valor`, uma variável por linha). O serviço carrega esse arquivo se existir.
 
+### Rotina ao desbloquear
+
+Com `system_routine_enabled` ativo (padrão), Aurora cumprimenta o usuário ao iniciar numa sessão GNOME já desbloqueada e após sinais de desbloqueio. Em seguida, verifica atualizações RPM pelo PackageKit com cache de até 24 horas, atualizações Flatpak usando metadados locais, firmware sem atualizar metadados, espaço livre em `/` e na pasta pessoal, e disponibilidade de componentes essenciais da Aurora. Ela não percorre documentos, fotos ou outros arquivos pessoais e não é uma auditoria completa do sistema.
+
+Só anuncia pendências. Nenhum pacote é instalado sem confirmação falada clara. A instalação mantém a verificação normal de assinaturas e pode abrir a autenticação do Fedora; firmware é apenas reportado nesta versão. Após concluir atualizações RPM, Aurora pede uma segunda confirmação antes de solicitar reinicialização. Resposta ambígua, timeout ou bloqueio da sessão não autorizam mudanças. As consultas dependem da rede e dos repositórios configurados; não garantem que todas as fontes estejam atualizadas.
+
 ### Automação e interrupção
 
 Capturas usam o portal de tela da sessão e não pedem uma segunda confirmação da Aurora depois do pedido explícito; o portal do sistema ainda pode exigir autorização. A solicitação e a cópia do arquivo rodam fora da interface para manter a bolha responsiva. Quando o portal confirma a captura, Aurora conclui a gravação local do arquivo mesmo se uma interrupção chegar nessa fração de segundo. Se o GNOME salvar o arquivo mas perder a resposta do portal, Aurora observa a pasta durante a espera e recupera a captura assim que o arquivo estabiliza, sem aguardar o timeout completo. O arquivo recebe um nome exclusivo em `Imagens/Aurora`; a confirmação falada informa a pasta sem soletrar o caminho completo.
