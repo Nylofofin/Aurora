@@ -7,6 +7,10 @@ assets/vosk-model/
 *.wav
 !assets/audio/entrada.wav
 !assets/audio/saida.wav
+!assets/audio/select.wav
+!assets/audio/step.wav
+!assets/audio/success.wav
+!assets/audio/error.wav
 *.log
 *-preview.png
 

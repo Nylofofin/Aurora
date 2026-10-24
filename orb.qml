@@ -23,14 +23,14 @@ Item {
     property int windowY: 0
     property bool dragging: false
 
-    readonly property var statePalette: bubbleStyle === "prisma" ? ({
-        listening: "#9DD7E9", thinking: "#B4A9DB", searching: "#9BC9E4",
-        weather: "#A7D4E4", preparing: "#C5B7E7", speaking: "#D7CCE8",
-        approval: "#E4CC9B", controlling: "#BDB0DF", error: "#E1ADB8", idle: "#BEDCE9"
-    }) : bubbleStyle === "violeta" ? ({
-        listening: "#80BAE6", thinking: "#AE8BE4", searching: "#719FE0",
-        weather: "#85B3E0", preparing: "#B28CE8", speaking: "#C3A8EB",
-        approval: "#D7B776", controlling: "#A58BDE", error: "#D88FA8", idle: "#9C78DC"
+    readonly property var statePalette: bubbleStyle === "emerald" ? ({
+        listening: "#78F0B2", thinking: "#42D99A", searching: "#24C987",
+        weather: "#67E8A8", preparing: "#32D583", speaking: "#9AF5C7",
+        approval: "#F1D878", controlling: "#17B978", error: "#F19A7E", idle: "#35C98B"
+    }) : bubbleStyle === "crimson" ? ({
+        listening: "#FF9B9F", thinking: "#FF727D", searching: "#FF5469",
+        weather: "#FF8584", preparing: "#FF6575", speaking: "#FFB0A9",
+        approval: "#F5D277", controlling: "#E94768", error: "#FF5268", idle: "#E94469"
     }) : ({
         listening: "#8DDBF4", thinking: "#AF9BE8", searching: "#82C6EE",
         weather: "#91CDE7", preparing: "#BAA5ED", speaking: "#D6C4F5",
@@ -104,7 +104,7 @@ Item {
             }
         }
 
-        // Pearlescent shell with one quiet blue-to-violet tonal gradient.
+        // Pearlescent shell with a style-specific tonal gradient.
         Shape {
             anchors.fill: parent
             ShapePath {
@@ -112,11 +112,11 @@ Item {
                 fillGradient: LinearGradient {
                     x1: 22; y1: 4; x2: 95; y2: 112
                     GradientStop { position: 0.00; color: "#FFFDFC" }
-                    GradientStop { position: 0.19; color: "#EDF8FC" }
-                    GradientStop { position: 0.42; color: "#BFEAF5" }
-                    GradientStop { position: 0.66; color: "#91B9EF" }
-                    GradientStop { position: 0.84; color: "#8C8CDE" }
-                    GradientStop { position: 1.00; color: "#675BAF" }
+                    GradientStop { position: 0.19; color: bubbleStyle === "emerald" ? "#E9FFF2" : bubbleStyle === "crimson" ? "#FFF0F0" : "#EDF8FC" }
+                    GradientStop { position: 0.42; color: bubbleStyle === "emerald" ? "#B9F5D2" : bubbleStyle === "crimson" ? "#FFC6C7" : "#BFEAF5" }
+                    GradientStop { position: 0.66; color: bubbleStyle === "emerald" ? "#57DFA0" : bubbleStyle === "crimson" ? "#FF818B" : "#91B9EF" }
+                    GradientStop { position: 0.84; color: bubbleStyle === "emerald" ? "#20B879" : bubbleStyle === "crimson" ? "#E94367" : "#8C8CDE" }
+                    GradientStop { position: 1.00; color: bubbleStyle === "emerald" ? "#087B62" : bubbleStyle === "crimson" ? "#9D174D" : "#675BAF" }
                 }
                 PathAngleArc { centerX: 57; centerY: 57; radiusX: 56; radiusY: 56; startAngle: 0; sweepAngle: 360 }
             }

@@ -3,9 +3,14 @@
 ## Aurora Desktop 1.7.2 — Andromeda First Light, 2026-10-24 (release estável)
 
 - Reformula a personalização inicial com cartões Material claros, transições suaves e campos de perfil mais legíveis.
-- Mostra três prévias animadas da bolha (Névoa Boreal, Prisma e Órbita Violeta), com seleção explícita.
+- Mostra três prévias animadas da bolha (Névoa Boreal, Pulso Esmeralda e Flare Carmesim), com seleção explícita.
 - Limita a tela de voz às três vozes brasileiras suportadas pelo produto: Thalita, Francisca e Antonio; cada cartão oferece prévia e seleção por rádio.
 - Atualiza o identificador do Launchpad para 0.3.1 e mantém o instalador separado do payload da Aurora.
+
+## Próximo patch — Nebula Motion SFX (não publicado)
+
+- Adiciona efeitos originais de seleção, avanço, sucesso e erro ao onboarding.
+- Faz os três acabamentos usarem gradientes e movimento interno contínuo na própria bolha.
 
 ## Aurora Desktop 1.7.1-beta.4 — V404 Cygni First-Run Personalization, 2026-10-24 (pré-release beta)
 

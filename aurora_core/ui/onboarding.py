@@ -5,8 +5,9 @@ from __future__ import annotations
 import asyncio
 import math
 import time
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QThread, Signal, QTimer
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QThread, Signal, QTimer, QUrl
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QRadialGradient, QLinearGradient, QPen
+from PySide6.QtMultimedia import QSoundEffect
 from PySide6.QtWidgets import (
     QButtonGroup, QCheckBox, QDialog, QFrame, QGraphicsOpacityEffect, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QRadioButton, QStackedWidget, QVBoxLayout, QWidget,
@@ -50,10 +51,10 @@ class _AnimatedOrb(QWidget):
         base = QColor("#eafaff")
         lower = QColor("#177ff2")
         violet = QColor("#7950d8")
-        if self.style == "prisma":
-            base, lower, violet = QColor("#fbfdff"), QColor("#66c7fa"), QColor("#b397f2")
-        elif self.style == "violeta":
-            base, lower, violet = QColor("#f7f4ff"), QColor("#5c68e8"), QColor("#8e49db")
+        if self.style == "emerald":
+            base, lower, violet = QColor("#f5fff8"), QColor("#32d583"), QColor("#0b8f66")
+        elif self.style == "crimson":
+            base, lower, violet = QColor("#fff8f8"), QColor("#ff5c6c"), QColor("#b51e52")
         circle = QPainterPath()
         circle.addEllipse(2, 2, size-4, size-4)
         painter.setClipPath(circle)
@@ -204,7 +205,10 @@ class PersonalizationWizard(QDialog):
         self.result_settings = None
         self._voice_map = {}
         self._selected_style = str(cfg.get("bubble_style", "boreal"))
+        if self._selected_style not in {"boreal", "emerald", "crimson"}:
+            self._selected_style = "boreal"
         self._name_worker = None
+        self._sfx = {}
         self.setWindowTitle("Personalizar a Aurora")
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
         self.setModal(True)
@@ -232,6 +236,11 @@ class PersonalizationWizard(QDialog):
             QCheckBox, QRadioButton { spacing:9px; color:#494451; }
             QRadioButton::indicator { width:18px; height:18px; }
         """)
+        for name in ("select", "step", "success", "error"):
+            effect = QSoundEffect(self)
+            effect.setSource(QUrl.fromLocalFile(str(__import__("pathlib").Path(__file__).resolve().parents[2] / "assets" / "audio" / f"{name}.wav")))
+            effect.setVolume(0.22 if name != "error" else 0.30)
+            self._sfx[name] = effect
 
         root = QVBoxLayout(self)
         root.setContentsMargins(38, 30, 38, 28)
@@ -330,9 +339,9 @@ class PersonalizationWizard(QDialog):
         cards = QHBoxLayout()
         cards.setSpacing(14)
         self.style_cards = {}
-        choices = (("boreal", "Névoa Boreal", "Reflexos azul-celeste e violeta"),
-                   ("prisma", "Prisma", "Luz perolada com tons de lavanda"),
-                   ("violeta", "Órbita Violeta", "Azul profundo e violeta luminoso"))
+        choices = (("boreal", "Névoa Boreal", "O acabamento atual · azul e violeta"),
+                   ("emerald", "Pulso Esmeralda", "Verde vivo · energia fresca"),
+                   ("crimson", "Flare Carmesim", "Vermelho intenso · presença forte"))
         for key, title, detail in choices:
             card = _StyleCard(key, title, detail)
             card.select_button.clicked.connect(lambda _=False, value=key: self._select_style(value))
@@ -398,6 +407,7 @@ class PersonalizationWizard(QDialog):
         self._selected_style = key
         for name, card in self.style_cards.items():
             card.set_selected(name == key)
+        self._play_sfx("select")
 
     def _select_voice(self, voice, checked):
         if checked:
@@ -407,6 +417,7 @@ class PersonalizationWizard(QDialog):
         name = "Aurora" if self.default_name.isChecked() else (self.assistant_name.text().strip() or "Aurora")
         self.voice_status.setText(f"Reproduzindo prévia de {next((n for s, n, _ in SUPPORTED_VOICES if s == voice), voice)}…")
         self.speaker.say_with_voice(f"Olá, eu sou {name}. Estou pronta para ajudar.", voice)
+        self._play_sfx("select")
 
     def _center(self):
         screen = self.screen() or __import__("PySide6.QtWidgets", fromlist=["QApplication"]).QApplication.primaryScreen()
@@ -441,6 +452,7 @@ class PersonalizationWizard(QDialog):
             animation.setEasingCurve(QEasingCurve.Type.OutCubic)
             self._page_animation = animation
             animation.start()
+            self._play_sfx("step")
 
     def _set_name_checked(self, name, ok, message):
         self.next_button.setEnabled(True)
@@ -484,8 +496,15 @@ class PersonalizationWizard(QDialog):
             "onboarding_boot_id": "",
         }
         self._set_page(4)
+        self._play_sfx("success")
         self._loading_pulse.start()
         self.back_button.setVisible(False)
         self.next_button.setVisible(False)
         QTimer.singleShot(1250, self.accept)
+
+    def _play_sfx(self, name):
+        effect = self._sfx.get(name)
+        if effect is not None and effect.source().isValid():
+            effect.stop()
+            effect.play()
 
