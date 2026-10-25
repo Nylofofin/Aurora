@@ -127,6 +127,7 @@ class _StyleCard(QFrame):
         self.setObjectName("choiceCard")
         self.setProperty("selected", False)
         self.setMinimumWidth(200)
+        self.setMinimumHeight(238)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 15, 16, 15)
         layout.setSpacing(8)
@@ -135,6 +136,7 @@ class _StyleCard(QFrame):
         heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(heading)
         orb = _AnimatedOrb(key)
+        orb.setFixedSize(100, 100)
         layout.addWidget(orb, 0, Qt.AlignmentFlag.AlignHCenter)
         caption = QLabel(detail)
         caption.setObjectName("cardDetail")
@@ -157,6 +159,7 @@ class _VoiceCard(QFrame):
         self.short_name = short_name
         self.setObjectName("choiceCard")
         self.setMinimumWidth(218)
+        self.setMinimumHeight(250)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 18, 16, 16)
         layout.setSpacing(10)
@@ -167,7 +170,8 @@ class _VoiceCard(QFrame):
         voice_icon = QLabel("◖  ◗")
         voice_icon.setObjectName("voiceGlyph")
         voice_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(voice_icon, 1)
+        voice_icon.setFixedHeight(82)
+        layout.addWidget(voice_icon, 0, Qt.AlignmentFlag.AlignHCenter)
         self.preview_button = QPushButton("▶  Ouvir prévia")
         self.preview_button.setObjectName("previewVoice")
         layout.addWidget(self.preview_button)
@@ -401,6 +405,7 @@ class PersonalizationWizard(QDialog):
         layout = QVBoxLayout(frame)
         layout.setContentsMargins(18, 16, 18, 16)
         layout.setSpacing(9)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         heading = QLabel(title)
         heading.setObjectName("title")
         heading.setWordWrap(True)
@@ -546,16 +551,22 @@ class PersonalizationWizard(QDialog):
                    ("void", "Void", "Profundo · futurista"))
         for key, title, detail in choices:
             card = QFrame(); card.setObjectName("choiceCard")
+            card.setMinimumHeight(190)
             card.setProperty("selected", key == self._selected_feedback)
             box = QVBoxLayout(card); box.setContentsMargins(12, 12, 12, 12); box.setSpacing(7)
             heading = QLabel(title); heading.setObjectName("cardTitle"); heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
             box.addWidget(heading)
             caption = QLabel(detail); caption.setObjectName("cardDetail"); caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
             box.addWidget(caption)
-            preview = QPushButton("▶  Entrada · Saída")
-            preview.setObjectName("previewVoice")
-            preview.clicked.connect(lambda _=False, value=key: self._preview_feedback(value))
-            box.addWidget(preview)
+            preview_row = QHBoxLayout(); preview_row.setSpacing(6)
+            entry_preview = QPushButton("↗  Entrada")
+            entry_preview.setObjectName("previewVoice")
+            entry_preview.clicked.connect(lambda _=False, value=key: self._preview_feedback(value, "entrada"))
+            exit_preview = QPushButton("↘  Saída")
+            exit_preview.setObjectName("previewVoice")
+            exit_preview.clicked.connect(lambda _=False, value=key: self._preview_feedback(value, "saida"))
+            preview_row.addWidget(entry_preview); preview_row.addWidget(exit_preview)
+            box.addLayout(preview_row)
             radio = QRadioButton("Usar estes sons")
             radio.setChecked(key == self._selected_feedback)
             radio.toggled.connect(lambda checked, value=key: self._select_feedback(value, checked))
@@ -613,13 +624,21 @@ class PersonalizationWizard(QDialog):
             card.style().unpolish(card); card.style().polish(card)
         self._play_sfx("select")
 
-    def _preview_feedback(self, theme):
+    def _preview_feedback(self, theme, direction=None):
         entry = self._feedback_sfx.get(f"{theme}:entrada")
         exit_ = self._feedback_sfx.get(f"{theme}:saida")
         if not entry or not exit_ or not entry.source().isValid() or not exit_.source().isValid():
             self.feedback_status.setText("Prévia indisponível")
             return
         for effect in self._feedback_sfx.values(): effect.stop()
+        if direction == "entrada":
+            self.feedback_status.setText(f"Prévia {theme}: entrada")
+            entry.play()
+            return
+        if direction == "saida":
+            self.feedback_status.setText(f"Prévia {theme}: saída")
+            exit_.play()
+            return
         self.feedback_status.setText("Prévia: entrada …")
         entry.play()
         def play_exit():
