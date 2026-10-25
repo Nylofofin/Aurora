@@ -1,5 +1,7 @@
 # Aurora Desktop
 
+**Versão:** `2.1.2` · **Build:** `aurora-desktop-2.1.2-rigel-update-integrity`
+
 **Uma assistente de voz para Linux, com uma presença pequena na tela e o processamento principal no próprio computador.** A Aurora desperta por voz, entende pedidos cotidianos, conversa em uma sessão contínua e pode pesquisar na web ou executar ações locais.
 
 <p align="center">
