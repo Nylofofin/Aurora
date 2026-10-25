@@ -3,5 +3,6 @@ Babel>=2.14
 edge-tts>=7.2
 SpeechRecognition>=3.14
 sounddevice>=0.5
+numpy>=2.0
 vosk>=0.3.45
 certifi>=2026.10.19
