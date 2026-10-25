@@ -1,5 +1,13 @@
 # Histórico de versões
 
+## Aurora Desktop 3.0.0e — Vega Voice & Wake, 2026-10-25 (release estável)
+
+- Ajusta o Supertonic para cinco passos, equilibrando qualidade vocal e latência no hardware de referência.
+- Torna a ativação por nome mais criteriosa: a gramática limitada já não ativa a Aurora sozinha; o reconhecimento livre precisa confirmar o nome com confiança por palavra.
+- Mantém o treinamento acústico local para nomes personalizados fora do vocabulário do Vosk.
+- Atualiza o Launchpad para 0.4.7-1 e faz o seletor reconhecer tags estáveis no formato compacto `3.0.0e`.
+- Adiciona uma demonstração animada do onboarding à descrição da release.
+
 ## Aurora Desktop 2.1.2 — Rigel Update Integrity, 2026-10-25 (release estável)
 
 - Torna a atualização da Aurora transacional: prepara os arquivos antes da troca, preserva dados locais e recupera a versão anterior se a ativação falhar.
