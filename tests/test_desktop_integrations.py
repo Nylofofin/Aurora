@@ -267,6 +267,22 @@ def test_flatpak_application_launches_by_id_and_reports_window_state_honestly(mo
     assert "QT_QPA_PLATFORM" not in calls[0][1]["env"]
 
 
+def test_sober_launch_uses_system_certificate_bundle(monkeypatch, tmp_path):
+    desktop_file = tmp_path / "flatpak/exports/share/applications/org.vinegarhq.Sober.desktop"
+    app = {"file": desktop_file, "name": "Sober", "exec": "flatpak run org.vinegarhq.Sober",
+           "class": "org.vinegarhq.Sober"}
+    calls = []
+    monkeypatch.setattr(apps_module, "find_desktop_app", lambda _name: app)
+    monkeypatch.setattr(apps_module.shutil, "which", lambda name: "/usr/bin/flatpak" if name == "flatpak" else None)
+    monkeypatch.setattr(apps_module, "FLATPAK_LAUNCH_CONFIRM_TIMEOUT", 0)
+    monkeypatch.setattr(apps_module.subprocess, "Popen", lambda command, **kwargs: calls.append((command, kwargs)))
+
+    apps_module.launch_application("Roblox")
+
+    assert calls[0][1]["env"]["SSL_CERT_FILE"] == "/etc/ssl/certs/ca-certificates.crt"
+    assert calls[0][1]["env"]["CURL_CA_BUNDLE"] == "/etc/ssl/certs/ca-certificates.crt"
+
+
 def test_obs_background_launch_starts_minimized_to_tray(monkeypatch, tmp_path):
     desktop_file = tmp_path / "flatpak/exports/share/applications/com.obsproject.Studio.desktop"
     app = {"file": desktop_file, "name": "OBS Studio", "exec": "flatpak run com.obsproject.Studio",

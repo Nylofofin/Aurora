@@ -148,6 +148,12 @@ def launch_application(name, *, background=False):
             # must select the user's native Wayland/X11 backend themselves;
             # inheriting this override can break Sober and OBS startup.
             env.pop('QT_QPA_PLATFORM', None)
+            # Sober's bundled HTTP client can miss the Fedora CA bundle when
+            # Cloudflare presents its current intermediate certificate. Keep
+            # verification enabled, but point Sober at the system trust store.
+            if app_id == 'org.vinegarhq.Sober':
+                env['SSL_CERT_FILE'] = '/etc/ssl/certs/ca-certificates.crt'
+                env['CURL_CA_BUNDLE'] = '/etc/ssl/certs/ca-certificates.crt'
             arguments = _flatpak_launch_args(app, app_id, background=background)
             process=subprocess.Popen([flatpak,*arguments],start_new_session=True,
                                      stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,
