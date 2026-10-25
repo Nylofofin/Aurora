@@ -1,5 +1,11 @@
 # Histórico de versões
 
+## Aurora Desktop 1.8.5 — Sirius Onboarding Migration, 2026-10-24 (release estável)
+
+- Migra automaticamente marcadores antigos de primeira instalação.
+- Permite que o onboarding apareça após logout/login sem reinstalar a Aurora.
+- Preserva o comportamento de espera quando o serviço inicia pela primeira vez na sessão da instalação.
+
 ## Aurora Desktop 1.8.4 — Sirius Session Onboarding, 2026-10-24 (release estável)
 
 - Dispara o onboarding no próximo login, mesmo quando a instalação terminou sem reinicialização.

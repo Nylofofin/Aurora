@@ -1,9 +1,9 @@
 # Aurora Desktop
 
-**Versão:** `1.8.4` (PC) · `1.2.3` (Android, arquivada) · **Build:** `aurora-desktop-1.8.4-sirius-session-onboarding`
-**Release:** **Aurora Desktop 1.8.4 — Sirius Session Onboarding** — patch estável.
+**Versão:** `1.8.5` (PC) · `1.2.3` (Android, arquivada) · **Build:** `aurora-desktop-1.8.5-sirius-onboarding-migration`
+**Release:** **Aurora Desktop 1.8.5 — Sirius Onboarding Migration** — patch estável.
 
-> **Release estável 1.8.4 — Sirius Session Onboarding.** Esta rodada dispara a personalização no próximo login, mesmo sem reiniciar o computador, e oferece no Launchpad a escolha explícita entre reiniciar e encerrar a sessão. Mantém o desktop focado em automação local, pesquisa, voz e OBS. Destina-se ao Fedora Workstation com GNOME/Wayland e Ollama local. Provedores externos, periféricos, portais do GNOME e integrações opcionais continuam sujeitos à rede, permissões e configuração local. A Aurora não instala atualizações sem confirmação.
+> **Release estável 1.8.5 — Sirius Onboarding Migration.** Esta rodada migra marcadores de instalações anteriores e permite concluir o onboarding com logout/login sem reinstalar. Mantém a escolha explícita entre reiniciar e encerrar a sessão. Destina-se ao Fedora Workstation com GNOME/Wayland e Ollama local. Provedores externos, periféricos, portais do GNOME e integrações opcionais continuam sujeitos à rede, permissões e configuração local. A Aurora não instala atualizações sem confirmação.
 
 As releases seguem o formato **Aurora Desktop `<versão>` — `<codinome>`**. O codinome descreve a mudança principal daquela versão; o identificador técnico usa `aurora-desktop-<versão>-<codinome>`, sem siglas ambíguas. A tag SemVer (`vMAJOR.MINOR.PATCH`) continua sendo a referência exata do código. Nomes anteriores permanecem no changelog como registro histórico.
 

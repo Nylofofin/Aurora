@@ -10,7 +10,9 @@ from urllib.parse import urlparse
 import json, os, re, sys, threading, time, traceback, urllib.error, urllib.request
 import aurora_fx
 import aurora_integrations
-from .config import APP_CONFIG, APP_DIR, hardware_profile, local_endpoint, onboarding_state, settings_load, settings_save
+from .config import (APP_CONFIG, APP_DIR, current_boot_id, current_session_id,
+                      hardware_profile, local_endpoint, onboarding_state,
+                      settings_load, settings_save)
 from .companion.server import CompanionServer, discover_private_address
 from .llm.inference import Inference
 from .llm.warmup import ModelWarmup
@@ -156,7 +158,15 @@ class AuroraService(QObject):
         # wake() then called the floating view's show()/raise_() outside Qt's GUI thread:
         # the feedback sound played, while the orb window was never mapped.
         super().__init__(app)
-        self.app=app; self.cfg=settings_load(); self.hw=hardware_profile(); self.pending=None; self.inf=None; self.inferences=[]; self.action_workers=[]; self.obs_details={}; self.action_cancel_event=threading.Event(); self.companion_request=None; self.companion_server=None; self.screen_stream=DesktopScreenStream()
+        self.app=app; self.cfg=settings_load()
+        # Migrate an older fresh-install marker while preserving its original
+        # semantics: seed the current login as the waiting session, then show
+        # the wizard only after the next logout/login or reboot.
+        if (self.cfg.get('onboarding_pending') and not self.cfg.get('onboarding_session_id')
+                and self.cfg.get('onboarding_boot_id') == current_boot_id() and current_session_id()):
+            self.cfg['onboarding_session_id'] = current_session_id()
+            settings_save(self.cfg)
+        self.hw=hardware_profile(); self.pending=None; self.inf=None; self.inferences=[]; self.action_workers=[]; self.obs_details={}; self.action_cancel_event=threading.Event(); self.companion_request=None; self.companion_server=None; self.screen_stream=DesktopScreenStream()
         self.onboarding_waiting_reboot,self.onboarding_due=onboarding_state(self.cfg)
         self._critical_error=None
         self._previous_excepthook=sys.excepthook
