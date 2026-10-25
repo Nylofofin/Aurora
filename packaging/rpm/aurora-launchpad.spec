@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 Name:           aurora-launchpad
-Version:        0.4.0
-Release:        2%{?dist}
+Version:        0.4.1
+Release:        1%{?dist}
 Summary:        GTK setup assistant and installer for Aurora Desktop
 License:        GPL-3.0-only
 URL:            https://github.com/Nylofofin/Aurora
@@ -45,6 +45,9 @@ install -Dpm0644 launchpad/aurora-launchpad.desktop %{buildroot}%{_datadir}/appl
 %{_datadir}/icons/hicolor/scalable/apps/com.nylofofin.AuroraLaunchpad.svg
 
 %changelog
+* Sun Oct 25 2026 Aurora Project <nylofofin@localhost> - 0.4.1-1
+- Update Launchpad for the Aurora Desktop 2.1.0 release and local voice setup
+
 * Sun Oct 25 2026 Aurora Project <nylofofin@localhost> - 0.4.0-2
 - Refresh the compact dark Launchpad interface and align the installer identity with Aurora 2.0.0a.
 

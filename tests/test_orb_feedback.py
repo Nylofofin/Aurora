@@ -32,7 +32,7 @@ def test_missing_ffplay_reports_voice_error_without_linux_speech_fallback(monkey
     speaker.q = OneItemQueue()
     speaker.run()
 
-    assert errors == ["O Edge TTS precisa do ffplay para reproduzir a voz Thalita."]
+    assert errors == ["O ffplay é necessário para reproduzir a voz da Aurora."]
     assert drained == [True]
 
 

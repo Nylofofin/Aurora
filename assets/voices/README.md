@@ -1,0 +1,30 @@
+# Vozes locais
+
+O catálogo ativo mantém Faber (Piper) e oferece dez estilos brasileiros do [Supertonic 3](https://github.com/supertone-oss-archive/supertonic-py): F1–F5 e M1–M5. Os estilos compartilham um único modelo local; escolher outro estilo não baixa outro modelo separado. A instalação pessoal guarda os dados em `~/.local/share/aurora/voices/` e o cache do runtime Supertonic em seu diretório de cache do usuário. Pesos não são distribuídos no repositório nem no RPM.
+
+O pacote Python oficial chama-se [`supertonic`](https://pypi.org/project/supertonic/). A API documentada usa `TTS(auto_download=True)`, `get_voice_style(voice_name=...)` e `synthesize(..., voice_style=..., lang="pt")`. A integração da Aurora usa cinco passos de síntese e três threads locais para equilibrar qualidade e velocidade em CPU. Respostas longas são enviadas ao player por trechos de até 88 caracteres, para a reprodução começar sem esperar a resposta inteira. A primeira prévia baixa o modelo compartilhado, aproximadamente 400 MB segundo a documentação upstream; por isso a interface avisa e só baixa quando solicitado. Faber segue disponível como opção independente.
+
+**Licença:** código Supertonic sob MIT; pesos sob OpenRAIL-M, que exige atribuição e impõe restrições de uso. Leia os termos upstream antes de redistribuir ou usar fora do contexto pessoal. O projeto Aurora não inclui os pesos. A qualidade e a latência variam por máquina e ainda devem ser avaliadas pelo usuário neste hardware.
+
+O catálogo anterior tinha apenas Faber depois que os demais modelos foram removidos por solicitação. Esta atualização integra os dez estilos Supertonic e mantém Faber.
+
+## Próximo candidato para avaliação
+
+Kokoro-82M é uma alternativa local leve para comparar em outro ciclo: o cartão oficial publica os pesos sob Apache-2.0 e lista três vozes em português brasileiro (uma feminina e duas masculinas). O próprio catálogo alerta que idiomas não ingleses podem ter suporte de G2P/dados de treino reduzido. Por isso, ainda não foi trocado pelo Supertonic: precisa passar por comparação real de qualidade, latência no hardware alvo e suporte de empacotamento da Aurora antes de ser oferecido. Fontes primárias: [cartão do modelo Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) e [catálogo de vozes](https://huggingface.co/hexgrad/Kokoro-82M/blob/main/VOICES.md).
+
+## Nomes do seletor
+
+Os rótulos são nomes de perfil da Aurora, não nomes pessoais dos locutores. Correspondência do catálogo:
+
+| Perfil | Nome exibido |
+|---|---|
+| F1 | Vênus |
+| F2 | Europa |
+| F3 | Reia |
+| F4 | Dione |
+| F5 | Miranda |
+| M1 | Júpiter |
+| M2 | Saturno |
+| M3 | Netuno |
+| M4 | Urano |
+| M5 | Titã |

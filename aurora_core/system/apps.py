@@ -167,6 +167,12 @@ def launch_application(name, *, background=False):
         while time.monotonic() < deadline:
             if _flatpak_instance_active(app_id, flatpak):
                 return f'Abri {app["name"]}; o processo Flatpak está ativo.'
+            try: returncode=poll() if callable(poll) else None
+            except Exception: returncode=None
+            if returncode not in (None, 0):
+                return f'O Flatpak encerrou com erro ao tentar iniciar {app["name"]} (código {returncode}).'
+            if returncode == 0:
+                return f'O Flatpak recebeu o pedido para abrir {app["name"]}; ele pode estar carregando.'
             time.sleep(.12)
         if returncode not in (None,0):
             return f'O Flatpak encerrou com erro ao tentar iniciar {app["name"]} (código {returncode}).'

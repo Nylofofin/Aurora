@@ -297,6 +297,14 @@ def test_newer_aurora_releases_returns_only_three_builds_above_installed():
     assert [item["tag_name"] for item in found] == ["v2.0.0-alpha.1", "v1.8.0", "v1.7.4-beta.1"]
 
 
+def test_launchpad_release_picker_names_stability_channel():
+    from launchpad.aurora_launchpad_core import release_channel_label
+
+    assert release_channel_label({"prerelease": True}) == "Pré-release · experimental"
+    assert release_channel_label({"prerelease": False}) == "Release · estável"
+    assert release_channel_label({}) == "Canal não informado"
+
+
 def _make_tarball(path: Path, *, member_name="project/aurora.py", symlink=False):
     with tarfile.open(path, "w:gz") as bundle:
         info = tarfile.TarInfo(member_name)

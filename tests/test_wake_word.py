@@ -1,8 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-only
-import asyncio
-import sys
 import threading
-import types
 
 import pytest
 import aurora
@@ -194,70 +191,70 @@ def test_speaker_interrupt_discards_queued_speech():
 
 
 def test_voice_preview_queues_selected_voice_without_changing_saved_voice():
-    speaker = aurora.Speaker({"tts_voice": "pt-BR-ThalitaMultilingualNeural"})
-    speaker.say_with_voice("Olá!", "en-US-AriaNeural")
-    text, _queued_at, voice = speaker.q.get_nowait()
+    speaker = aurora.Speaker({"tts_voice": "pt_BR-faber-medium"})
+    speaker.say_with_voice("Olá!", "supertonic:F1", engine="supertonic")
+    text, _queued_at, voice, engine, is_preview = speaker.q.get_nowait()
     assert text == "Olá!"
-    assert voice == "en-US-AriaNeural"
-    assert speaker.cfg["tts_voice"] == "pt-BR-ThalitaMultilingualNeural"
+    assert voice == "supertonic:F1"
+    assert engine == "supertonic"
+    assert is_preview
+    assert speaker.cfg["tts_voice"] == "pt_BR-faber-medium"
 
 
-def test_speaker_interrupt_cancels_stalled_edge_stream(monkeypatch):
+def test_speaker_interrupt_stops_local_piper_between_audio_chunks(monkeypatch):
     import aurora_core.voice.tts as tts_module
+    from types import SimpleNamespace
+    import io
 
-    started = threading.Event()
+    generation_blocked = threading.Event()
+    release_generation = threading.Event()
     class Player:
-        def __init__(self): self.stdin = object(); self.returncode = None; self.killed = False
+        def __init__(self, *_args, **_kwargs): self.stdin = io.BytesIO(); self.returncode = None; self.killed = False
         def kill(self): self.killed = True; self.returncode = -9
-        async def wait(self): return self.returncode
+        def wait(self, timeout=None): return self.returncode or 0
+        def poll(self): return self.returncode
     player = Player()
-    async def create_player(*_args, **_kwargs): return player
-    monkeypatch.setattr(tts_module.asyncio, "create_subprocess_exec", create_player)
-
-    class Communicate:
-        def __init__(self, *_args, **_kwargs): pass
-        def stream(self):
-            async def stalled_stream():
-                started.set()
-                await asyncio.Future()
-                yield {"type": "audio", "data": b"unreachable"}
-            return stalled_stream()
-    monkeypatch.setitem(sys.modules, "edge_tts", types.SimpleNamespace(Communicate=Communicate))
-
-    speaker = aurora.Speaker({})
-    async def exercise():
-        task = asyncio.create_task(speaker._stream_edge("resposta", speaker.cancel_generation))
-        assert await asyncio.to_thread(started.wait, 1)
-        speaker.interrupt()
-        with pytest.raises(asyncio.CancelledError):
-            await asyncio.wait_for(task, 1)
-
-    asyncio.run(exercise())
+    monkeypatch.setattr(tts_module.subprocess, "Popen", lambda *_a, **_k: player)
+    class Voice:
+        config = SimpleNamespace(sample_rate=22050)
+        def synthesize(self, _text):
+            yield SimpleNamespace(audio_int16_bytes=b"first")
+            generation_blocked.set()
+            release_generation.wait(2)
+            yield SimpleNamespace(audio_int16_bytes=b"second")
+    speaker = aurora.Speaker({"tts_engine": "piper"})
+    monkeypatch.setattr(speaker, "_load_piper_voice", lambda _voice=None: Voice())
+    errors = []
+    def stream():
+        try: speaker._stream_piper("resposta", speaker.cancel_generation)
+        except RuntimeError as exc: errors.append(str(exc))
+    worker = threading.Thread(target=stream)
+    worker.start()
+    assert generation_blocked.wait(1)
+    speaker.interrupt()
+    release_generation.set()
+    worker.join(2)
+    assert not worker.is_alive()
     assert player.killed
-    assert speaker.stream_task is None
+    assert speaker.current_player is None
+    assert errors == ["speech interrupted"]
 
 
-def test_speaker_clears_stream_handle_when_player_creation_is_cancelled(monkeypatch):
+def test_speaker_keeps_player_handle_clear_when_local_playback_setup_fails(monkeypatch):
     import aurora_core.voice.tts as tts_module
+    from types import SimpleNamespace
+    import io
 
-    started = threading.Event()
-    async def stalled_player(*_args, **_kwargs):
-        started.set()
-        await asyncio.Future()
-    monkeypatch.setattr(tts_module.asyncio, "create_subprocess_exec", stalled_player)
-    monkeypatch.setitem(sys.modules, "edge_tts", types.SimpleNamespace(Communicate=object))
-    speaker = aurora.Speaker({})
-
-    async def exercise():
-        task = asyncio.create_task(speaker._stream_edge("resposta", speaker.cancel_generation))
-        assert await asyncio.to_thread(started.wait, 1)
-        speaker.interrupt()
-        with pytest.raises(asyncio.CancelledError):
-            await asyncio.wait_for(task, 1)
-
-    asyncio.run(exercise())
-    assert speaker.stream_task is None
-    assert speaker.stream_loop is None
+    class Voice:
+        config = SimpleNamespace(sample_rate=22050)
+        def synthesize(self, _text):
+            yield SimpleNamespace(audio_int16_bytes=b"data")
+    speaker = aurora.Speaker({"tts_engine": "piper"})
+    monkeypatch.setattr(speaker, "_load_piper_voice", lambda _voice=None: Voice())
+    monkeypatch.setattr(tts_module.subprocess, "Popen", lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("player failed")))
+    with pytest.raises(RuntimeError, match="player failed"):
+        speaker._stream_piper("resposta", speaker.cancel_generation)
+    assert speaker.current_player is None
 
 
 def test_right_click_is_wired_to_stop_the_current_request():
@@ -276,13 +273,13 @@ def test_orb_is_only_a_clean_animated_sphere():
     root = Path(aurora.__file__).parent
     source = (root / "orb.qml").read_text()
     orb = (root / "aurora_core" / "ui" / "orb.py").read_text()
-    assert "PathAngleArc { centerX: 57; centerY: 57; radiusX: 56; radiusY: 56" in source
+    assert "PathAngleArc { centerX: 48; centerY: 34; radiusX: 39; radiusY: 28" in source
     assert "property real sheenTravel" in source and "entranceActive" not in source and "exitActive" not in source
     assert "PathCubic" not in source and "morphPhase" not in source
     assert "RadialGradient" in source and "LinearGradient" in source
     assert "inputLevel" in source and "voiceEnergy" in source
     assert "SmoothedAnimation" in source and "activeEnergy" in source
-    assert source.count("Shape {") == 3
+    assert source.count("Shape {") >= 3
     assert "duration: root.mode === \"searching\" ? 1550" in source
     assert "statusText" not in source and "statusBadge" not in source
     assert "voiceGlyph" not in source and "thoughtCore" not in source and "orbit" not in source

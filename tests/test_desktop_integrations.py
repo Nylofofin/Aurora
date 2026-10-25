@@ -390,6 +390,29 @@ def test_flatpak_immediate_nonzero_exit_is_reported_as_failure(monkeypatch, tmp_
     assert result == "O Flatpak encerrou com erro ao tentar iniciar OBS Studio (código 127)."
 
 
+def test_flatpak_delayed_launcher_failure_is_reported(monkeypatch, tmp_path):
+    desktop_file = tmp_path / "flatpak/exports/share/applications/com.obsproject.Studio.desktop"
+    app = {"file": desktop_file, "name": "OBS Studio", "exec": "flatpak run com.obsproject.Studio",
+           "class": "obs"}
+
+    class DelayedFailure:
+        checks = 0
+        def poll(self):
+            self.checks += 1
+            return None if self.checks == 1 else 127
+
+    monkeypatch.setattr(apps_module, "find_desktop_app", lambda _name: app)
+    monkeypatch.setattr(apps_module.shutil, "which", lambda name: "/usr/bin/flatpak" if name == "flatpak" else None)
+    monkeypatch.setattr(apps_module, "FLATPAK_LAUNCH_CONFIRM_TIMEOUT", 1)
+    monkeypatch.setattr(apps_module.subprocess, "Popen", lambda *_args, **_kwargs: DelayedFailure())
+    monkeypatch.setattr(apps_module, "_flatpak_instance_active", lambda *_args: False)
+    monkeypatch.setattr(apps_module.time, "sleep", lambda _seconds: None)
+
+    result = apps_module.launch_application("OBS Studio")
+
+    assert result == "O Flatpak encerrou com erro ao tentar iniciar OBS Studio (código 127)."
+
+
 def test_flatpak_successful_short_process_does_not_claim_a_visible_window(monkeypatch, tmp_path):
     desktop_file = tmp_path / "flatpak/exports/share/applications/com.obsproject.Studio.desktop"
     app = {"file": desktop_file, "name": "OBS Studio", "exec": "flatpak run com.obsproject.Studio",

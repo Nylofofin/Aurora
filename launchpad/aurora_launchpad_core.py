@@ -193,6 +193,13 @@ def newer_aurora_releases(releases, installed_version: str, limit: int = 3) -> t
     return tuple(item[2] for item in candidates[:limit])
 
 
+def release_channel_label(release: dict) -> str:
+    """Describe a published build's stability channel in plain language."""
+    if not isinstance(release, dict) or not isinstance(release.get("prerelease"), bool):
+        return "Canal não informado"
+    return "Pré-release · experimental" if release["prerelease"] else "Release · estável"
+
+
 def inspect_installation(managed_app: Path, unit_path: Path, *, service_active: bool) -> InstallationHealth:
     """Classify an installation without starting processes or changing files."""
     managed_app = Path(managed_app)

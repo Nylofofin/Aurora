@@ -2,209 +2,350 @@
 """First-boot personalization wizard for the desktop client."""
 from __future__ import annotations
 
-import asyncio
 import math
-import time
-from PySide6.QtCore import (QEasingCurve, QParallelAnimationGroup, QPropertyAnimation,
-                            QPoint, Qt, QThread, Signal, QTimer, QUrl)
+from PySide6.QtCore import (QAbstractAnimation, QElapsedTimer, QEasingCurve, QParallelAnimationGroup, QPropertyAnimation,
+                            QVariantAnimation,
+                            QPoint, QRectF, Property, Qt, QThread, Signal, QTimer, QUrl)
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QRadialGradient, QLinearGradient, QPen
 from PySide6.QtMultimedia import QSoundEffect
 from PySide6.QtWidgets import (
     QButtonGroup, QCheckBox, QDialog, QFrame, QGraphicsOpacityEffect, QGridLayout, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QRadioButton, QStackedWidget, QVBoxLayout, QWidget,
+    QLabel, QLineEdit, QPushButton, QRadioButton, QStackedWidget, QVBoxLayout, QWidget, QProgressBar,
 )
 
 from ..config import VOSK_PATH
 from ..voice.wake import wake_name_supported, wake_name_words
-from ..voice.profile import enroll as enroll_wake_profile
+from ..voice.profile import enroll as enroll_wake_profile, validate_recording
+from ..voice.catalog import VOICES, voice_available, voice_runtime_available, ensure_voice
 
-
-SUPPORTED_VOICES = (
-    ("pt-BR-ThalitaMultilingualNeural", "Thalita", "Feminina"),
-    ("pt-BR-FranciscaNeural", "Francisca", "Feminina"),
-    ("pt-BR-AntonioNeural", "Antonio", "Masculina"),
-)
 
 # Public appearance catalog shared by onboarding and the live orb.  Keep the
 # keys stable so a saved preference survives upgrades.
 BUBBLE_STYLES = (
-    ("boreal", "Névoa Boreal", "Azul e violeta · cristalino"),
-    ("emerald", "Pulso Esmeralda", "Verde vivo · energia fresca"),
-    ("crimson", "Flare Carmesim", "Vermelho intenso · presença forte"),
-    ("amethyst", "Ametista Nebular", "Roxo profundo · brilho cósmico"),
-    ("solaris", "Halo Solaris", "Dourado solar · calor suave"),
-    ("ocean", "Maré de Cobalto", "Ciano e azul · fluxo líquido"),
+    ("boreal", "Véu Boreal", "Vidro azul-violeta · faixa luminosa interna"),
+    ("emerald", "Europa", "Verde mineral · contorno macio de porcelana"),
+    ("crimson", "Júpiter", "Âmbar e creme · bandas e tempestade discreta"),
+    ("amethyst", "Reia", "Lavanda glacial · anel inclinado e lua próxima"),
+    ("solaris", "Dione", "Rosa-violeta · eclipse e pequeno satélite"),
+    ("ocean", "Miranda", "Gelo ciano · relevo orgânico e crista luminosa"),
 )
 BUBBLE_STYLE_KEYS = {key for key, _title, _detail in BUBBLE_STYLES}
 
 
+class _OrbCarouselStage(QWidget):
+    resized = Signal()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.resized.emit()
+
+
 class _AnimatedOrb(QWidget):
     """Small, continuously animated preview of the selected orb finish."""
-    def __init__(self, style="boreal", parent=None):
+    def __init__(self, style="boreal", parent=None, opacity=1.0):
         super().__init__(parent)
         self.style = style
+        self._display_opacity = float(opacity)
+        self._display_scale = 1.0
+        self._motion_blur = 0.0
+        self._motion_direction = 0
         self.phase = 0.0
+        self._elapsed = QElapsedTimer()
+        self._elapsed.start()
+        self._style_progress = 1.0
+        self._from_colors = self._colors_for(style)
+        self._to_colors = self._from_colors
+        self._current_colors = self._from_colors
+        self._style_transition = QVariantAnimation(self)
+        self._style_transition.setDuration(420)
+        self._style_transition.setStartValue(0.0)
+        self._style_transition.setEndValue(1.0)
+        self._style_transition.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._style_transition.valueChanged.connect(self._set_style_progress)
         self.setFixedSize(126, 126)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self._timer = QTimer(self)
-        self._timer.setInterval(33)
+        self._timer.setInterval(16)
         self._timer.timeout.connect(self._tick)
-        self._timer.start()
+
+    def _get_display_scale(self):
+        return self._display_scale
+
+    def _set_display_scale(self, value):
+        self._display_scale = max(0.0, float(value))
+        self.update()
+
+    displayScale = Property(float, _get_display_scale, _set_display_scale)
+
+    def _get_display_opacity(self):
+        return self._display_opacity
+
+    def _set_display_opacity(self, value):
+        self._display_opacity = max(0.0, min(1.0, float(value)))
+        self.update()
+
+    displayOpacity = Property(float, _get_display_opacity, _set_display_opacity)
+
+    def _get_motion_blur(self):
+        return self._motion_blur
+
+    def _set_motion_blur(self, value):
+        self._motion_blur = max(0.0, min(1.0, float(value)))
+        self.update()
+
+    motionBlur = Property(float, _get_motion_blur, _set_motion_blur)
 
     def _tick(self):
-        # 60/30 Hz friendly motion: two incommensurate waves keep the light
-        # field moving continuously without making the orb wobble or jump.
-        self.phase = (self.phase + 0.026) % (math.tau)
+        # The reference preview breathes on a five-second CSS animation. Keep
+        # the same period and drive the whole orb as one rigid surface: moving
+        # reflections inside the orb were an extra effect absent from the CSS.
+        self.phase = self._elapsed.nsecsElapsed() * (2.0 * math.pi / 5.0e9)
+        self.update()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._timer.start()
+
+    def hideEvent(self, event):
+        self._timer.stop()
+        super().hideEvent(event)
+
+    def set_style(self, style):
+        if style == self.style:
+            return
+        if self._style_transition.state() == QAbstractAnimation.State.Running:
+            self._current_colors = self._blend_colors(
+                self._from_colors, self._to_colors, self._style_progress)
+            self._style_transition.stop()
+        else:
+            self._current_colors = self._colors_for(self.style)
+        self._from_colors = self._current_colors
+        self._to_colors = self._colors_for(style)
+        self._style_progress = 0.0
+        self.style = style
+        self._style_transition.start()
+        self.update()
+
+    @staticmethod
+    def _colors_for(style):
+        palette = {
+            "boreal": ("#eafaff", "#177ff2", "#7950d8"),
+            "emerald": ("#f2fff9", "#73d8b2", "#328f86"),
+            "crimson": ("#fffdf2", "#efc276", "#c77848"),
+            "amethyst": ("#f6f3ff", "#b4b9ee", "#626bb2"),
+            "solaris": ("#fff8f6", "#dfa2b4", "#6d4a80"),
+            "ocean": ("#f4ffff", "#70d2d4", "#356fa6"),
+        }
+        return tuple(QColor(color) for color in palette.get(style, palette["boreal"]))
+
+    @staticmethod
+    def _blend_colors(start, end, amount):
+        return tuple(QColor(
+            round(a.red() + (b.red() - a.red()) * amount),
+            round(a.green() + (b.green() - a.green()) * amount),
+            round(a.blue() + (b.blue() - a.blue()) * amount),
+            round(a.alpha() + (b.alpha() - a.alpha()) * amount),
+        ) for a, b in zip(start, end))
+
+    def _set_style_progress(self, value):
+        self._style_progress = float(value)
+        self._current_colors = self._blend_colors(
+            self._from_colors, self._to_colors, self._style_progress)
         self.update()
 
     def paintEvent(self, _event):
-        size = min(self.width(), self.height()) - 10
+        # Leave room for Europa's fixed 8° rotation and the 1.2% CSS scale-up.
+        size = min(self.width(), self.height()) - 26
         rect_x = (self.width() - size) / 2
         rect_y = (self.height() - size) / 2
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.translate(rect_x, rect_y)
-        base = QColor("#eafaff")
-        lower = QColor("#177ff2")
-        violet = QColor("#7950d8")
+        painter.setOpacity(self._display_opacity)
+        base, lower, violet = self._current_colors
+        accent = math.sin(math.pi * self._style_progress) * .014
+        breath = (1.0 - math.cos(self.phase)) * .5
+        lift = -3.0 * breath
+        scale = 1.0 + .012 * breath + accent
+        painter.translate(self.width() / 2, self.height() / 2)
         if self.style == "emerald":
-            base, lower, violet = QColor("#f5fff8"), QColor("#32d583"), QColor("#0b8f66")
-        elif self.style == "crimson":
-            base, lower, violet = QColor("#fff8f8"), QColor("#ff5c6c"), QColor("#b51e52")
-        elif self.style == "amethyst":
-            base, lower, violet = QColor("#fbf5ff"), QColor("#a66cff"), QColor("#5427b8")
-        elif self.style == "solaris":
-            base, lower, violet = QColor("#fffbed"), QColor("#ffbd4a"), QColor("#e66b24")
-        elif self.style == "ocean":
-            base, lower, violet = QColor("#effcff"), QColor("#22c7d9"), QColor("#1558ba")
-        circle = QPainterPath()
-        circle.addEllipse(2, 2, size-4, size-4)
+            # Europa's reference CSS has a fixed eight-degree tilt. The other
+            # skins do not inherit a generic wobble or a synthetic distortion.
+            painter.rotate(-8.0)
+        painter.scale(self._display_scale * scale, self._display_scale * scale)
+        painter.translate(-self.width() / 2, -self.height() / 2)
+        painter.translate(rect_x, rect_y + lift)
+        circle = self._silhouette(0, 0, size)
+        # A pair of faint afterimages gives the slide a soft, visible motion
+        # blur without a GPU effect or blurring the orb while it is at rest.
+        if self._motion_blur > .01:
+            for index, alpha in ((1, 28), (2, 13)):
+                painter.save()
+                painter.setOpacity(self._display_opacity * self._motion_blur * alpha / 255)
+                painter.translate(-self._motion_direction * index * 3.0, 0)
+                ghost = self._silhouette(0, 0, size)
+                painter.fillPath(ghost, lower)
+                painter.restore()
+        halo = QRadialGradient(size*.50, size*.53, size*.72)
+        halo.setColorAt(0.0, QColor(lower.red(), lower.green(), lower.blue(), 8))
+        halo.setColorAt(.72, QColor(lower.red(), lower.green(), lower.blue(), 2))
+        halo.setColorAt(1.0, QColor(lower.red(), lower.green(), lower.blue(), 0))
+        painter.setPen(Qt.PenStyle.NoPen); painter.setBrush(halo)
+        painter.drawEllipse(QRectF(-size*.08, -size*.06, size*1.16, size*1.16))
         painter.setClipPath(circle)
-        gradient = QLinearGradient(0, 0, size * .12, size)
-        gradient.setColorAt(0, base)
-        gradient.setColorAt(.50, QColor("#d9f3ff"))
-        gradient.setColorAt(.73, lower)
-        gradient.setColorAt(1, violet)
+        # CSS positive diagonal gradients run from upper-left to lower-right.
+        gradient = QLinearGradient(0, 0, size*.72, size)
+        if self.style == "emerald":
+            gradient.setColorAt(0.0, QColor("#f2fff9"))
+            gradient.setColorAt(.55, QColor("#73d8b2"))
+            gradient.setColorAt(1.0, QColor("#328f86"))
+        elif self.style == "crimson":
+            # Júpiter uses the same layered cloud bands as the approved CSS.
+            gradient = QLinearGradient(0, 0, size*.05, size)
+            for stop, color in ((0.0, "#fff5df"), (.18, "#fff5df"),
+                                (.19, "#e8b97b"), (.28, "#e8b97b"),
+                                (.29, "#f8dfae"), (.42, "#f8dfae"),
+                                (.43, "#d9925f"), (.53, "#d9925f"),
+                                (.54, "#f5d49a"), (.67, "#f5d49a"),
+                                (.68, "#c77b54"), (.76, "#c77b54"),
+                                (.77, "#e4ae6b"), (1.0, "#e4ae6b")):
+                gradient.setColorAt(stop, QColor(color))
+        elif self.style == "amethyst":
+            gradient = QLinearGradient(0, 0, size*.28, size)
+            for stop, color in ((0.0, "#e8e6ff"), (.28, "#e8e6ff"),
+                                (.29, "#c8c7f0"), (.39, "#c8c7f0"),
+                                (.40, "#909bd7"), (.51, "#909bd7"),
+                                (.52, "#b9b6e9"), (.60, "#b9b6e9"),
+                                (.61, "#6f78bd"), (1.0, "#6f78bd")):
+                gradient.setColorAt(stop, QColor(color))
+        elif self.style == "solaris":
+            gradient = QLinearGradient(0, 0, size*.58, size)
+            for stop, color in ((0.0, "#fff4ef"), (.41, "#e7b6c0"),
+                                (.72, "#b17d9d"), (1.0, "#735084")):
+                gradient.setColorAt(stop, QColor(color))
+        elif self.style == "ocean":
+            gradient = QLinearGradient(0, 0, size*.58, size)
+            for stop, color in ((0.0, "#f2ffff"), (.35, "#9be5df"),
+                                (.60, "#5dc4cc"), (1.0, "#3a78a8")):
+                gradient.setColorAt(stop, QColor(color))
+        else:
+            gradient.setColorAt(0, QColor("#f4fdff"))
+            gradient.setColorAt(.58, QColor("#72c7f3"))
+            gradient.setColorAt(1, QColor("#7464d8"))
         painter.fillPath(circle, gradient)
-        # Slow, overlapping color fields create motion inside the sphere itself.
-        drift_x = math.sin(self.phase) * size * .12
-        drift_y = math.cos(self.phase * .8) * size * .08
-        field = QRadialGradient(size*.48 + drift_x, size*.70 + drift_y, size*.65)
-        field.setColorAt(0, QColor(violet.red(), violet.green(), violet.blue(), 110))
-        field.setColorAt(.58, QColor(lower.red(), lower.green(), lower.blue(), 92))
-        field.setColorAt(1, QColor(lower.red(), lower.green(), lower.blue(), 0))
-        painter.fillPath(circle, field)
-        # Match the live orb's refractive surface so the onboarding preview
-        # represents the selected finish instead of a static approximation.
-        refraction = math.sin(self.phase * 0.63) * size * 0.16
-        fold = QLinearGradient(-size * .18 + refraction, size * .28,
-                               size * .92 + refraction, size * .72)
-        fold.setColorAt(0.00, QColor(255, 255, 255, 0))
-        fold.setColorAt(0.44, QColor(255, 255, 255, 24))
-        fold.setColorAt(0.52, QColor(255, 255, 255, 92))
-        fold.setColorAt(0.60, QColor(255, 255, 255, 18))
-        fold.setColorAt(1.00, QColor(255, 255, 255, 0))
-        refraction_path = QPainterPath()
-        refraction_path.addEllipse(-size * .08 + refraction, size * .27,
-                                   size * 1.16, size * .42)
-        painter.fillPath(refraction_path, fold)
-        shine = QRadialGradient(size*.31, size*.22, size*.48)
-        shine.setColorAt(0, QColor(255, 255, 255, 235))
-        shine.setColorAt(.35, QColor(255, 255, 255, 120))
+
+        # These static overlays follow the prototype's CSS radial gradients.
+        radial_fields = {
+            "boreal": ((.34, .75), "#d4c9ff", 136, .43),
+            "amethyst": ((.31, .23), "#ffffff", 85, .31),
+            "solaris": ((.77, .74), "#664777", 136, .45),
+            "ocean": ((.70, .76), "#315d9c", 136, .48),
+            "crimson": ((.32, .20), "#ffffff", 90, .30),
+        }
+        if self.style in radial_fields:
+            (cx, cy), color, alpha, radius = radial_fields[self.style]
+            tint = QColor(color); tint.setAlpha(alpha)
+            field = QRadialGradient(size*cx, size*cy, size*radius)
+            field.setColorAt(0, tint)
+            field.setColorAt(1, QColor(tint.red(), tint.green(), tint.blue(), 0))
+            painter.fillPath(circle, field)
+
+        if self.style == "emerald":
+            # Match Europa's inset porcelain reflection from :before in the
+            # browser preview (13/22/19/15 px inset on a 148 px sphere).
+            inset = QRectF(size*15/148, size*13/148,
+                           size*(148-15-22)/148, size*(148-13-19)/148)
+            inset_shape = QPainterPath()
+            inset_shape.addRoundedRect(inset, inset.width()*.42, inset.height()*.42)
+            inner = QLinearGradient(inset.topLeft(), inset.bottomRight())
+            inner.setColorAt(0.0, QColor(255, 255, 255, 34))
+            inner.setColorAt(.56, QColor(255, 255, 255, 0))
+            painter.fillPath(inset_shape, inner)
+            painter.setPen(QPen(QColor(255, 255, 255, 138), max(1.0, size/148)))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawPath(inset_shape)
+        else:
+            self._paint_style_detail(painter, size, lower, violet)
+
+        # CSS's fixed radial highlight and blurred top sheen. Two faint soft
+        # ellipses approximate the 6px CSS blur without adding a new motion.
+        shine = QRadialGradient(size*.32, size*.19, size*.42)
+        shine.setColorAt(0, QColor(255, 255, 255, 250))
+        shine.setColorAt(.15, QColor(255, 255, 255, 168))
         shine.setColorAt(1, QColor(255, 255, 255, 0))
         painter.fillPath(circle, shine)
+        sheen = QLinearGradient(size*.5, size*.09, size*.5, size*.42)
+        sheen.setColorAt(0, QColor(255, 255, 255, 52))
+        sheen.setColorAt(.65, QColor(255, 255, 255, 12))
+        sheen.setColorAt(1, QColor(255, 255, 255, 0))
+        painter.fillPath(circle, sheen)
         painter.setClipping(False)
-        painter.setPen(QPen(QColor(255,255,255,210), 1.2))
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawEllipse(2, 2, size-4, size-4)
+        if self.style != "emerald":
+            painter.setPen(QPen(QColor(255, 255, 255, 90), max(1.0, size/148)))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawPath(circle)
         painter.end()
 
+    def _silhouette(self, x, y, size):
+        path = QPainterPath()
+        rect = QRectF(x + 2, y + 2, size - 4, size - 4)
+        if self.style == "emerald":
+            path.addRoundedRect(rect, size * .43, size * .43)
+        elif self.style == "ocean":
+            path.moveTo(rect.center().x(), rect.top())
+            path.cubicTo(rect.right()-size*.02, rect.top()+size*.03, rect.right()+size*.01, rect.center().y()-size*.12, rect.right()-size*.03, rect.center().y()+size*.10)
+            path.cubicTo(rect.right()-size*.02, rect.bottom()-size*.03, rect.center().x()+size*.14, rect.bottom()+size*.01, rect.center().x()-size*.05, rect.bottom())
+            path.cubicTo(rect.left()-size*.01, rect.bottom()-size*.10, rect.left()+size*.03, rect.center().y()+size*.08, rect.left()+size*.02, rect.center().y()-size*.12)
+            path.cubicTo(rect.left()+size*.03, rect.top()+size*.03, rect.center().x()-size*.14, rect.top()-size*.01, rect.center().x(), rect.top())
+            path.closeSubpath()
+        else:
+            path.addEllipse(rect)
+        return path
 
-class _StyleCard(QFrame):
-    def __init__(self, key, title, detail, parent=None):
-        super().__init__(parent)
-        self.key = key
-        self.setObjectName("choiceCard")
-        self.setProperty("selected", False)
-        self.setMinimumWidth(200)
-        self.setMinimumHeight(238)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 15, 16, 15)
-        layout.setSpacing(8)
-        heading = QLabel(title)
-        heading.setObjectName("cardTitle")
-        heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(heading)
-        orb = _AnimatedOrb(key)
-        orb.setFixedSize(100, 100)
-        layout.addWidget(orb, 0, Qt.AlignmentFlag.AlignHCenter)
-        caption = QLabel(detail)
-        caption.setObjectName("cardDetail")
-        caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(caption)
-        self.select_button = QPushButton("Selecionar")
-        self.select_button.setObjectName("selectStyle")
-        layout.addWidget(self.select_button)
-
-    def set_selected(self, selected):
-        self.setProperty("selected", bool(selected))
-        self.select_button.setText("Selecionado ✓" if selected else "Selecionar")
-        self.style().unpolish(self)
-        self.style().polish(self)
-
-
-class _VoiceCard(QFrame):
-    def __init__(self, short_name, name, gender, parent=None):
-        super().__init__(parent)
-        self.short_name = short_name
-        self.setObjectName("choiceCard")
-        self.setMinimumWidth(218)
-        self.setMinimumHeight(250)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 18, 16, 16)
-        layout.setSpacing(10)
-        heading = QLabel(name)
-        heading.setObjectName("cardTitle")
-        heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(heading)
-        voice_icon = QLabel("◖  ◗")
-        voice_icon.setObjectName("voiceGlyph")
-        voice_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        voice_icon.setFixedHeight(82)
-        layout.addWidget(voice_icon, 0, Qt.AlignmentFlag.AlignHCenter)
-        self.preview_button = QPushButton("▶  Ouvir prévia")
-        self.preview_button.setObjectName("previewVoice")
-        layout.addWidget(self.preview_button)
-        detail = QLabel(f"{gender} · Português (Brasil)")
-        detail.setObjectName("cardDetail")
-        detail.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(detail)
-        self.radio = QRadioButton("Usar esta voz")
-        self.radio.setObjectName("voiceRadio")
-        self.radio.setStyleSheet("QRadioButton { spacing: 8px; }")
-        layout.addWidget(self.radio, 0, Qt.AlignmentFlag.AlignHCenter)
+    def _paint_style_detail(self, painter, size, lower, violet):
+        painter.save()
+        if self.style in {"amethyst", "solaris"}:
+            pen = QPen(QColor(232, 230, 255, 165 if self.style == "amethyst" else 145), max(1.0, size*.018))
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            ring = QRectF(size*.04, size*.28, size*.92, size*.42)
+            painter.translate(size*.50, size*.50)
+            painter.rotate(-19 if self.style == "amethyst" else -31)
+            painter.translate(-size*.50, -size*.50)
+            painter.drawEllipse(ring)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(248, 246, 255, 235) if self.style == "amethyst" else QColor(255, 220, 232, 235))
+            painter.drawEllipse(QRectF(size*.73, size*.24, size*.11, size*.11))
+        elif self.style == "crimson":
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(183, 86, 73, 205))
+            painter.drawEllipse(QRectF(size*.48, size*.30, size*.22, size*.14))
+        elif self.style == "ocean":
+            painter.setPen(QPen(QColor(237, 255, 255, 155), max(1.0, size*.022)))
+            painter.drawArc(QRectF(size*.12, size*.18, size*.78, size*.69), 35*16, 67*16)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(255, 255, 255, 225))
+            painter.drawEllipse(QRectF(size*.69, size*.27, size*.045, size*.045))
+        elif self.style == "emerald":
+            painter.setPen(QPen(QColor(255, 255, 255, 92), max(1.0, size*.014)))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRoundedRect(QRectF(size*.18, size*.15, size*.64, size*.70), size*.24, size*.24)
+        painter.restore()
 
 
-class _VoiceCatalog(QThread):
-    loaded = Signal(object)
+class _VoiceDownload(QThread):
+    finished_voice = Signal(str, str)
+    progress = Signal(str, int, int)
+
+    def __init__(self, voice_id):
+        super().__init__()
+        self.voice_id = voice_id
 
     def run(self):
         try:
-            import edge_tts
-            async def load():
-                task=asyncio.create_task(edge_tts.list_voices())
-                deadline=time.monotonic()+8
-                while not task.done():
-                    if self.isInterruptionRequested() or time.monotonic()>=deadline:
-                        task.cancel()
-                        await asyncio.gather(task,return_exceptions=True)
-                        return []
-                    await asyncio.sleep(.1)
-                return task.result()
-            voices = asyncio.run(load())
-            self.loaded.emit(voices)
-        except Exception:
-            self.loaded.emit([])
+            ensure_voice(self.voice_id, lambda name, done, total: self.progress.emit(name, done, total))
+            self.finished_voice.emit(self.voice_id, "")
+        except Exception as exc:
+            self.finished_voice.emit(self.voice_id, str(exc))
 
 
 class _NameCheck(QThread):
@@ -276,15 +417,19 @@ class PersonalizationWizard(QDialog):
         self.setModal(True)
         # Give cards and form fields a real horizontal rhythm.  The previous
         # compact width forced labels and buttons to collide on Fedora fonts.
-        self.setMinimumSize(900, 420)
-        self.resize(980, 470)
+        self.setMinimumSize(780, 420)
+        self.resize(860, 470)
         self._dark_theme = True
         self.setStyleSheet(self._stylesheet(True))
 
         # Keep the wizard compact on small screens and let the platform palette
         # decide whether text and surfaces should be light or dark.
         self._transition_group = None
-        self._selected_voice = str(cfg.get("tts_voice", SUPPORTED_VOICES[0][0]))
+        self._selected_voice = str(cfg.get("tts_voice", "pt_BR-faber-medium"))
+        if self._selected_voice not in {voice.key for voice in VOICES}:
+            self._selected_voice = "pt_BR-faber-medium"
+        configured_voice = next((voice for voice in VOICES if voice.key == self._selected_voice), VOICES[0])
+        self._selected_tts_engine = configured_voice.engine
 
         for name in ("select", "step", "success", "error"):
             effect = QSoundEffect(self)
@@ -328,9 +473,7 @@ class PersonalizationWizard(QDialog):
         footer.addWidget(self.next_button)
         root.addLayout(footer)
 
-        self._voice_worker = _VoiceCatalog(self)
-        self._voice_worker.loaded.connect(self._populate_voices)
-        self._voice_worker.start()
+        self._voice_download_worker = None
         self._current_page = 0
         self._set_page(0, animated=False)
         self._center()
@@ -365,6 +508,11 @@ class PersonalizationWizard(QDialog):
             QLabel#cardTitle { color:#f4f0fa; font-size:16px; font-weight:700; }
             QLabel#cardDetail { color:#b5afbd; font-size:12px; }
             QLabel#voiceGlyph { color:#c6a8f2; font-size:38px; font-weight:600; }
+            QLabel#voiceGlyphSide { color:#c6a8f2; font-size:16px; font-weight:700; }
+            QLabel#voiceOrbBadge { color:#ffffff; font-size:30px; font-weight:700; background:transparent; }
+            QLabel#voiceCarouselName { color:#f4f0fa; font-size:15px; font-weight:700; background:transparent; }
+            QLabel#voiceCarouselSideName { color:#aaa1b8; font-size:12px; font-weight:600; background:transparent; }
+            QLabel#carouselPosition { color:#a89bbd; font-size:11px; font-weight:700; letter-spacing:2px; }
             QFrame#panel { background:#1b1a22; border:1px solid #35313f; border-radius:22px; }
             QFrame#choiceCard { background:#211f29; border:1px solid #3a3546; border-radius:18px; }
             QFrame#choiceCard[selected="true"] { background:#292238; border:2px solid #b89be9; }
@@ -377,6 +525,10 @@ class PersonalizationWizard(QDialog):
             QPushButton#primary:pressed { background:#7655ae; }
             QPushButton#selectStyle, QPushButton#previewVoice { background:#2d2937; border:1px solid #4a4258; }
             QPushButton#selectStyle:hover, QPushButton#previewVoice:hover { background:#3b3449; }
+            QPushButton#carouselArrow { background:#282531; color:#eee7f8; border:1px solid #4b4358; border-radius:24px; padding:0; font-size:30px; font-weight:400; }
+            QPushButton#carouselArrow:hover { background:#3b3449; border-color:#b89be9; }
+            QProgressBar { background:#292632; color:#f4effa; border:0; border-radius:7px; text-align:center; font-size:10px; }
+            QProgressBar::chunk { background:#9a7bd1; border-radius:7px; }
             QCheckBox, QRadioButton { spacing:9px; color:#d1cbd9; }
             QRadioButton::indicator { width:18px; height:18px; }
             """
@@ -389,6 +541,11 @@ class PersonalizationWizard(QDialog):
             QLabel#cardTitle { color:#25232b; font-size:16px; font-weight:700; }
             QLabel#cardDetail { color:#696673; font-size:12px; }
             QLabel#voiceGlyph { color:#7960ad; font-size:38px; font-weight:600; }
+            QLabel#voiceGlyphSide { color:#7960ad; font-size:16px; font-weight:700; }
+            QLabel#voiceOrbBadge { color:#ffffff; font-size:30px; font-weight:700; background:transparent; }
+            QLabel#voiceCarouselName { color:#25232b; font-size:15px; font-weight:700; background:transparent; }
+            QLabel#voiceCarouselSideName { color:#77717f; font-size:12px; font-weight:600; background:transparent; }
+            QLabel#carouselPosition { color:#625b70; font-size:11px; font-weight:700; letter-spacing:2px; }
             QFrame#panel { background:#fff; border:1px solid #e5e2ec; border-radius:24px; }
             QFrame#choiceCard { background:#fff; border:1px solid #e2dfe9; border-radius:20px; }
             QFrame#choiceCard[selected="true"] { background:#faf8ff; border:2px solid #7052a8; }
@@ -401,6 +558,10 @@ class PersonalizationWizard(QDialog):
             QPushButton#primary:pressed { background:#57418e; }
             QPushButton#selectStyle, QPushButton#previewVoice { background:#f0edf6; border:1px solid #e3deec; }
             QPushButton#selectStyle:hover, QPushButton#previewVoice:hover { background:#e8e2f2; }
+            QPushButton#carouselArrow { background:#f0edf6; color:#302e37; border:1px solid #d9d2e4; border-radius:24px; padding:0; font-size:30px; font-weight:400; }
+            QPushButton#carouselArrow:hover { background:#e8e2f2; border-color:#8062b7; }
+            QProgressBar { background:#e8e4ee; color:#302e37; border:0; border-radius:7px; text-align:center; font-size:10px; }
+            QProgressBar::chunk { background:#8062b7; border-radius:7px; }
             QCheckBox, QRadioButton { spacing:9px; color:#494451; }
             QRadioButton::indicator { width:18px; height:18px; }
             """
@@ -505,50 +666,102 @@ class PersonalizationWizard(QDialog):
         self.stack.addWidget(frame)
 
     def _build_bubble(self):
-        frame, layout = self._panel("Vamos personalizar sua bolha", "Veja cada acabamento em movimento e selecione o que combina com você.")
-        cards = QGridLayout()
-        cards.setHorizontalSpacing(12)
-        cards.setVerticalSpacing(12)
-        self.style_cards = {}
-        choices = BUBBLE_STYLES
-        for index, (key, title, detail) in enumerate(choices):
-            card = _StyleCard(key, title, detail)
-            card.select_button.clicked.connect(lambda _=False, value=key: self._select_style(value))
-            self.style_cards[key] = card
-            cards.addWidget(card, index // 3, index % 3)
-        self._select_style(self._selected_style if self._selected_style in self.style_cards else "boreal")
-        layout.addLayout(cards)
+        frame, layout = self._panel("Escolha a aparência da bolha", "Use as setas para percorrer os acabamentos. A prévia continua animada enquanto você escolhe.")
+        self._style_index = next((i for i, item in enumerate(BUBBLE_STYLES) if item[0] == self._selected_style), 0)
+        self._style_step_pending = False
+        self._style_transition_group = None
+        self.style_stage = _OrbCarouselStage()
+        self.style_stage.setFixedHeight(190)
+        self.style_side_left = _AnimatedOrb(BUBBLE_STYLES[(self._style_index - 1) % len(BUBBLE_STYLES)][0], self.style_stage, opacity=.48)
+        self.style_orb = _AnimatedOrb(self._selected_style, self.style_stage)
+        self.style_side_right = _AnimatedOrb(BUBBLE_STYLES[(self._style_index + 1) % len(BUBBLE_STYLES)][0], self.style_stage, opacity=.48)
+        for orb in (self.style_side_left, self.style_orb, self.style_side_right):
+            orb.setFixedSize(166, 166)
+        self.style_side_left.displayScale = .50
+        self.style_side_right.displayScale = .50
+        self.style_stage.resized.connect(self._position_style_orbs)
+        layout.addWidget(self.style_stage)
+        self.style_title = QLabel(); self.style_title.setObjectName("cardTitle"); self.style_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.style_detail = QLabel(); self.style_detail.setObjectName("cardDetail"); self.style_detail.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.style_position = QLabel(); self.style_position.setObjectName("carouselPosition"); self.style_position.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.style_title); layout.addWidget(self.style_detail)
+        style_nav = QHBoxLayout(); style_nav.addStretch(1)
+        self.style_prev = QPushButton("‹"); self.style_prev.setObjectName("carouselArrow"); self.style_prev.setFixedSize(40, 40)
+        self.style_prev.clicked.connect(lambda: self._step_style(-1))
+        self.style_position.setMinimumWidth(88)
+        style_nav.addWidget(self.style_prev); style_nav.addWidget(self.style_position, 0, Qt.AlignmentFlag.AlignCenter)
+        self.style_next = QPushButton("›"); self.style_next.setObjectName("carouselArrow"); self.style_next.setFixedSize(40, 40)
+        self.style_next.clicked.connect(lambda: self._step_style(1))
+        style_nav.addWidget(self.style_next); style_nav.addStretch(1); layout.addLayout(style_nav)
+        self._refresh_style_carousel()
         self.stack.addWidget(frame)
 
     def _build_voice(self):
-        frame, layout = self._panel("Escolha a voz da Aurora", "Três vozes em português do Brasil. Ouça uma prévia e marque sua escolha.")
-        cards = QHBoxLayout(); cards.setSpacing(14)
-        self.voice_group = QButtonGroup(self); self.voice_group.setExclusive(True)
-        self.voice_cards = {}
-        current = str(self.cfg.get("tts_voice", SUPPORTED_VOICES[0][0]))
-        for short, name, gender in SUPPORTED_VOICES:
-            card = _VoiceCard(short, name, gender)
-            card.radio.setChecked(short == current)
-            card.preview_button.clicked.connect(lambda _=False, voice=short: self._preview_voice(voice))
-            card.radio.toggled.connect(lambda checked, voice=short: self._select_voice(voice, checked))
-            self.voice_group.addButton(card.radio)
-            self.voice_cards[short] = card
-            cards.addWidget(card, 1)
-        if not any(card.radio.isChecked() for card in self.voice_cards.values()):
-            self.voice_cards[SUPPORTED_VOICES[0][0]].radio.setChecked(True)
-        layout.addLayout(cards)
-        soon = QLabel("Mais vozes poderão ser adicionadas em versões futuras.")
-        soon.setObjectName("cardDetail"); soon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(soon)
-        self.voice_status = QLabel("A prévia usa Edge TTS e precisa de internet.")
+        frame, layout = self._panel(
+            "Escolha uma voz local",
+            "Deslize pelas vozes com as setas; os nomes acompanham o movimento. A bolha mantém a aparência escolhida.",
+        )
+        self._voice_index = next((i for i, item in enumerate(VOICES) if item.key == self._selected_voice), 0)
+        self._voice_step_pending = False
+        self._voice_transition_group = None
+        self.voice_stage = _OrbCarouselStage()
+        self.voice_stage.setFixedHeight(222)
+        self.voice_side_left = _AnimatedOrb(self._selected_style, self.voice_stage, opacity=.45)
+        self.voice_orb = _AnimatedOrb(self._selected_style, self.voice_stage)
+        self.voice_side_right = _AnimatedOrb(self._selected_style, self.voice_stage, opacity=.45)
+        for orb in (self.voice_side_left, self.voice_orb, self.voice_side_right):
+            orb.setFixedSize(166, 166)
+        self.voice_side_left.displayScale = .50
+        self.voice_side_right.displayScale = .50
+        voices_count = len(VOICES)
+        self.voice_name_left = QLabel(VOICES[(self._voice_index-1) % voices_count].name, self.voice_stage)
+        self.voice_name_left.setObjectName("voiceCarouselSideName")
+        self.voice_title = QLabel(VOICES[self._voice_index].name, self.voice_stage)
+        self.voice_title.setObjectName("voiceCarouselName")
+        self.voice_name_right = QLabel(VOICES[(self._voice_index+1) % voices_count].name, self.voice_stage)
+        self.voice_name_right.setObjectName("voiceCarouselSideName")
+        for name in (self.voice_name_left, self.voice_title, self.voice_name_right):
+            name.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            name.setFixedSize(138, 24)
+        self.voice_stage.resized.connect(self._position_voice_orbs)
+        layout.addWidget(self.voice_stage)
+        self.voice_detail = QLabel(); self.voice_detail.setObjectName("cardDetail"); self.voice_detail.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.voice_position = QLabel(); self.voice_position.setObjectName("carouselPosition"); self.voice_position.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.voice_detail); layout.addWidget(self.voice_position)
+        voice_nav = QHBoxLayout(); voice_nav.addStretch(1)
+        self.voice_prev = QPushButton("‹"); self.voice_prev.setObjectName("carouselArrow"); self.voice_prev.setFixedSize(40, 40)
+        self.voice_prev.clicked.connect(lambda: self._step_voice(-1))
+        self.voice_next = QPushButton("›"); self.voice_next.setObjectName("carouselArrow"); self.voice_next.setFixedSize(40, 40)
+        self.voice_next.clicked.connect(lambda: self._step_voice(1))
+        if len(VOICES) < 2:
+            self.voice_prev.hide(); self.voice_next.hide()
+        voice_nav.addWidget(self.voice_prev); voice_nav.addSpacing(20); voice_nav.addWidget(self.voice_next); voice_nav.addStretch(1)
+        layout.addLayout(voice_nav)
+        self.voice_preview_button = QPushButton("▶  Baixar e ouvir prévia"); self.voice_preview_button.setObjectName("previewVoice")
+        self.voice_preview_button.clicked.connect(lambda: self._preview_voice(self._selected_voice))
+        preview_error_signal = getattr(self.speaker, "preview_error", None)
+        if preview_error_signal is not None:
+            preview_error_signal.connect(self._voice_preview_error, Qt.ConnectionType.QueuedConnection)
+        layout.addWidget(self.voice_preview_button, 0, Qt.AlignmentFlag.AlignHCenter)
+        self.voice_download_progress = QProgressBar(); self.voice_download_progress.setTextVisible(True); self.voice_download_progress.setFormat("Baixando modelo · %p%"); self.voice_download_progress.setFixedHeight(16); self.voice_download_progress.hide()
+        layout.addWidget(self.voice_download_progress)
+        self.voice_status = QLabel("Escolha um perfil e ouça a prévia local. O download só acontece quando você pede para ouvir.")
         self.voice_status.setObjectName("cardDetail")
+        self.voice_status.setWordWrap(True)
         layout.addWidget(self.voice_status)
+        self.voice_license = QLabel("")
+        self.voice_license.setObjectName("cardDetail")
+        self.voice_license.setWordWrap(True)
+        layout.addWidget(self.voice_license)
         self.preview_phrase = QLabel()
         self.preview_phrase.setObjectName("cardDetail")
         self.preview_phrase.setWordWrap(True)
         self.preview_phrase.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.preview_phrase)
         self._update_preview_phrase()
+        self._refresh_voice_carousel()
+        self._position_voice_orbs()
+        self._refresh_tts_choices()
         self.stack.addWidget(frame)
 
     def _build_feedback(self):
@@ -608,26 +821,298 @@ class PersonalizationWizard(QDialog):
         self._loading_pulse.setLoopCount(-1)
         self.stack.addWidget(frame)
 
-    def _populate_voices(self, voices):
-        # The catalog request is only a reachability check. Keep the UI limited
-        # to the three supported Brazilian voices instead of exposing every
-        # language returned by Edge TTS.
-        available = {str(v.get("ShortName")) for v in voices if isinstance(v, dict)}
-        missing = [name for name, _label, _gender in SUPPORTED_VOICES if name not in available]
-        self.voice_status.setText(
-            "A prévia usa Edge TTS e precisa de internet."
-            if not missing else "Catálogo indisponível; as três vozes brasileiras continuam selecionáveis."
-        )
-
     def _select_style(self, key):
         self._selected_style = key
-        for name, card in self.style_cards.items():
-            card.set_selected(name == key)
+        self._style_index = next((i for i, item in enumerate(BUBBLE_STYLES) if item[0] == key), 0)
+        if hasattr(self, "style_orb"):
+            self._refresh_style_carousel()
+        if hasattr(self, "voice_orb"):
+            for voice_orb in (self.voice_side_left, self.voice_orb, self.voice_side_right):
+                voice_orb.set_style(key)
         self._play_sfx("select")
 
-    def _select_voice(self, voice, checked):
-        if checked:
-            self._selected_voice = voice
+    def _step_style(self, direction):
+        if self._style_step_pending or direction not in (-1, 1):
+            return
+        count = len(BUBBLE_STYLES)
+        next_index = (self._style_index + direction) % count
+        if next_index == self._style_index:
+            return
+
+        self._style_step_pending = True
+        self.style_prev.setEnabled(False)
+        self.style_next.setEnabled(False)
+        old_left, old_center, old_right = (
+            self.style_side_left, self.style_orb, self.style_side_right)
+        anchors = self._style_orb_positions()
+        if direction > 0:
+            incoming_index = (next_index + 1) % count
+            incoming_slot = 2
+            moving = (
+                (old_left, QPoint(anchors[0].x() - 105, anchors[0].y()), .28, 0.0),
+                (old_center, anchors[0], .50, .48),
+                (old_right, anchors[1], 1.0, 1.0),
+            )
+        else:
+            incoming_index = (next_index - 1) % count
+            incoming_slot = 0
+            moving = (
+                (old_right, QPoint(anchors[2].x() + 105, anchors[2].y()), .28, 0.0),
+                (old_center, anchors[2], .50, .48),
+                (old_left, anchors[1], 1.0, 1.0),
+            )
+
+        entering = _AnimatedOrb(BUBBLE_STYLES[incoming_index][0], self.style_stage, opacity=0.0)
+        entering.setFixedSize(166, 166)
+        entering.displayScale = .38
+        incoming_start = anchors[incoming_slot]
+        incoming_offset = -76 if direction > 0 else 76
+        entering.move(incoming_start.x() + incoming_offset, incoming_start.y())
+        entering.show()
+        moving = (*moving, (entering, incoming_start, .50, .48))
+
+        group = QParallelAnimationGroup(self)
+        for orb, target_pos, target_scale, target_opacity in moving:
+            orb._motion_direction = -direction
+            for prop, start_value, end_value in (
+                (b"pos", orb.pos(), target_pos),
+                (b"displayScale", orb.displayScale, target_scale),
+                (b"displayOpacity", orb.displayOpacity, target_opacity),
+            ):
+                animation = QPropertyAnimation(orb, prop, group)
+                animation.setDuration(360)
+                animation.setStartValue(start_value)
+                animation.setEndValue(end_value)
+                animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+                group.addAnimation(animation)
+            blur = QPropertyAnimation(orb, b"motionBlur", group)
+            blur.setDuration(360)
+            blur.setStartValue(0.0); blur.setEndValue(0.0); blur.setKeyValueAt(.42, .72)
+            blur.setEasingCurve(QEasingCurve.Type.OutCubic)
+            group.addAnimation(blur)
+        self._style_transition_group = group
+        group.finished.connect(lambda: self._complete_style_step(
+            next_index, direction, old_left, old_center, old_right, entering, anchors))
+        group.start()
+        self._play_sfx("select")
+
+    def _style_orb_positions(self):
+        if not hasattr(self, "style_stage"):
+            return (QPoint(), QPoint(), QPoint())
+        return self._carousel_positions(self.style_stage)
+
+    @staticmethod
+    def _carousel_positions(stage):
+        width, height = stage.width(), stage.height()
+        center_x = (width - 166) // 2
+        spacing = min(178, max(138, (width - 166) // 3))
+        y = (height - 166) // 2
+        return (QPoint(center_x - spacing, y), QPoint(center_x, y),
+                QPoint(center_x + spacing, y))
+
+    def _position_style_orbs(self):
+        if self._style_step_pending or not hasattr(self, "style_orb"):
+            return
+        for orb, position in zip(
+            (self.style_side_left, self.style_orb, self.style_side_right),
+            self._style_orb_positions(),
+        ):
+            orb.move(position)
+
+    def _complete_style_step(self, index, direction, old_left, old_center, old_right, entering, anchors):
+        if direction > 0:
+            old_left.deleteLater()
+            self.style_side_left, self.style_orb, self.style_side_right = old_center, old_right, entering
+        else:
+            old_right.deleteLater()
+            self.style_side_left, self.style_orb, self.style_side_right = entering, old_left, old_center
+
+        self._style_index = index
+        self._selected_style = BUBBLE_STYLES[index][0]
+        for orb, position, scale, opacity in zip(
+            (self.style_side_left, self.style_orb, self.style_side_right),
+            anchors, (.50, 1.0, .50), (.48, 1.0, .48),
+        ):
+            orb.move(position)
+            orb.displayScale = scale
+            orb.displayOpacity = opacity
+            orb.motionBlur = 0.0
+        _, title, detail = BUBBLE_STYLES[index]
+        self.style_title.setText(title)
+        self.style_detail.setText(detail)
+        self.style_position.setText(f"{index + 1:02d}  /  {len(BUBBLE_STYLES):02d}")
+        if hasattr(self, "voice_orb"):
+            for voice_orb in (self.voice_side_left, self.voice_orb, self.voice_side_right):
+                voice_orb.set_style(self._selected_style)
+
+        self._style_step_pending = False
+        self.style_prev.setEnabled(True)
+        self.style_next.setEnabled(True)
+        group, self._style_transition_group = self._style_transition_group, None
+        if group is not None:
+            group.deleteLater()
+
+    def _refresh_style_carousel(self):
+        count = len(BUBBLE_STYLES); index = self._style_index % count
+        key, title, detail = BUBBLE_STYLES[index]
+        self._selected_style = key
+        self.style_orb.set_style(key); self.style_title.setText(title); self.style_detail.setText(detail)
+        self.style_position.setText(f"{index + 1:02d}  /  {count:02d}")
+        self.style_side_left.set_style(BUBBLE_STYLES[(index - 1) % count][0])
+        self.style_side_right.set_style(BUBBLE_STYLES[(index + 1) % count][0])
+        self._position_style_orbs()
+
+    def _step_voice(self, direction):
+        if len(VOICES) < 2 or self._voice_step_pending or direction not in (-1, 1):
+            return
+        count = len(VOICES)
+        index = (self._voice_index + direction) % count
+        self._voice_step_pending = True
+        self.voice_prev.setEnabled(False)
+        self.voice_next.setEnabled(False)
+        self.voice_preview_button.setEnabled(False)
+        old_left, old_center, old_right = self.voice_side_left, self.voice_orb, self.voice_side_right
+        old_left_name, old_center_name, old_right_name = self.voice_name_left, self.voice_title, self.voice_name_right
+        anchors = self._carousel_positions(self.voice_stage)
+        label_anchors = tuple(QPoint(point.x()+14, self.voice_stage.height()-27) for point in anchors)
+        if direction > 0:
+            incoming_index, incoming_slot = (index+1) % count, 2
+            moving = ((old_left, QPoint(anchors[0].x()-105, anchors[0].y()), .28, 0.0),
+                      (old_center, anchors[0], .50, .45), (old_right, anchors[1], 1.0, 1.0))
+            name_moving = ((old_left_name, QPoint(label_anchors[0].x()-105, label_anchors[0].y())),
+                           (old_center_name, label_anchors[0]), (old_right_name, label_anchors[1]))
+        else:
+            incoming_index, incoming_slot = (index-1) % count, 0
+            moving = ((old_right, QPoint(anchors[2].x()+105, anchors[2].y()), .28, 0.0),
+                      (old_center, anchors[2], .50, .45), (old_left, anchors[1], 1.0, 1.0))
+            name_moving = ((old_right_name, QPoint(label_anchors[2].x()+105, label_anchors[2].y())),
+                           (old_center_name, label_anchors[2]), (old_left_name, label_anchors[1]))
+
+        entering = _AnimatedOrb(self._selected_style, self.voice_stage, opacity=0.0)
+        entering.setFixedSize(166, 166); entering.displayScale = .38
+        incoming_start = anchors[incoming_slot]
+        entering.move(incoming_start.x()+(-76 if direction > 0 else 76), incoming_start.y())
+        entering.show()
+        moving = (*moving, (entering, incoming_start, .50, .45))
+        incoming_name = QLabel(VOICES[incoming_index].name, self.voice_stage)
+        incoming_name.setObjectName("voiceCarouselSideName")
+        incoming_name.setAlignment(Qt.AlignmentFlag.AlignCenter); incoming_name.setFixedSize(138, 24)
+        incoming_name.move(label_anchors[incoming_slot].x()+(-76 if direction > 0 else 76), label_anchors[incoming_slot].y())
+        incoming_name.show()
+
+        group = QParallelAnimationGroup(self)
+        for orb, target_pos, target_scale, target_opacity in moving:
+            orb._motion_direction = -direction
+            for prop, start_value, end_value in ((b"pos", orb.pos(), target_pos),
+                                                  (b"displayScale", orb.displayScale, target_scale),
+                                                  (b"displayOpacity", orb.displayOpacity, target_opacity)):
+                animation = QPropertyAnimation(orb, prop, group)
+                animation.setDuration(360); animation.setStartValue(start_value); animation.setEndValue(end_value)
+                animation.setEasingCurve(QEasingCurve.Type.OutCubic); group.addAnimation(animation)
+            blur = QPropertyAnimation(orb, b"motionBlur", group)
+            blur.setDuration(360); blur.setStartValue(0.0); blur.setEndValue(0.0); blur.setKeyValueAt(.42, .72)
+            blur.setEasingCurve(QEasingCurve.Type.OutCubic); group.addAnimation(blur)
+        for label, target_pos in (*name_moving, (incoming_name, label_anchors[incoming_slot])):
+            animation = QPropertyAnimation(label, b"pos", group)
+            animation.setDuration(360); animation.setStartValue(label.pos()); animation.setEndValue(target_pos)
+            animation.setEasingCurve(QEasingCurve.Type.OutCubic); group.addAnimation(animation)
+        self._voice_transition_group = group
+        group.finished.connect(lambda: self._complete_voice_carousel_step(
+            index, direction, old_left, old_center, old_right, entering,
+            old_left_name, old_center_name, old_right_name, incoming_name, anchors, label_anchors))
+        group.start()
+        self._play_sfx("select")
+
+    def _complete_voice_carousel_step(self, index, direction, old_left, old_center, old_right,
+                                      entering, old_left_name, old_center_name, old_right_name,
+                                      incoming_name, anchors, label_anchors):
+        if direction > 0:
+            old_left.deleteLater(); old_left_name.deleteLater()
+            self.voice_side_left, self.voice_orb, self.voice_side_right = old_center, old_right, entering
+            self.voice_name_left, self.voice_title, self.voice_name_right = old_center_name, old_right_name, incoming_name
+        else:
+            old_right.deleteLater(); old_right_name.deleteLater()
+            self.voice_side_left, self.voice_orb, self.voice_side_right = entering, old_left, old_center
+            self.voice_name_left, self.voice_title, self.voice_name_right = incoming_name, old_left_name, old_center_name
+        self._voice_index = index
+        for orb, position, scale, opacity in zip(
+            (self.voice_side_left, self.voice_orb, self.voice_side_right),
+            anchors, (.50, 1.0, .50), (.45, 1.0, .45)):
+            orb.move(position); orb.displayScale = scale; orb.displayOpacity = opacity; orb.motionBlur = 0.0
+        for label, position in zip((self.voice_name_left, self.voice_title, self.voice_name_right), label_anchors):
+            label.move(position)
+        self._style_voice_name_roles()
+        self._refresh_voice_carousel()
+        self._refresh_tts_choices()
+        self._voice_step_pending = False
+        self.voice_prev.setEnabled(True)
+        self.voice_next.setEnabled(True)
+        self.voice_preview_button.setEnabled(True)
+        group, self._voice_transition_group = self._voice_transition_group, None
+        if group is not None:
+            group.deleteLater()
+
+    def _position_voice_orbs(self):
+        if not hasattr(self, "voice_orb") or self._voice_step_pending:
+            return
+        anchors = self._carousel_positions(self.voice_stage)
+        labels = tuple(QPoint(point.x()+14, self.voice_stage.height()-27) for point in anchors)
+        for orb, position, scale, opacity in zip(
+            (self.voice_side_left, self.voice_orb, self.voice_side_right),
+            anchors, (.50, 1.0, .50), (.45, 1.0, .45)):
+            orb.move(position); orb.displayScale = scale; orb.displayOpacity = opacity
+        for label, position in zip((self.voice_name_left, self.voice_title, self.voice_name_right), labels):
+            label.move(position)
+
+    def _style_voice_name_roles(self):
+        for label, object_name in ((self.voice_name_left, "voiceCarouselSideName"),
+                                   (self.voice_title, "voiceCarouselName"),
+                                   (self.voice_name_right, "voiceCarouselSideName")):
+            label.setObjectName(object_name)
+            label.style().unpolish(label); label.style().polish(label); label.update()
+
+    def _apply_voice_step(self, index):
+        self._voice_index = index
+        self._selected_voice = VOICES[index].key
+        self._selected_tts_engine = VOICES[index].engine
+        self._refresh_voice_carousel()
+        self._refresh_tts_choices()
+
+    def _refresh_voice_carousel(self):
+        if not hasattr(self, "voice_orb"):
+            return
+        count = len(VOICES); index = self._voice_index % count
+        voice = VOICES[index]
+        self._selected_voice = voice.key
+        self._selected_tts_engine = voice.engine
+        for voice_orb in (self.voice_side_left, self.voice_orb, self.voice_side_right):
+            voice_orb.set_style(self._selected_style)
+        self.voice_title.setText(voice.name)
+        self.voice_name_left.setText(VOICES[(index-1) % count].name)
+        self.voice_name_right.setText(VOICES[(index+1) % count].name)
+        self.voice_detail.setText(f"{voice.gender}  ·  Português (Brasil)  ·  {voice.detail}")
+        self.voice_position.setText(f"{index + 1:02d}  /  {count:02d}")
+        self.voice_license.setText(voice.license_note)
+        self.voice_preview_button.setText("▶  Ouvir prévia" if voice_available(voice.key) else "↓  Baixar e ouvir prévia")
+
+    def _refresh_tts_choices(self):
+        if not hasattr(self, "voice_preview_button"):
+            return
+        selected = next((item for item in VOICES if item.key == self._selected_voice), VOICES[0])
+        self.voice_license.setText(selected.license_note)
+        self.voice_preview_button.setText("▶  Ouvir prévia" if voice_available(selected.key) else "↓  Baixar e ouvir prévia")
+        if voice_available(selected.key):
+            self.voice_status.setText("Voz pronta. Só o modelo selecionado fica carregado na memória.")
+        elif selected.engine == "supertonic":
+            self.voice_status.setText("Supertonic 3 · dez estilos locais pt-BR. O primeiro uso baixa o modelo compartilhado (cerca de 400 MB); depois, todos os estilos usam o mesmo modelo.")
+        else:
+            self.voice_status.setText("Faber ainda não está instalada. Clique em “Baixar e ouvir” para instalar somente esse modelo.")
+        if voice_available(selected.key):
+            self.voice_status.setText("Voz pronta. A Aurora mantém apenas um motor/modelo de síntese carregado por vez.")
+        elif selected.engine == "supertonic":
+            self.voice_status.setText("Supertonic 3 · dez estilos em português do Brasil, síntese local por CPU. O modelo compartilhado (cerca de 400 MB) é baixado no primeiro preview.")
+        else:
+            self.voice_status.setText("Faber · Piper medium em português do Brasil. O modelo é instalado apenas quando você pede a prévia.")
 
     def _select_feedback(self, theme, checked):
         if not checked: return
@@ -669,16 +1154,73 @@ class PersonalizationWizard(QDialog):
             label.setText(f"Texto da prévia: {phrase}")
 
     def _preview_voice(self, voice):
-        name = self._preview_name()
-        label = next((n for s, n, _ in SUPPORTED_VOICES if s == voice), voice)
-        # A preview must replace a previous preview immediately. Otherwise a
-        # queued Edge request can make a click appear to do nothing for many
-        # seconds while an older sample is still being generated.
+        if voice != self._selected_voice:
+            self._voice_index = next((i for i, entry in enumerate(VOICES) if entry.key == voice), self._voice_index)
+            self._selected_voice = voice
+            selected = next((entry for entry in VOICES if entry.key == voice), VOICES[0])
+            self._selected_tts_engine = selected.engine
+            self._refresh_voice_carousel()
+        item = next((entry for entry in VOICES if entry.key == voice), None)
+        if item is None:
+            return
+        if not voice_available(voice):
+            worker = getattr(self, "_voice_download_worker", None)
+            if worker is not None and worker.isRunning():
+                self.voice_status.setText("Aguarde o download da voz selecionada terminar.")
+                return
+            if item.engine == "supertonic":
+                self.voice_status.setText(f"Preparando Supertonic 3 para a voz {item.name}. Primeiro download: cerca de 400 MB, compartilhado pelos dez estilos.")
+                self.voice_download_progress.setRange(0, 0)
+            else:
+                self.voice_status.setText(f"Baixando apenas o modelo de {item.name}. O arquivo tem cerca de 63 MB; a transferência pode ser retomada se a rede cair.")
+                self.voice_download_progress.setRange(0, 100)
+            self.voice_preview_button.setEnabled(False)
+            self.voice_download_progress.setValue(0); self.voice_download_progress.show()
+            self._voice_download_worker = _VoiceDownload(voice)
+            self._voice_download_worker.progress.connect(self._voice_download_progress)
+            self._voice_download_worker.finished_voice.connect(self._voice_downloaded)
+            self._voice_download_worker.start()
+            return
+        self._play_voice_preview(item)
+
+    def _voice_downloaded(self, voice, error):
+        self.voice_preview_button.setEnabled(True)
+        self.voice_download_progress.hide()
+        self._refresh_tts_choices()
+        if error:
+            self.voice_status.setText(f"Não consegui baixar essa voz: {error}")
+            return
+        item = next(entry for entry in VOICES if entry.key == voice)
+        self._play_voice_preview(item)
+
+    def _voice_preview_error(self, voice, error_type):
+        item = next((entry for entry in VOICES if entry.key == voice), None)
+        label = item.name if item else "selecionada"
+        self.voice_preview_button.setEnabled(True)
+        self.voice_status.setText(
+            f"A prévia de {label} falhou ({error_type}). A Aurora continua aberta; tente outra voz ou consulte o log local."
+        )
+
+    def _voice_download_progress(self, filename, done, total):
+        if total > 0:
+            self.voice_download_progress.setRange(0, 100)
+            self.voice_download_progress.setValue(min(100, int(done * 100 / total)))
+            size = f"{done / (1024 * 1024):.1f} / {total / (1024 * 1024):.1f} MB"
+            self.voice_status.setText(f"Baixando {filename} · {size}")
+        else:
+            self.voice_download_progress.setRange(0, 0)
+            self.voice_status.setText(f"Baixando {filename}…")
+
+    def _play_voice_preview(self, item):
         interrupt = getattr(self.speaker, "interrupt", None)
         if callable(interrupt):
             interrupt()
-        self.voice_status.setText(f"Reproduzindo prévia de {label}…")
-        self.speaker.say_with_voice(f"Olá, eu sou {name}. Estou pronta para ajudar.", voice)
+        self.voice_status.setText(f"Gerando prévia local de {item.name}…")
+        self.speaker.say_with_voice(
+            f"Olá, eu sou {self._preview_name()}. Estou pronta para ajudar.",
+            item.key,
+            engine=item.engine,
+        )
         self._play_sfx("select")
 
     def _center(self):
@@ -691,7 +1233,7 @@ class PersonalizationWizard(QDialog):
         self._apply_system_theme()
 
     def done(self, result):
-        for worker in (getattr(self, "_voice_worker", None), getattr(self, "_name_worker", None), getattr(self, "_wake_worker", None)):
+        for worker in (getattr(self, "_voice_download_worker", None), getattr(self, "_name_worker", None), getattr(self, "_wake_worker", None)):
             if worker is not None and worker.isRunning():
                 worker.requestInterruption()
                 worker.wait(2500)
@@ -700,6 +1242,15 @@ class PersonalizationWizard(QDialog):
     def _set_page(self, page, animated=True):
         previous = self._current_page
         self._current_page = page
+        if page == 4 and hasattr(self, "voice_orb"):
+            # Re-apply the style selected on the preceding page whenever the
+            # voice page opens or is revisited with Back.
+            for voice_orb in (self.voice_side_left, self.voice_orb, self.voice_side_right):
+                voice_orb.set_style(self._selected_style)
+            self._voice_step_pending = False
+            self.voice_preview_button.setEnabled(True)
+            self.voice_prev.setEnabled(True)
+            self.voice_next.setEnabled(True)
         self.stack.setCurrentIndex(page)
         QTimer.singleShot(0, self._fit_current_page)
         self.back_button.setVisible(page > 0 and page < 6)
@@ -757,6 +1308,13 @@ class PersonalizationWizard(QDialog):
         self._wake_worker.start()
 
     def _wake_sample_captured(self, pcm):
+        valid, reason = validate_recording(pcm)
+        if not valid:
+            count = len(self._wake_recordings)
+            self.wake_training_status.setText(reason)
+            self.wake_training_button.setText(f"Gravar amostra {count + 1} de 4")
+            self.wake_training_button.setEnabled(True)
+            return
         self._wake_recordings.append(bytes(pcm))
         count = len(self._wake_recordings)
         if count >= 4:
@@ -805,8 +1363,11 @@ class PersonalizationWizard(QDialog):
                 return
             self._set_page(self._current_page + 1)
         elif self._current_page == 5:
-            if not getattr(self, "_selected_voice", None):
-                self.voice_status.setText("Escolha uma voz para continuar.")
+            if not voice_runtime_available(self._selected_voice):
+                self.voice_status.setText("O runtime desta voz não está instalado. Execute setup-voice.sh e tente novamente.")
+                return
+            if not voice_available(self._selected_voice):
+                self.voice_status.setText("Ouça/baixe a voz selecionada antes de finalizar. Nenhum modelo será baixado automaticamente.")
                 return
             self._apply()
 
@@ -818,14 +1379,15 @@ class PersonalizationWizard(QDialog):
             self._set_page(previous)
 
     def _apply(self):
-        voice = getattr(self, "_selected_voice", str(self.cfg.get("tts_voice", SUPPORTED_VOICES[0][0])))
+        voice = getattr(self, "_selected_voice", str(self.cfg.get("tts_voice", "pt_BR-faber-medium")))
         self.result_settings = {
             "user_name": " ".join(self.user_name.text().split())[:80],
             "profile_configured": True,
             "assistant_name": "Aurora" if self.default_name.isChecked() else " ".join(self.assistant_name.text().split())[:80],
             "wake_profile": self._wake_profile if self._needs_training else None,
             "bubble_style": self._selected_style,
-            "tts_voice": voice or self.cfg.get("tts_voice", "pt-BR-ThalitaMultilingualNeural"),
+            "tts_voice": voice or self.cfg.get("tts_voice", "pt_BR-faber-medium"),
+            "tts_engine": self._selected_tts_engine,
             "feedback_theme": self._selected_feedback,
             "onboarding_pending": False,
             "onboarding_boot_id": "",

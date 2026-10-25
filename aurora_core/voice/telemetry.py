@@ -5,8 +5,10 @@ from __future__ import annotations
 import sys
 import time
 
-_STAGES = {"stt", "llm_first_response", "llm_turn", "tts_first_audio", "tts_queue", "tts_complete"}
-_OUTCOMES = {"ok", "google", "local_fallback", "interrupted", "fallback", "error", "unavailable"}
+_STAGES = {"stt", "llm_first_response", "llm_turn", "tts_model_load", "tts_synthesis",
+           "tts_first_audio", "tts_queue", "tts_complete"}
+_OUTCOMES = {"ok", "google", "local_fallback", "interrupted", "fallback", "error", "unavailable",
+             "whisper_cpp", "vosk_fallback", "whisper_cpp_companion"}
 
 
 def log_voice_timing(stage: str, elapsed_ms: int, outcome: str = "ok") -> None:

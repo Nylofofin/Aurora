@@ -2,18 +2,34 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QThread, Signal
-import asyncio, queue, re, shutil, time
+import gc, queue, re, shutil, time, sys
+import subprocess
+import importlib.util
+
+from .catalog import voice_files
+
+
+def local_piper_available():
+    """Whether Piper's runtime is installed (individual voices are separate)."""
+    try:
+        return importlib.util.find_spec('piper') is not None
+    except (ImportError, ValueError, OSError):
+        return False
 
 class Speaker(QThread):
-    speaking=Signal(bool); audio_started=Signal(); drained=Signal(); speech_level=Signal(float); speech_error=Signal(str)
-    def __init__(self,cfg): super().__init__(); self.cfg=cfg; self.q=queue.Queue(); self.running=True; self.active=False; self.playing=False; self.current_player=None; self.stream_loop=None; self.stream_task=None; self.cancel_generation=0; self.engine=shutil.which('ffplay')
+    speaking=Signal(bool); audio_started=Signal(); drained=Signal(); speech_level=Signal(float); speech_error=Signal(str); preview_error=Signal(str,str)
+    def __init__(self,cfg): super().__init__(); self.cfg=cfg; self.q=queue.Queue(); self.running=True; self.active=False; self.playing=False; self.current_player=None; self.cancel_generation=0; self.engine=shutil.which('ffplay')
+    def prepare(self):
+        """Warm the selected local voice while the user is speaking/LLM is working."""
+        if self.running:
+            self.q.put(("",time.perf_counter(),None,None,False,True))
     def say(self,text):
         text=self.clean(text)
-        if text: self.q.put((text[:1800],time.perf_counter(),None))
-    def say_with_voice(self,text,voice):
-        """Queue a short speech preview without changing the saved voice."""
+        if text: self.q.put((text[:1800],time.perf_counter(),None,None))
+    def say_with_voice(self,text,voice,engine='piper'):
+        """Queue a short preview without changing the saved voice or engine."""
         text=self.clean(text); voice=str(voice or '').strip()
-        if text and voice: self.q.put((text[:500],time.perf_counter(),voice))
+        if text: self.q.put((text[:500],time.perf_counter(),voice or None,engine,True))
     @staticmethod
     def clean(text):
         text=str(text)
@@ -28,90 +44,190 @@ class Speaker(QThread):
     def word_boundary_pulse(text):
         letters=sum(char.isalnum() for char in str(text))
         return min(.88,.28+min(letters,12)*.045) if letters else .18
-    async def _stream_edge(self,text,generation,voice=None):
-        import asyncio
-        import edge_tts
+    @staticmethod
+    def _speech_chunks(text,limit=88):
+        """Keep TTS chunks near sentence boundaries for low-latency playback."""
+        clauses=re.split(r'(?<=[.!?])\s+',str(text).strip())
+        chunks=[]; current=''
+        for clause in clauses:
+            words=clause.split()
+            part=''
+            for word in words:
+                candidate=f'{part} {word}'.strip()
+                if part and len(candidate)>limit:
+                    if current and len(current)+1+len(part)<=limit:
+                        current=f'{current} {part}'
+                    else:
+                        if current: chunks.append(current)
+                        current=part
+                    part=word
+                else:
+                    part=candidate
+            if not part: continue
+            candidate=f'{current} {part}'.strip()
+            if current and len(candidate)>limit:
+                chunks.append(current); current=part
+            else:
+                current=candidate
+        if current: chunks.append(current)
+        return chunks or [str(text).strip()]
+    def _load_piper_voice(self,voice_id=None):
+        voice_id = str(voice_id or self.cfg.get('tts_voice', 'pt_BR-faber-medium'))
+        loaded_id = getattr(self, '_piper_voice_id', None)
+        voice = getattr(self,'_piper_voice',None)
+        if voice is not None and loaded_id == voice_id: return voice
+        # Keep exactly one neural TTS model resident in memory.
+        self._piper_voice = None
+        self._piper_voice_id = None
+        gc.collect()
+        model_path, config_path = voice_files(voice_id)
+        if not model_path.is_file() or not config_path.is_file():
+            raise FileNotFoundError(f'A voz {voice_id} ainda não foi baixada pelo seletor de vozes.')
+        from piper import PiperVoice
+        started=time.perf_counter()
+        voice=PiperVoice.load(str(model_path), config_path=str(config_path), use_cuda=False)
+        self._piper_voice=voice
+        self._piper_voice_id=voice_id
+        print(f'[voice-timing] stage=tts_model_load elapsed_ms={int((time.perf_counter()-started)*1000)} outcome=ok',flush=True)
+        return voice
+    def _load_supertonic_voice(self,voice_id=None):
+        voice_id = str(voice_id or self.cfg.get('tts_voice', ''))
+        loaded_id = getattr(self, '_supertonic_voice_id', None)
+        voice = getattr(self, '_supertonic_voice', None)
+        if voice is not None and loaded_id == voice_id: return voice
+        from .catalog import VOICE_BY_KEY
+        item = VOICE_BY_KEY.get(voice_id)
+        if item is None or item.engine != 'supertonic':
+            raise ValueError('Voz Supertonic local desconhecida.')
+        from .telemetry import elapsed_ms
+        started = time.perf_counter()
+        from supertonic import TTS
+        synthesizer = getattr(self, '_supertonic_tts', None)
+        if synthesizer is None:
+            # Three intra-op workers measured faster than two or four on the
+            # reference low-end CPU, without creating parallel TTS sessions.
+            synthesizer = TTS(auto_download=True,intra_op_num_threads=3,inter_op_num_threads=1)
+            self._supertonic_tts = synthesizer
+        style = synthesizer.get_voice_style(voice_name=item.model_voice)
+        self._supertonic_voice_id = voice_id
+        self._supertonic_voice = (synthesizer, style)
+        from .telemetry import log_voice_timing
+        log_voice_timing('tts_model_load',elapsed_ms(started))
+        return synthesizer, style
+    def _stream_piper(self,text,generation,voice_id=None):
+        """Generate and play sentence chunks locally; no text leaves this machine."""
         from .telemetry import elapsed_ms, log_voice_timing
-        started=time.perf_counter(); first_audio=False
-        task=asyncio.current_task(); self.stream_loop=asyncio.get_running_loop(); self.stream_task=task
-        player=None; pulse_release=None
+        started=time.perf_counter(); first_audio=False; player=None
+        voice=self._load_piper_voice(voice_id)
         try:
-            player=await asyncio.create_subprocess_exec(self.engine,'-nodisp','-autoexit','-loglevel','quiet','-f','mp3','-i','pipe:0',stdin=asyncio.subprocess.PIPE,stdout=asyncio.subprocess.DEVNULL,stderr=asyncio.subprocess.DEVNULL)
-            self.current_player=player; started=time.perf_counter()
-            selected_voice=voice or self.cfg.get('tts_voice','pt-BR-ThalitaMultilingualNeural')
-            async for packet in edge_tts.Communicate(text,selected_voice,rate='+8%',connect_timeout=20,receive_timeout=120).stream():
+            player=subprocess.Popen([self.engine,'-nodisp','-autoexit','-loglevel','quiet',
+                '-f','s16le','-ar',str(voice.config.sample_rate),'-ch_layout','mono','-i','pipe:0'],
+                stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+            self.current_player=player
+            for chunk in voice.synthesize(text):
                 if generation!=self.cancel_generation: raise RuntimeError('speech interrupted')
-                if packet.get('type')=='audio' and packet.get('data'):
-                    player.stdin.write(packet['data']); await player.stdin.drain()
-                    if not first_audio:
-                        first_audio=True
-                        log_voice_timing('tts_first_audio',elapsed_ms(started))
-                        self.playing=True; self.audio_started.emit()
-                    self.speech_level.emit(.42)
-                    if pulse_release and not pulse_release.done(): pulse_release.cancel()
-                    async def release_audio_pulse():
-                        try:
-                            await asyncio.sleep(.24)
-                            if generation==self.cancel_generation: self.speech_level.emit(.08)
-                        except asyncio.CancelledError: pass
-                    pulse_release=asyncio.create_task(release_audio_pulse())
-            player.stdin.close()
-            try: await player.stdin.wait_closed()
-            except Exception: pass
-            await asyncio.wait_for(player.wait(),timeout=55)
+                if not chunk.audio_int16_bytes: continue
+                player.stdin.write(chunk.audio_int16_bytes); player.stdin.flush()
+                if not first_audio:
+                    first_audio=True
+                    log_voice_timing('tts_first_audio',elapsed_ms(started))
+                    self.playing=True; self.audio_started.emit()
+                self.speech_level.emit(.42)
+            if player.stdin and not player.stdin.closed: player.stdin.close()
+            if player.wait(timeout=60)!=0: raise RuntimeError('ffplay failed')
         except BaseException:
-            if player is not None and player.returncode is None:
-                player.kill(); await player.wait()
+            if player is not None and player.poll() is None: player.kill(); player.wait()
             raise
         finally:
-            if pulse_release and not pulse_release.done(): pulse_release.cancel()
             self.speech_level.emit(0.0)
             if player is not None and self.current_player is player: self.current_player=None
-            if self.stream_task is task: self.stream_task=None; self.stream_loop=None
-    async def _stream_edge_retry(self,text,generation,voice=None):
-        """Retry a transient Edge failure; never silently switch to another voice."""
+    def _stream_supertonic(self,text,generation,voice_id=None):
+        """Synthesize in short local chunks so playback starts before the full reply."""
+        from .telemetry import elapsed_ms, log_voice_timing
+        started = time.perf_counter(); first_audio = False; player = None
+        synthesizer, style = self._load_supertonic_voice(voice_id)
+        import numpy as np
         try:
-            await self._stream_edge(text,generation,voice)
-        except Exception as first_error:
-            if generation!=self.cancel_generation or not self.running:
-                raise
-            # Edge occasionally opens a stream but returns no audio. A short
-            # retry avoids dropping a transient Edge outage.
-            print(f'[voice] Edge TTS attempt failed ({type(first_error).__name__}); retrying once', flush=True)
-            await asyncio.sleep(.2)
-            try:
-                await self._stream_edge(text,generation,voice)
-            except Exception as retry_error:
-                print(f'[voice] Edge TTS retry failed ({type(retry_error).__name__}); no alternate voice will be used', flush=True)
-                raise
+            player = subprocess.Popen([self.engine,'-nodisp','-autoexit','-loglevel','quiet',
+                '-f','f32le','-ar',str(synthesizer.sample_rate),'-ch_layout','mono','-i','pipe:0'],
+                stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+            self.current_player = player
+            total_synthesis_ms=0
+            for chunk in self._speech_chunks(text):
+                synthesis_started=time.perf_counter()
+                wav, _duration = synthesizer.synthesize(chunk, voice_style=style, total_steps=5, lang='pt')
+                total_synthesis_ms+=elapsed_ms(synthesis_started)
+                if generation != self.cancel_generation: raise RuntimeError('speech interrupted')
+                pcm = np.asarray(wav, dtype=np.float32).reshape(-1)
+                if pcm.size == 0: continue
+                player.stdin.write(pcm.tobytes()); player.stdin.flush()
+                if not first_audio:
+                    first_audio=True
+                    log_voice_timing('tts_first_audio',elapsed_ms(started))
+                    self.playing = True; self.audio_started.emit()
+                self.speech_level.emit(.42)
+            log_voice_timing('tts_synthesis',total_synthesis_ms)
+            if not first_audio: raise RuntimeError('Supertonic retornou áudio vazio.')
+            if player.stdin and not player.stdin.closed: player.stdin.close()
+            if player.wait(timeout=60) != 0: raise RuntimeError('ffplay failed')
+        except BaseException:
+            if player is not None and player.poll() is None: player.kill(); player.wait()
+            raise
+        finally:
+            self.speech_level.emit(0.0)
+            if player is not None and self.current_player is player: self.current_player=None
     def run(self):
         while self.running:
             try: item=self.q.get(timeout=.3)
             except queue.Empty: continue
-            voice=None
-            if isinstance(item,tuple) and len(item)==3: text,queued_at,voice=item
+            voice=None; engine=None; is_preview=False; is_warmup=False
+            if isinstance(item,tuple) and len(item)==6: text,queued_at,voice,engine,is_preview,is_warmup=item
+            elif isinstance(item,tuple) and len(item)==5: text,queued_at,voice,engine,is_preview=item
+            elif isinstance(item,tuple) and len(item)==4: text,queued_at,voice,engine=item
+            elif isinstance(item,tuple) and len(item)==3: text,queued_at,voice=item
             elif isinstance(item,tuple) and len(item)==2: text,queued_at=item
             else: text,queued_at=item,time.perf_counter()
             from .telemetry import elapsed_ms, log_voice_timing
             generation=self.cancel_generation
             log_voice_timing('tts_queue',elapsed_ms(queued_at))
+            if is_warmup:
+                try:
+                    if self.cfg.get('tts_engine','piper')=='supertonic':
+                        self._load_supertonic_voice(self.cfg.get('tts_voice'))
+                    else:
+                        self._load_piper_voice(self.cfg.get('tts_voice'))
+                except Exception as exc:
+                    print(f'[voice] warmup_failed engine={self.cfg.get("tts_engine", "piper")} error={type(exc).__name__}',file=sys.stderr,flush=True)
+                continue
             playback_started=time.perf_counter()
             if not self.engine:
                 log_voice_timing('tts_complete',elapsed_ms(playback_started),'unavailable')
-                self.speech_error.emit('O Edge TTS precisa do ffplay para reproduzir a voz Thalita.')
+                if is_preview:
+                    self.preview_error.emit(str(voice or ''),'PlayerAusente')
+                else:
+                    self.speech_error.emit('O ffplay é necessário para reproduzir a voz da Aurora.')
                 self.speaking.emit(False); self.drained.emit(); continue
             outcome='ok'
             self.active=True; self.speaking.emit(True)
             try:
-                if self.engine:
-                    import asyncio
-                    asyncio.run(self._stream_edge_retry(text,generation,voice))
-            except asyncio.CancelledError:
-                outcome='interrupted'
-            except Exception:
+                selected_engine=engine or self.cfg.get('tts_engine','piper')
+                selected_voice = voice or self.cfg.get('tts_voice')
+                if selected_engine == 'piper':
+                    self._stream_piper(text,generation,selected_voice)
+                elif selected_engine == 'supertonic':
+                    self._stream_supertonic(text,generation,selected_voice)
+                else:
+                    raise ValueError('Motor de voz local desconhecido.')
+            except Exception as exc:
                 outcome='error'
-                if self.running and generation==self.cancel_generation:
-                    self.speech_error.emit('Não consegui gerar a voz Thalita pelo Edge TTS.')
+                if self.running and generation==self.cancel_generation and is_preview:
+                    kind=type(exc).__name__
+                    print(f'[voice] preview_failed engine={engine or self.cfg.get("tts_engine", "piper")} voice={voice or self.cfg.get("tts_voice", "")} error={kind}',file=sys.stderr,flush=True)
+                    self.preview_error.emit(str(voice or ''),kind)
+                elif self.running and generation==self.cancel_generation:
+                    kind=type(exc).__name__
+                    print(f'[voice] synthesis_failed engine={engine or self.cfg.get("tts_engine", "piper")} error={kind}',file=sys.stderr,flush=True)
+                    self.speech_error.emit('Não consegui gerar a voz local selecionada. Confira se o modelo está instalado.')
             finally:
                 self.current_player=None
                 log_voice_timing('tts_complete',elapsed_ms(playback_started),outcome)
@@ -130,7 +246,3 @@ class Speaker(QThread):
             try:
                 if player.returncode is None: player.kill()
             except Exception: pass
-        loop=self.stream_loop; task=self.stream_task
-        if loop and task and not task.done():
-            try: loop.call_soon_threadsafe(task.cancel)
-            except RuntimeError: pass

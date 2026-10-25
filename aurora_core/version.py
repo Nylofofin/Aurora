@@ -3,8 +3,8 @@ from __future__ import annotations
 
 """Release identity for the Aurora local desktop build."""
 
-__version__ = "2.0.1"
+__version__ = "2.1.0"
 
-CODENAME = "INTERFACE FIX"
+CODENAME = "PROXIMA LOCAL VOICE"
 
-BUILD_ID = "aurora-desktop-2.0.1-interface-fix"
+BUILD_ID = "aurora-desktop-2.1.0-proxima-local-voice"

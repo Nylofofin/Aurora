@@ -49,7 +49,7 @@ def wake_grammar_phrases(name):
 class LocalVoice(QThread):
     transcript=Signal(str); status=Signal(str); unavailable=Signal(str); wake=Signal(); cancel_control=Signal(); barge_in=Signal(); audio_level=Signal(float)
     def __init__(self,cfg):
-        super().__init__(); self.cfg=cfg; self.running=True; self.one_shot=threading.Event(); self.request_active=threading.Event(); self.interrupt_active=threading.Event(); self.cancel_control_active=threading.Event(); self.mobile_owned=threading.Event(); self.speaking=False; self.recognizer=None; self.mobile_audio_queue=queue.Queue(maxsize=12)
+        super().__init__(); self.cfg=cfg; self.running=True; self.one_shot=threading.Event(); self.request_active=threading.Event(); self.interrupt_active=threading.Event(); self.cancel_control_active=threading.Event(); self.mobile_owned=threading.Event(); self.speaking=False; self.mobile_audio_queue=queue.Queue(maxsize=12)
     def request_once(self): self.one_shot.set()
     def begin_request(self): self.request_active.set(); self.interrupt_active.clear()
     def end_request(self): self.request_active.clear(); self.one_shot.clear(); self.interrupt_active.clear()
@@ -85,12 +85,18 @@ class LocalVoice(QThread):
             'nao para','nao calma para','nao espera','pera ai','deixa pra la',
             'para agora','para com isso','corta'
         }
-    def cloud_transcribe(self,sr,pcm,fallback):
+    def local_transcribe(self,pcm,fallback):
         from .telemetry import elapsed_ms, log_voice_timing
-        started=time.perf_counter(); outcome='google'
-        try: command=self.recognizer.recognize_google(sr.AudioData(pcm,16000,2),language='pt-BR')
+        started=time.perf_counter(); outcome='whisper_cpp'
+        try:
+            from .stt import transcribe_pcm
+            command=transcribe_pcm(pcm,SAMPLE_RATE)
+            if not command:
+                command=fallback; outcome='vosk_fallback'
         except Exception:
-            command=fallback; outcome='local_fallback'
+            # Preserve command usability if the larger local decoder fails;
+            # this fallback is still Vosk on-device and never sends audio out.
+            command=fallback; outcome='vosk_fallback'
         log_voice_timing('stt',elapsed_ms(started),outcome)
         command=self.strip_wake_word(command,self.cfg.get('assistant_name','Aurora'))
         if not command: command=self.strip_wake_word(fallback,self.cfg.get('assistant_name','Aurora'))
@@ -129,7 +135,6 @@ class LocalVoice(QThread):
         try:
             import sounddevice as sd
             from vosk import Model, KaldiRecognizer
-            import speech_recognition as sr
             if not VOSK_PATH.exists(): raise RuntimeError(f'Modelo Vosk local não encontrado em {VOSK_PATH}')
             model=Model(str(VOSK_PATH)); rec=KaldiRecognizer(model,16000); rec.SetWords(False)
             assistant_name=' '.join(str(self.cfg.get('assistant_name','Aurora') or 'Aurora').split()) or 'Aurora'
@@ -148,7 +153,6 @@ class LocalVoice(QThread):
             wake_fallback_rec.SetWords(False)
             wake_profile = self.cfg.get('wake_profile') if normalize_words(assistant_name) != 'aurora' else None
             cancel_rec=KaldiRecognizer(model,16000,'["para", "pare", "parar", "cancele", "cancela", "cancelar", "interrompa", "interrompe", "interromper", "chega", "espera", "calma", "calma para", "pera", "pera aí", "deixa", "deixa pra lá", "para agora", "para com isso", "não", "não para", "não calma para", "não espera", "corta"]'); cancel_rec.SetWords(False)
-            self.recognizer=sr.Recognizer(); self.recognizer.operation_timeout=2.0
             while self.running:
                 while self.running and self.mobile_owned.is_set():
                     self.status.emit('hidden')
@@ -265,7 +269,7 @@ class LocalVoice(QThread):
                             if text:
                                 self.audio_level.emit(0.0)
                                 pcm=b''.join(buffer[-80:]); active=False; buffer=[]; wake_audio=[]; started=time.monotonic(); self.speaking=True; self.status.emit('thinking')
-                                command=self.cloud_transcribe(sr,pcm,text)
+                                command=self.local_transcribe(pcm,text)
                                 if command and self.request_active.is_set(): self.transcript.emit(command)
                                 else:
                                     active=self.request_active.is_set(); started=time.monotonic(); rec.Reset(); wake_rec.Reset(); self.speaking=False

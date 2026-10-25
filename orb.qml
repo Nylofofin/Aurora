@@ -29,17 +29,17 @@ Item {
         weather: "#75E7B1", preparing: "#38D58A", speaking: "#B0F8D2",
         approval: "#F3D77C", controlling: "#14B87A", error: "#F29B80", idle: "#31C98D"
     }) : bubbleStyle === "crimson" ? ({
-        listening: "#FFA8AD", thinking: "#FF7884", searching: "#FF526B",
-        weather: "#FF8D8D", preparing: "#FF6B7B", speaking: "#FFC0B9",
-        approval: "#F7D77A", controlling: "#E64568", error: "#FF4F69", idle: "#E6416A"
-    }) : bubbleStyle === "amethyst" ? ({
-        listening: "#D4B7FF", thinking: "#B982FF", searching: "#9B66F2",
-        weather: "#C69BFF", preparing: "#A979F2", speaking: "#E6D2FF",
-        approval: "#F4D38A", controlling: "#8B54D6", error: "#F39BCA", idle: "#8051C9"
-    }) : bubbleStyle === "solaris" ? ({
         listening: "#FFE49A", thinking: "#FFC85C", searching: "#F2A83D",
         weather: "#FFD37A", preparing: "#F4B24B", speaking: "#FFF0BB",
         approval: "#FFF0A6", controlling: "#DC8C2C", error: "#F28B75", idle: "#D8822D"
+    }) : bubbleStyle === "amethyst" ? ({
+        listening: "#D6DEFF", thinking: "#AEBDF4", searching: "#869DE2",
+        weather: "#C8D5FF", preparing: "#A7B8EE", speaking: "#EFF0FF",
+        approval: "#F4D38A", controlling: "#6878BE", error: "#F39BCA", idle: "#626BB2"
+    }) : bubbleStyle === "solaris" ? ({
+        listening: "#F5C5D2", thinking: "#DFA2B4", searching: "#B97D9B",
+        weather: "#F1B9CC", preparing: "#D38CA8", speaking: "#FFE6EA",
+        approval: "#F4D38A", controlling: "#9A6488", error: "#F39BCA", idle: "#6D4A80"
     }) : bubbleStyle === "ocean" ? ({
         listening: "#9DF4F5", thinking: "#50D8E7", searching: "#2AB9D4",
         weather: "#8DE7F0", preparing: "#49C9DD", speaking: "#C9FAFF",
@@ -49,12 +49,17 @@ Item {
         weather: "#9DDCF0", preparing: "#C8B5F7", speaking: "#E2D2FF",
         approval: "#EBCB8B", controlling: "#A99AE8", error: "#EAA7BB", idle: "#A493D8"
     })
+    readonly property string orbPath: bubbleStyle === "emerald"
+        ? "M 57 1 C 79 1 93 7 105 20 C 116 32 115 46 115 57 C 115 79 109 94 96 105 C 84 116 69 115 57 115 C 35 115 21 109 9 96 C -2 84 -1 69 -1 57 C -1 35 5 21 18 9 C 30 -2 45 1 57 1 Z"
+        : bubbleStyle === "ocean"
+        ? "M 57 1 C 84 12 111 31 108 59 C 106 82 77 108 62 114 C 54 117 45 112 37 105 C 15 86 4 67 7 48 C 10 27 35 9 57 1 Z"
+        : "M 57 1 A 56 56 0 1 1 57 113 A 56 56 0 1 1 57 1 Z"
     readonly property color stateColor: statePalette[mode] || statePalette.idle
-    readonly property color styleBase: bubbleStyle === "emerald" ? "#E9FFF2" : bubbleStyle === "crimson" ? "#FFF0F0" : bubbleStyle === "amethyst" ? "#F7EEFF" : bubbleStyle === "solaris" ? "#FFF8DF" : bubbleStyle === "ocean" ? "#E9FCFF" : "#EDF8FC"
-    readonly property color styleMid: bubbleStyle === "emerald" ? "#B9F5D2" : bubbleStyle === "crimson" ? "#FFC6C7" : bubbleStyle === "amethyst" ? "#D6B8FF" : bubbleStyle === "solaris" ? "#FFE09A" : bubbleStyle === "ocean" ? "#A9EEF3" : "#BFEAF5"
-    readonly property color styleLow: bubbleStyle === "emerald" ? "#57DFA0" : bubbleStyle === "crimson" ? "#FF818B" : bubbleStyle === "amethyst" ? "#A66CFF" : bubbleStyle === "solaris" ? "#FFBD4A" : bubbleStyle === "ocean" ? "#36C9D9" : "#91B9EF"
-    readonly property color styleDeep: bubbleStyle === "emerald" ? "#18B981" : bubbleStyle === "crimson" ? "#E63F68" : bubbleStyle === "amethyst" ? "#7135C5" : bubbleStyle === "solaris" ? "#E66B24" : bubbleStyle === "ocean" ? "#1979B8" : "#8078DD"
-    readonly property color styleBottom: bubbleStyle === "emerald" ? "#057A68" : bubbleStyle === "crimson" ? "#98194E" : bubbleStyle === "amethyst" ? "#3A1A82" : bubbleStyle === "solaris" ? "#B94A24" : bubbleStyle === "ocean" ? "#124A96" : "#4C46A8"
+    readonly property color styleBase: bubbleStyle === "emerald" ? "#E9FFF7" : bubbleStyle === "crimson" ? "#FFF8E8" : bubbleStyle === "amethyst" ? "#F6F5FF" : bubbleStyle === "solaris" ? "#FFF4F6" : bubbleStyle === "ocean" ? "#EDFFFF" : "#EDF8FC"
+    readonly property color styleMid: bubbleStyle === "emerald" ? "#BCEBDD" : bubbleStyle === "crimson" ? "#F2D49B" : bubbleStyle === "amethyst" ? "#D2D8F8" : bubbleStyle === "solaris" ? "#E7B8C6" : bubbleStyle === "ocean" ? "#A5E8E5" : "#BFEAF5"
+    readonly property color styleLow: bubbleStyle === "emerald" ? "#70CBB0" : bubbleStyle === "crimson" ? "#E4AC68" : bubbleStyle === "amethyst" ? "#A6B4E5" : bubbleStyle === "solaris" ? "#BB88A6" : bubbleStyle === "ocean" ? "#61C6CE" : "#91B9EF"
+    readonly property color styleDeep: bubbleStyle === "emerald" ? "#328F86" : bubbleStyle === "crimson" ? "#C77848" : bubbleStyle === "amethyst" ? "#737FBF" : bubbleStyle === "solaris" ? "#805477" : bubbleStyle === "ocean" ? "#397DA6" : "#8078DD"
+    readonly property color styleBottom: bubbleStyle === "emerald" ? "#206A68" : bubbleStyle === "crimson" ? "#985244" : bubbleStyle === "amethyst" ? "#4D568D" : bubbleStyle === "solaris" ? "#583D68" : bubbleStyle === "ocean" ? "#245B83" : "#4C46A8"
     property color animatedStateColor: stateColor
     property real tintStrength: mode === "listening" ? 0.34
         : mode === "speaking" ? 0.34
@@ -162,7 +167,7 @@ Item {
                     GradientStop { position: 0.84; color: root.styleDeep }
                     GradientStop { position: 1.00; color: root.styleBottom }
                 }
-                PathAngleArc { centerX: 57; centerY: 57; radiusX: 56; radiusY: 56; startAngle: 0; sweepAngle: 360 }
+                PathSvg { path: root.orbPath }
             }
         }
 
@@ -183,7 +188,7 @@ Item {
                     GradientStop { position: 0.50; color: Qt.rgba(root.animatedStateColor.r, root.animatedStateColor.g, root.animatedStateColor.b, 0.24) }
                     GradientStop { position: 1.00; color: "#00000000" }
                 }
-                PathAngleArc { centerX: 57; centerY: 57; radiusX: 56; radiusY: 56; startAngle: 0; sweepAngle: 360 }
+                PathSvg { path: root.orbPath }
             }
         }
 
@@ -207,6 +212,62 @@ Item {
                 }
                 PathAngleArc { centerX: 44; centerY: 34; radiusX: 43; radiusY: 33; startAngle: 0; sweepAngle: 360 }
             }
+        }
+    }
+
+    // Planet-specific accents remain small and attached to the glass body.
+    Rectangle {
+        visible: root.bubbleStyle === "emerald"
+        x: 27; y: 27; width: 82; height: 82
+        rotation: -8 + sphere.sway * 0.8
+        radius: 30
+        color: "transparent"
+        border.color: "#FFFFFF72"
+        border.width: 1.2
+    }
+    Shape {
+        visible: root.bubbleStyle === "amethyst" || root.bubbleStyle === "solaris"
+        x: 3; y: 43 + sphere.sway; width: 130; height: 52
+        rotation: (root.bubbleStyle === "amethyst" ? -19 : -31) + sphere.sway * 0.8
+        ShapePath {
+            strokeColor: root.bubbleStyle === "amethyst" ? "#DCD9FFB0" : "#F2D5E2B8"
+            strokeWidth: 1.6; fillColor: "transparent"
+            PathAngleArc { centerX: 65; centerY: 26; radiusX: 62; radiusY: 23; startAngle: 0; sweepAngle: 360 }
+        }
+    }
+    Shape {
+        visible: root.bubbleStyle === "amethyst" || root.bubbleStyle === "solaris"
+        x: 99 + sphere.sway * 0.5; y: 30 - sphere.sway * 0.35; width: 14; height: 14
+        ShapePath {
+            strokeColor: "#FFFFFF90"; strokeWidth: 0.6
+            fillGradient: RadialGradient {
+                centerX: 4; centerY: 3; centerRadius: 12
+                GradientStop { position: 0; color: "#FFFFFF" }
+                GradientStop { position: 1; color: root.bubbleStyle === "amethyst" ? "#A9B4E8" : "#C78DAD" }
+            }
+            PathAngleArc { centerX: 7; centerY: 7; radiusX: 6.5; radiusY: 6.5; startAngle: 0; sweepAngle: 360 }
+        }
+    }
+    Shape {
+        visible: root.bubbleStyle === "crimson"
+        x: 83 + sphere.surfaceFlow * 1.2; y: 76; width: 25; height: 16
+        ShapePath {
+            strokeColor: "#FFE4B099"; strokeWidth: 0.8
+            fillGradient: RadialGradient {
+                centerX: 7; centerY: 5; centerRadius: 20
+                GradientStop { position: 0; color: "#E79572" }
+                GradientStop { position: 1; color: "#A94E48" }
+            }
+            PathAngleArc { centerX: 12; centerY: 8; radiusX: 11; radiusY: 6; startAngle: 0; sweepAngle: 360 }
+        }
+    }
+    Shape {
+        visible: root.bubbleStyle === "ocean"
+        x: 19; y: 37; width: 97; height: 69
+        rotation: -27 + sphere.sway * 0.7
+        ShapePath {
+            strokeColor: "#EDFFFFA8"; strokeWidth: 1.7; fillColor: "transparent"
+            PathAngleArc { centerX: 48; centerY: 34; radiusX: 39; radiusY: 28; startAngle: 24; sweepAngle: 72 }
         }
     }
 

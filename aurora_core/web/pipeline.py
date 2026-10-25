@@ -400,7 +400,7 @@ def search_public_web(query,freshness=None,news_only=None,progress=None):
         cached=_SEARCH_CACHE.get(key)
         if cached and now-cached[0]<_SEARCH_CACHE_TTL:
             if progress:
-                try: progress({'stage':'searching','tasks':['Cache local'], 'workers':0,'completed':1,'total':1})
+                try: progress({'stage':'searching','tasks':['Cache local'], 'workers':0,'completed':1,'total':1,'cache_hit':True})
                 except Exception: pass
             return cached[1]
         for old_key,(created,_) in list(_SEARCH_CACHE.items()):
