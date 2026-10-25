@@ -10,12 +10,12 @@ import shutil
 import subprocess
 import urllib.request
 
-from ..config import VOSK_PATH, local_endpoint
+from ..config import STT_MODEL_PATH, VOSK_PATH, local_endpoint
 
 
 _REQUIRED_MODULES = (
     ("PySide6", "PySide6"),
-    ("SpeechRecognition", "speech_recognition"),
+    ("Whisper.cpp local", "pywhispercpp"),
     ("sounddevice", "sounddevice"),
     ("Vosk", "vosk"),
     ("Edge TTS", "edge_tts"),
@@ -62,7 +62,9 @@ def _voice_status() -> str:
         return "dependências principais ausentes (" + ", ".join(missing) + ")"
     if not model_ready:
         return "dependências principais instaladas; modelo Vosk ausente ou incompleto"
-    return "dependências principais instaladas e modelo Vosk presente"
+    if not STT_MODEL_PATH.is_file() or STT_MODEL_PATH.stat().st_size < 20_000_000:
+        return "Vosk pronto; modelo local Whisper ausente ou incompleto"
+    return "modelos locais Vosk (wake word) e Whisper.cpp (transcrição) presentes"
 
 
 def _desktop_status() -> str:

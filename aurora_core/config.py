@@ -13,7 +13,10 @@ LEGACY_APP_CONFIG = APP_DIR/'aurora-settings.json'
 _SETTINGS_SAVE_LOCK=threading.RLock()
 
 VOSK_PATH = APP_DIR/'assets/vosk-model'
-PIPER_MODEL_DIR = Path(os.environ.get('XDG_DATA_HOME', Path.home()/'.local/share'))/'aurora'/'voices'/'pt_BR-faber-medium'
+DATA_DIR = Path(os.environ.get('XDG_DATA_HOME', Path.home()/'.local/share'))/'aurora'
+STT_MODEL_PATH = DATA_DIR/'models'/'ggml-base-q5_1.bin'
+VOICE_ROOT = Path(os.environ.get('XDG_DATA_HOME', Path.home()/'.local/share'))/'aurora'/'voices'
+PIPER_MODEL_DIR = VOICE_ROOT/'pt_BR-faber-medium'
 PIPER_MODEL_PATH = PIPER_MODEL_DIR/'pt_BR-faber-medium.onnx'
 
 DEFAULTS = {
@@ -24,10 +27,8 @@ DEFAULTS = {
     'num_thread':4,
     'num_gpu':99,
     'keep_alive':-1,
-    'tts_voice':'pt-BR-ThalitaMultilingualNeural',
-    # Edge remains the compatibility default until the user explicitly
-    # chooses the experimental local Piper voice in personalization.
-    'tts_engine':'edge',
+    'tts_voice':'pt_BR-faber-medium',
+    'tts_engine':'piper',
     'feedback_theme':'boreal',
     'user_name':'',
     'profile_configured':False,
@@ -99,6 +100,7 @@ def onboarding_state(settings, boot_id=None, session_id=None):
     return installed==current, installed!=current
 
 def settings_load():
+    should_save = False
     try:
         data=json.loads(APP_CONFIG.read_text())
     except FileNotFoundError:
@@ -110,7 +112,17 @@ def settings_load():
     if not isinstance(data,dict): data={}
     data.pop('hands_free',None); data.pop('wake_enabled',None)
     result={**DEFAULTS,**data}
-    if not APP_CONFIG.exists(): settings_save(result)
+    # This developer build uses local speech synthesis only. Migrate legacy
+    # Edge selections once so normal responses cannot silently use the web.
+    current_voice = str(result.get('tts_voice', ''))
+    current_engine = str(result.get('tts_engine', '')).casefold()
+    valid_piper = current_engine == 'piper' and current_voice == 'pt_BR-faber-medium'
+    valid_supertonic = current_engine == 'supertonic' and current_voice.startswith('supertonic:')
+    if not (valid_piper or valid_supertonic):
+        result['tts_engine'] = 'piper'
+        result['tts_voice'] = 'pt_BR-faber-medium'
+        should_save = True
+    if not APP_CONFIG.exists() or should_save: settings_save(result)
     return result
 
 def settings_save(data):

@@ -4,7 +4,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, QObject, Signal, QTimer, QPoint, QRectF, QUrl, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QColor, QSurfaceFormat
 from PySide6.QtQuickWidgets import QQuickWidget
-from PySide6.QtWidgets import QApplication, QDialog, QLabel, QPushButton, QVBoxLayout
+from PySide6.QtWidgets import QApplication, QDialog, QLabel, QPushButton, QVBoxLayout, QHBoxLayout
 import sys
 from ..config import APP_DIR, settings_save
 
@@ -30,15 +30,30 @@ class AuroraOrb(QObject):
         self.root.setProperty('bubbleStyle',str(self.cfg.get('bubble_style','boreal')))
         self.error_notice=QDialog(self.view,Qt.WindowType.Tool|Qt.WindowType.FramelessWindowHint|Qt.WindowType.WindowStaysOnTopHint)
         self.error_notice.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.error_notice.setFixedSize(276,104)
-        self.error_notice.setStyleSheet('QDialog { background: #171923; border: 1px solid #695e83; border-radius: 16px; } QLabel { color: #f4efff; background: transparent; border: 0; font-size: 14px; font-weight: 600; } QPushButton { color: #ffffff; background: #7458ad; border: 0; border-radius: 9px; padding: 8px 18px; font-weight: 600; } QPushButton:hover { background: #876cc0; }')
-        notice_layout=QVBoxLayout(self.error_notice); notice_layout.setContentsMargins(16,12,16,12); notice_layout.setSpacing(9)
-        self.error_notice_label=QLabel('Aurora encontrou um erro interno.')
-        self.error_notice_label.setWordWrap(True)
-        self.error_report_button=QPushButton('Reportar')
-        notice_layout.addWidget(self.error_notice_label)
-        notice_layout.addWidget(self.error_report_button,0,Qt.AlignmentFlag.AlignRight)
+        self.error_notice.setFixedSize(360,158)
+        self.error_notice.setStyleSheet('''
+            QDialog { background: #171923; border: 1px solid #574b70; border-radius: 18px; }
+            QLabel { background: transparent; border: 0; }
+            QLabel#noticeEyebrow { color: #c6a8ff; font-size: 10px; font-weight: 800; letter-spacing: 1px; }
+            QLabel#noticeTitle { color: #f7f3ff; font-size: 17px; font-weight: 750; }
+            QLabel#noticeBody { color: #c5c0d0; font-size: 12px; }
+            QPushButton { color: #f4efff; background: #292631; border: 1px solid #484154; border-radius: 10px; padding: 8px 13px; font-weight: 650; }
+            QPushButton:hover { background: #393246; border-color: #8f70c6; }
+            QPushButton#reportButton { color: #fff; background: #7557ac; border: 0; }
+            QPushButton#reportButton:hover { background: #8968c3; }
+        ''')
+        notice_layout=QVBoxLayout(self.error_notice); notice_layout.setContentsMargins(17,13,17,13); notice_layout.setSpacing(5)
+        eyebrow=QLabel('AURORA  /  DIAGNÓSTICO'); eyebrow.setObjectName('noticeEyebrow')
+        self.error_notice_title=QLabel('Algo não saiu como esperado'); self.error_notice_title.setObjectName('noticeTitle')
+        self.error_notice_label=QLabel('Você pode salvar um relatório local para investigar o problema.')
+        self.error_notice_label.setObjectName('noticeBody'); self.error_notice_label.setWordWrap(True)
+        button_row=QHBoxLayout(); button_row.setSpacing(8)
+        self.error_report_button=QPushButton('Reportar'); self.error_report_button.setObjectName('reportButton')
+        self.error_notice_close_button=QPushButton('Fechar')
+        button_row.addStretch(1); button_row.addWidget(self.error_notice_close_button); button_row.addWidget(self.error_report_button)
+        notice_layout.addWidget(eyebrow); notice_layout.addWidget(self.error_notice_title); notice_layout.addWidget(self.error_notice_label,1); notice_layout.addLayout(button_row)
         self.error_report_button.clicked.connect(self.error_report_requested.emit)
+        self.error_notice_close_button.clicked.connect(self.error_notice.hide)
         self.root.startVoice.connect(self.start_voice.emit)
         self.root.hideRequested.connect(self.hide_requested.emit)
         self.root.quitRequested.connect(self.quit_requested.emit)

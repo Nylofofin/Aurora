@@ -32,6 +32,10 @@ def test_diagnostics_report_local_models_voice_and_xwayland(monkeypatch, tmp_pat
     for name in ("final.mdl", "Gr.fst", "HCLr.fst", "mfcc.conf"):
         (tmp_path / name).write_bytes(b"model")
     monkeypatch.setattr(diagnostics, "VOSK_PATH", tmp_path)
+    stt_model = tmp_path / "ggml-base-q5_1.bin"
+    stt_model.touch()
+    stt_model.open("r+b").truncate(20_000_001)
+    monkeypatch.setattr(diagnostics, "STT_MODEL_PATH", stt_model)
     monkeypatch.setattr(diagnostics.importlib.util, "find_spec", lambda _name: object())
     monkeypatch.setattr(diagnostics.shutil, "which", lambda _name: "/usr/bin/wpctl")
     monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
@@ -57,7 +61,7 @@ def test_diagnostics_report_local_models_voice_and_xwayland(monkeypatch, tmp_pat
     })
 
     assert "Ollama local: ativo, modelos de conversa e agente instalados" in result
-    assert "dependências principais instaladas e modelo Vosk presente" in result
+    assert "modelos locais Vosk (wake word) e Whisper.cpp (transcrição) presentes" in result
     assert "Wayland com XWayland disponível" in result
     assert "somente leitura" in result
     assert "Não testei reconhecimento online" in result

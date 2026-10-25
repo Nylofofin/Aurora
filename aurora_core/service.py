@@ -333,15 +333,17 @@ class AuroraService(QObject):
 
     def _companion_voice(self,wav_data,history):
         import io, wave
-        import speech_recognition as sr
         try:
             if self.companion_server: self.companion_server.set_remote_state('transcribing')
             with wave.open(io.BytesIO(wav_data),'rb') as wav:
                 if wav.getnchannels()!=1 or wav.getsampwidth()!=2 or wav.getframerate()!=16000 or wav.getnframes()>16_000*45:
                     raise ValueError('O áudio precisa ser PCM mono, 16 kHz e ter até 45 segundos')
-                audio=sr.AudioData(wav.readframes(wav.getnframes()),wav.getframerate(),wav.getsampwidth())
-            recognizer=sr.Recognizer(); recognizer.operation_timeout=8.0
-            transcript=recognizer.recognize_google(audio,language='pt-BR').strip()
+                pcm=wav.readframes(wav.getnframes())
+            from .voice.stt import transcribe_pcm
+            from .voice.telemetry import elapsed_ms, log_voice_timing
+            started=time.perf_counter()
+            transcript=transcribe_pcm(pcm).strip()
+            log_voice_timing('stt',elapsed_ms(started),'whisper_cpp_companion')
             if not transcript:
                 raise ValueError('Não reconheci uma frase no áudio')
             completion=self._companion_message(transcript,history)
@@ -508,6 +510,11 @@ class AuroraService(QObject):
         self.action_cancel_event=threading.Event()
         self.activity_generation+=1
         self.voice.begin_request()
+        # Load the chosen local voice during command capture/inference so the
+        # first audible response does not pay the cold model startup penalty.
+        speaker = getattr(self, 'speaker', None)
+        if speaker is not None:
+            speaker.prepare()
         self.orb.reveal('listening'); self.feedback.play()
         if self.inf and self.inf.isRunning(): self.orb.set_mode('listening')
     @Slot()
@@ -1070,8 +1077,9 @@ class AuroraService(QObject):
     def audio_started(self): self.orb.set_mode('speaking')
     def speech_error(self,message):
         print(f'[voice] {message}',file=sys.stderr,flush=True)
+        # TTS failures are recoverable and must not trigger the global
+        # report/restart flow.
         self.orb.set_mode('error')
-        self.critical_error_requested.emit('falha na síntese de voz','EdgeTTS',message,[])
     def schedule_dismiss(self,delay):
         generation=self.activity_generation
         def finish():

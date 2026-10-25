@@ -7,26 +7,29 @@ from aurora_core.config import DEFAULTS
 from aurora_core.voice import tts
 
 
-def test_existing_profiles_keep_edge_until_user_opts_in():
-    assert DEFAULTS["tts_engine"] == "edge"
+def test_default_voice_engine_is_local_piper():
+    assert DEFAULTS["tts_engine"] == "piper"
+    assert DEFAULTS["tts_voice"] == "pt_BR-faber-medium"
 
 
-def test_edge_voice_preview_keeps_legacy_engine_explicit():
+def test_local_supertonic_voice_preview_is_marked_as_preview():
     speaker = tts.Speaker({"tts_engine": "piper"})
-    speaker.say_with_voice("Olá!", "pt-BR-ThalitaMultilingualNeural")
-    _text, _queued_at, voice, engine = speaker.q.get_nowait()
-    assert voice == "pt-BR-ThalitaMultilingualNeural"
-    assert engine == "edge"
+    speaker.say_with_voice("Olá!", "supertonic:F1", engine="supertonic")
+    _text, _queued_at, voice, engine, is_preview = speaker.q.get_nowait()
+    assert voice == "supertonic:F1"
+    assert engine == "supertonic"
+    assert is_preview
 
 
 def test_local_voice_preview_is_queued_without_changing_saved_engine():
     speaker = tts.Speaker({"tts_engine": "edge"})
     speaker.say_with_voice("Olá!", None, engine="piper")
 
-    text, _queued_at, voice, engine = speaker.q.get_nowait()
+    text, _queued_at, voice, engine, is_preview = speaker.q.get_nowait()
     assert text == "Olá!"
     assert voice is None
     assert engine == "piper"
+    assert is_preview
     assert speaker.cfg["tts_engine"] == "edge"
 
 
@@ -46,22 +49,14 @@ def test_speaker_routes_saved_local_engine_to_piper(monkeypatch):
         def empty(self): return True
 
     speaker.q = OneItemQueue()
-    monkeypatch.setattr(speaker, "_stream_piper", lambda text, generation: calls.append((text, generation)))
+    monkeypatch.setattr(speaker, "_stream_piper", lambda text, generation, voice_id=None: calls.append((text, generation, voice_id)))
     speaker.run()
-    assert calls == [("resposta", 0)]
+    assert calls == [("resposta", 0, None)]
 
 
-def test_local_voice_requires_runtime_and_both_model_files(monkeypatch, tmp_path):
-    model = tmp_path / "pt_BR-faber-medium.onnx"
-    config = tmp_path / "pt_BR-faber-medium.onnx.json"
-    monkeypatch.setattr(tts, "PIPER_MODEL_PATH", model)
+def test_local_voice_runtime_detection_is_independent_of_voice_weights(monkeypatch):
     monkeypatch.setattr(tts.importlib.util, "find_spec", lambda _name: object())
-
-    assert not tts.local_piper_available()
-    model.touch(); config.touch()
     assert tts.local_piper_available()
-    config.unlink()
-    assert not tts.local_piper_available()
 
 
 def test_local_piper_streams_pcm_chunks_to_ffplay(monkeypatch):
@@ -94,7 +89,7 @@ def test_local_piper_streams_pcm_chunks_to_ffplay(monkeypatch):
     voice = SimpleNamespace(config=SimpleNamespace(sample_rate=22050),
                             synthesize=lambda _text: iter(chunks))
     speaker = tts.Speaker({"tts_engine": "piper"})
-    monkeypatch.setattr(speaker, "_load_piper_voice", lambda: voice)
+    monkeypatch.setattr(speaker, "_load_piper_voice", lambda _voice_id=None: voice)
     monkeypatch.setattr(tts.subprocess, "Popen", fake_popen)
     levels = []
     speaker.speech_level.connect(levels.append)
@@ -124,7 +119,7 @@ def test_local_piper_failure_kills_player_and_clears_handle(monkeypatch):
         def synthesize(self, _text): raise RuntimeError("model error")
 
     speaker = tts.Speaker({"tts_engine": "piper"})
-    monkeypatch.setattr(speaker, "_load_piper_voice", lambda: Voice())
+    monkeypatch.setattr(speaker, "_load_piper_voice", lambda _voice_id=None: Voice())
     monkeypatch.setattr(tts.subprocess, "Popen", lambda *_args, **_kwargs: player)
     with pytest.raises(RuntimeError): speaker._stream_piper("texto", speaker.cancel_generation)
 
