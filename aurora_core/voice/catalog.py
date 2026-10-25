@@ -54,16 +54,16 @@ VOICES = (
             "Modelo OpenRAIL-M: requer atribuição e tem restrições de uso; veja a licença upstream.",
             engine="supertonic", model_voice=name)
       for name, title, gender in (
-          ("F1", "Vênus", "Feminina"),
-          ("F2", "Europa", "Feminina"),
-          ("F3", "Reia", "Feminina"),
-          ("F4", "Dione", "Feminina"),
-          ("F5", "Miranda", "Feminina"),
-          ("M1", "Júpiter", "Masculina"),
-          ("M2", "Saturno", "Masculina"),
-          ("M3", "Netuno", "Masculina"),
-          ("M4", "Urano", "Masculina"),
-          ("M5", "Titã", "Masculina"),
+          ("F1", "Soreli", "Feminina"),
+          ("F2", "Averin", "Feminina"),
+          ("F3", "Neriva", "Feminina"),
+          ("F4", "Velune", "Feminina"),
+          ("F5", "Calira", "Feminina"),
+          ("M1", "Jorven", "Masculina"),
+          ("M2", "Orvel", "Masculina"),
+          ("M3", "Tavren", "Masculina"),
+          ("M4", "Kaelor", "Masculina"),
+          ("M5", "Zevran", "Masculina"),
       )),
 )
 VOICE_BY_KEY = {voice.key: voice for voice in VOICES}

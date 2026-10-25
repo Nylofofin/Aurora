@@ -6,7 +6,7 @@ O pacote Python oficial chama-se [`supertonic`](https://pypi.org/project/superto
 
 **Licença:** código Supertonic sob MIT; pesos sob OpenRAIL-M, que exige atribuição e impõe restrições de uso. Leia os termos upstream antes de redistribuir ou usar fora do contexto pessoal. O projeto Aurora não inclui os pesos. A qualidade e a latência variam por máquina e ainda devem ser avaliadas pelo usuário neste hardware.
 
-O catálogo anterior tinha apenas Faber depois que os demais modelos foram removidos por solicitação. Esta atualização integra os dez estilos Supertonic e mantém Faber.
+O catálogo mantém Faber como nome próprio da voz Piper e usa nomes autorais para identificar os dez perfis Supertonic. Os nomes exibidos não alteram o identificador do modelo nem seus parâmetros acústicos.
 
 ## Próximo candidato para avaliação
 
@@ -18,13 +18,13 @@ Os rótulos são nomes de perfil da Aurora, não nomes pessoais dos locutores. C
 
 | Perfil | Nome exibido |
 |---|---|
-| F1 | Vênus |
-| F2 | Europa |
-| F3 | Reia |
-| F4 | Dione |
-| F5 | Miranda |
-| M1 | Júpiter |
-| M2 | Saturno |
-| M3 | Netuno |
-| M4 | Urano |
-| M5 | Titã |
+| F1 | Soreli |
+| F2 | Averin |
+| F3 | Neriva |
+| F4 | Velune |
+| F5 | Calira |
+| M1 | Jorven |
+| M2 | Orvel |
+| M3 | Tavren |
+| M4 | Kaelor |
+| M5 | Zevran |
