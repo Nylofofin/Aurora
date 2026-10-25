@@ -1,12 +1,30 @@
-# Modelo de voz local opcional
+# Vozes locais
 
-O modelo `pt_BR-faber-medium` não é incluído nem baixado pelo instalador. Sua página está no projeto [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices/tree/main/pt/pt_BR/faber/medium) e o arquivo tem aproximadamente 61 MiB. O cartão identifica idioma `pt_BR`, uma voz, qualidade `medium`, taxa de 22.050 Hz e dataset CC0.
+O catálogo ativo mantém Faber (Piper) e oferece dez estilos brasileiros do [Supertonic 3](https://github.com/supertone-oss-archive/supertonic-py): F1–F5 e M1–M5. Os estilos compartilham um único modelo local; escolher outro estilo não baixa outro modelo separado. A instalação pessoal guarda os dados em `~/.local/share/aurora/voices/` e o cache do runtime Supertonic em seu diretório de cache do usuário. Pesos não são distribuídos no repositório nem no RPM.
 
-**Ressalva de licença:** o cabeçalho do repositório Hugging Face marca MIT, mas o cartão Faber menciona CC0 para o dataset, sem declarar inequivocamente a licença dos pesos ONNX. Existe uma [discussão aberta pedindo essa confirmação](https://huggingface.co/rhasspy/piper-voices/discussions/111). Não redistribuímos os pesos e o instalador não os baixa; confirme com os mantenedores/termos atuais antes de usar ou redistribuir.
+O pacote Python oficial chama-se [`supertonic`](https://pypi.org/project/supertonic/). A API documentada usa `TTS(auto_download=True)`, `get_voice_style(voice_name=...)` e `synthesize(..., voice_style=..., lang="pt")`. A integração da Aurora usa cinco passos de síntese e três threads locais para equilibrar qualidade e velocidade em CPU. Respostas longas são enviadas ao player por trechos de até 88 caracteres, para a reprodução começar sem esperar a resposta inteira. A primeira prévia baixa o modelo compartilhado, aproximadamente 400 MB segundo a documentação upstream; por isso a interface avisa e só baixa quando solicitado. Faber segue disponível como opção independente.
 
-Os SHA-256 observados no arquivo testado são:
+**Licença:** código Supertonic sob MIT; pesos sob OpenRAIL-M, que exige atribuição e impõe restrições de uso. Leia os termos upstream antes de redistribuir ou usar fora do contexto pessoal. O projeto Aurora não inclui os pesos. A qualidade e a latência variam por máquina e ainda devem ser avaliadas pelo usuário neste hardware.
 
-- `pt_BR-faber-medium.onnx`: `858555e3a064209c57088fe6bd70c4c3dc54d03eaa00c45d5ecaf43a33f95aa7`
-- `pt_BR-faber-medium.onnx.json`: `7e694de195ae3fc36dd732c445eb04fb49b649854893cb5506b978f0d50a1d6f`
+O catálogo anterior tinha apenas Faber depois que os demais modelos foram removidos por solicitação. Esta atualização integra os dez estilos Supertonic e mantém Faber.
 
-Coloque o modelo e o JSON no diretório privado `~/.local/share/aurora/voices/pt_BR-faber-medium/` (ou no equivalente sob `$XDG_DATA_HOME`) para habilitar a opção no onboarding. O runtime [Piper](https://github.com/OHF-Voice/piper1-gpl) é distribuído sob GPL-3.0-or-later; modelo e runtime têm licenças distintas. A voz só é carregada se a pessoa a selecionar; o carregamento sob demanda evita disputar CPU com Ollama ao iniciar a sessão.
+## Próximo candidato para avaliação
+
+Kokoro-82M é uma alternativa local leve para comparar em outro ciclo: o cartão oficial publica os pesos sob Apache-2.0 e lista três vozes em português brasileiro (uma feminina e duas masculinas). O próprio catálogo alerta que idiomas não ingleses podem ter suporte de G2P/dados de treino reduzido. Por isso, ainda não foi trocado pelo Supertonic: precisa passar por comparação real de qualidade, latência no hardware alvo e suporte de empacotamento da Aurora antes de ser oferecido. Fontes primárias: [cartão do modelo Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) e [catálogo de vozes](https://huggingface.co/hexgrad/Kokoro-82M/blob/main/VOICES.md).
+
+## Nomes do seletor
+
+Os rótulos são nomes de perfil da Aurora, não nomes pessoais dos locutores. Correspondência do catálogo:
+
+| Perfil | Nome exibido |
+|---|---|
+| F1 | Vênus |
+| F2 | Europa |
+| F3 | Reia |
+| F4 | Dione |
+| F5 | Miranda |
+| M1 | Júpiter |
+| M2 | Saturno |
+| M3 | Netuno |
+| M4 | Urano |
+| M5 | Titã |

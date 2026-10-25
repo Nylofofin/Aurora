@@ -58,7 +58,7 @@ from aurora_launchpad_core import (
 
 
 APP_ID = "com.nylofofin.AuroraLaunchpad"
-INSTALLER_VERSION = "0.4.0"
+INSTALLER_VERSION = "0.4.1"
 PKEXEC = "/usr/bin/pkexec"
 SYSTEMCTL = "/usr/bin/systemctl"
 DNF = "/usr/bin/dnf"
@@ -934,7 +934,7 @@ class Launchpad(Adw.Application):
             self._migrate_existing_memory()
             self._set_stage("2/7 · Preparando dependências", "Criando o ambiente Python e instalando os pacotes da Aurora.", .16)
             run_process([str(MANAGED_APP / "run.sh"), "--setup-only"], self._stream_line, cwd=MANAGED_APP, timeout=1800)
-            self._set_stage("3/7 · Preparando a voz", "Baixando o reconhecedor português Vosk.", .31)
+            self._set_stage("3/7 · Preparando a voz local", "Instalando Vosk para ativação e Whisper.cpp para transcrição em português.", .31)
             run_process([str(MANAGED_APP / "setup-voice.sh")], self._stream_line, cwd=MANAGED_APP, timeout=1800)
             self.ollama = shutil.which("ollama", path=SYSTEM_PATH)
             if not self.ollama:

@@ -1,5 +1,13 @@
 # Histórico de versões
 
+## Aurora Desktop 2.1.0 — Proxima Local Voice, 2026-10-25 (release estável)
+
+- Adiciona transcrição local de comandos com Whisper.cpp Base Q5, mantendo o Vosk local para wake word e interrupção.
+- Oferece Faber/Piper e dez estilos Supertonic 3 como motores locais opcionais; somente o motor selecionado é preparado e carregado.
+- Alinha geometria, reflexos e movimento contínuo das seis bolhas do onboarding aos protótipos visuais.
+- Amplia o diagnóstico e a telemetria local de voz e atualiza dependências e instruções de instalação.
+- Atualiza o Aurora Launchpad para 0.4.1-1.
+
 ## Aurora Desktop 2.0.1 — Interface Fix, 2026-10-25 (patch estável)
 
 - Corrige o espaçamento vertical excessivo no onboarding.
