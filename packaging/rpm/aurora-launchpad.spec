@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-only
 Name:           aurora-launchpad
-Version:        0.3.7
+Version:        0.3.8
 Release:        1%{?dist}
 Summary:        GTK setup assistant and installer for Aurora Desktop
 License:        GPL-3.0-only
@@ -45,8 +45,8 @@ install -Dpm0644 launchpad/aurora-launchpad.desktop %{buildroot}%{_datadir}/appl
 %{_datadir}/icons/hicolor/scalable/apps/com.nylofofin.AuroraLaunchpad.svg
 
 %changelog
-* Sat Oct 24 2026 Aurora Project <nylofofin@localhost> - 0.3.7-1
-- Compact dark interface and updated release selector
+* Sat Oct 24 2026 Aurora Project <nylofofin@localhost> - 0.3.8-1
+- Repair release refresh and correct installed build identity
 - Add post-install personalization panel and session-safe onboarding restart.
 
 * Sat Oct 24 2026 Aurora Project <nylofofin@localhost> - 0.3.5-1

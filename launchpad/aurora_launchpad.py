@@ -57,7 +57,7 @@ from aurora_launchpad_core import (
 
 
 APP_ID = "com.nylofofin.AuroraLaunchpad"
-INSTALLER_VERSION = "0.3.7"
+INSTALLER_VERSION = "0.3.8"
 PKEXEC = "/usr/bin/pkexec"
 SYSTEMCTL = "/usr/bin/systemctl"
 DNF = "/usr/bin/dnf"
@@ -469,6 +469,8 @@ class Launchpad(Adw.Application):
         builds.append(self._label("BUILDS NOVAS", "caption"))
         self.maintenance_updates_status = self._label("Procurando builds novas…", "subtle", True)
         builds.append(self.maintenance_updates_status)
+        self.refresh_releases_button = self._button("Atualizar lista", self._load_releases)
+        builds.append(self.refresh_releases_button)
         self.maintenance_updates_button = self._button("Ver builds novas", self._show_new_aurora_releases, suggested=True)
         self.maintenance_updates_button.set_visible(False)
         builds.append(self.maintenance_updates_button)
@@ -587,6 +589,8 @@ class Launchpad(Adw.Application):
         if self.loading_releases:
             return
         self.loading_releases = True
+        if getattr(self, "refresh_releases_button", None):
+            self.refresh_releases_button.set_sensitive(False)
         if self.release_status:
             self.release_status.set_text("Buscando versões no GitHub…")
         threading.Thread(target=self._load_releases_worker, daemon=True).start()
@@ -604,6 +608,8 @@ class Launchpad(Adw.Application):
 
     def _show_release_options(self, options, error, update=None, newer=()):
         self.loading_releases = False
+        if getattr(self, "refresh_releases_button", None):
+            self.refresh_releases_button.set_sensitive(True)
         self.release_options = options
         self.launchpad_update = update
         self.new_aurora_releases = tuple(newer or ())
@@ -615,6 +621,7 @@ class Launchpad(Adw.Application):
             if error:
                 self.update_status.set_text("Não consegui consultar as atualizações agora. Tente novamente.")
                 self.maintenance_updates_status.set_text("Não foi possível consultar builds novas agora.")
+                self.refresh_releases_button.set_visible(True)
                 return False
             if update:
                 version = update["asset"]["name"].split("aurora-launchpad-", 1)[1].split("-", 1)[0]

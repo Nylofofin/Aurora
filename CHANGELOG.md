@@ -1,5 +1,12 @@
 # Histórico de versões
 
+## Aurora Desktop 1.9.1 — Event Horizon, 2026-10-24 (release estável)
+
+- Compacta e escurece o onboarding e o Launchpad.
+- Adiciona três pares originais de feedback sonoro selecionáveis.
+- Reduz ativações falsas de perfis de wake personalizados.
+- Corrige a identidade da build usada pelo Launchpad para verificar atualizações.
+
 ## Aurora Desktop 1.8.6 — Sirius Control Panel, 2026-10-24 (release estável)
 
 - Adiciona ao Launchpad uma seção para reabrir a personalização de nome, voz e estilo.
