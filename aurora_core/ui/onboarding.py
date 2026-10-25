@@ -10,7 +10,7 @@ from PySide6.QtCore import (QEasingCurve, QParallelAnimationGroup, QPropertyAnim
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QRadialGradient, QLinearGradient, QPen
 from PySide6.QtMultimedia import QSoundEffect
 from PySide6.QtWidgets import (
-    QButtonGroup, QCheckBox, QDialog, QFrame, QGraphicsOpacityEffect, QHBoxLayout,
+    QButtonGroup, QCheckBox, QDialog, QFrame, QGraphicsOpacityEffect, QGridLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QRadioButton, QStackedWidget, QVBoxLayout, QWidget,
 )
 
@@ -24,6 +24,18 @@ SUPPORTED_VOICES = (
     ("pt-BR-FranciscaNeural", "Francisca", "Feminina"),
     ("pt-BR-AntonioNeural", "Antonio", "Masculina"),
 )
+
+# Public appearance catalog shared by onboarding and the live orb.  Keep the
+# keys stable so a saved preference survives upgrades.
+BUBBLE_STYLES = (
+    ("boreal", "Névoa Boreal", "Azul e violeta · cristalino"),
+    ("emerald", "Pulso Esmeralda", "Verde vivo · energia fresca"),
+    ("crimson", "Flare Carmesim", "Vermelho intenso · presença forte"),
+    ("amethyst", "Ametista Nebular", "Roxo profundo · brilho cósmico"),
+    ("solaris", "Halo Solaris", "Dourado solar · calor suave"),
+    ("ocean", "Maré de Cobalto", "Ciano e azul · fluxo líquido"),
+)
+BUBBLE_STYLE_KEYS = {key for key, _title, _detail in BUBBLE_STYLES}
 
 
 class _AnimatedOrb(QWidget):
@@ -59,6 +71,12 @@ class _AnimatedOrb(QWidget):
             base, lower, violet = QColor("#f5fff8"), QColor("#32d583"), QColor("#0b8f66")
         elif self.style == "crimson":
             base, lower, violet = QColor("#fff8f8"), QColor("#ff5c6c"), QColor("#b51e52")
+        elif self.style == "amethyst":
+            base, lower, violet = QColor("#fbf5ff"), QColor("#a66cff"), QColor("#5427b8")
+        elif self.style == "solaris":
+            base, lower, violet = QColor("#fffbed"), QColor("#ffbd4a"), QColor("#e66b24")
+        elif self.style == "ocean":
+            base, lower, violet = QColor("#effcff"), QColor("#22c7d9"), QColor("#1558ba")
         circle = QPainterPath()
         circle.addEllipse(2, 2, size-4, size-4)
         painter.setClipPath(circle)
@@ -108,7 +126,7 @@ class _StyleCard(QFrame):
         self.key = key
         self.setObjectName("choiceCard")
         self.setProperty("selected", False)
-        self.setMinimumWidth(238)
+        self.setMinimumWidth(200)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 15, 16, 15)
         layout.setSpacing(8)
@@ -237,7 +255,7 @@ class PersonalizationWizard(QDialog):
         self.result_settings = None
         self._voice_map = {}
         self._selected_style = str(cfg.get("bubble_style", "boreal"))
-        if self._selected_style not in {"boreal", "emerald", "crimson"}:
+        if self._selected_style not in BUBBLE_STYLE_KEYS:
             self._selected_style = "boreal"
         self._name_worker = None
         self._wake_worker = None
@@ -460,17 +478,16 @@ class PersonalizationWizard(QDialog):
 
     def _build_bubble(self):
         frame, layout = self._panel("Vamos personalizar sua bolha", "Veja cada acabamento em movimento e selecione o que combina com você.")
-        cards = QHBoxLayout()
-        cards.setSpacing(14)
+        cards = QGridLayout()
+        cards.setHorizontalSpacing(12)
+        cards.setVerticalSpacing(12)
         self.style_cards = {}
-        choices = (("boreal", "Névoa Boreal", "O acabamento atual · azul e violeta"),
-                   ("emerald", "Pulso Esmeralda", "Verde vivo · energia fresca"),
-                   ("crimson", "Flare Carmesim", "Vermelho intenso · presença forte"))
-        for key, title, detail in choices:
+        choices = BUBBLE_STYLES
+        for index, (key, title, detail) in enumerate(choices):
             card = _StyleCard(key, title, detail)
             card.select_button.clicked.connect(lambda _=False, value=key: self._select_style(value))
             self.style_cards[key] = card
-            cards.addWidget(card, 1)
+            cards.addWidget(card, index // 3, index % 3)
         self._select_style(self._selected_style if self._selected_style in self.style_cards else "boreal")
         layout.addLayout(cards)
         self.stack.addWidget(frame)

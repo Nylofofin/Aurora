@@ -32,12 +32,29 @@ Item {
         listening: "#FFA8AD", thinking: "#FF7884", searching: "#FF526B",
         weather: "#FF8D8D", preparing: "#FF6B7B", speaking: "#FFC0B9",
         approval: "#F7D77A", controlling: "#E64568", error: "#FF4F69", idle: "#E6416A"
+    }) : bubbleStyle === "amethyst" ? ({
+        listening: "#D4B7FF", thinking: "#B982FF", searching: "#9B66F2",
+        weather: "#C69BFF", preparing: "#A979F2", speaking: "#E6D2FF",
+        approval: "#F4D38A", controlling: "#8B54D6", error: "#F39BCA", idle: "#8051C9"
+    }) : bubbleStyle === "solaris" ? ({
+        listening: "#FFE49A", thinking: "#FFC85C", searching: "#F2A83D",
+        weather: "#FFD37A", preparing: "#F4B24B", speaking: "#FFF0BB",
+        approval: "#FFF0A6", controlling: "#DC8C2C", error: "#F28B75", idle: "#D8822D"
+    }) : bubbleStyle === "ocean" ? ({
+        listening: "#9DF4F5", thinking: "#50D8E7", searching: "#2AB9D4",
+        weather: "#8DE7F0", preparing: "#49C9DD", speaking: "#C9FAFF",
+        approval: "#F4D888", controlling: "#218EBD", error: "#F18E9C", idle: "#258FC2"
     }) : ({
         listening: "#91E4F8", thinking: "#B7A4F2", searching: "#7ECDF5",
         weather: "#9DDCF0", preparing: "#C8B5F7", speaking: "#E2D2FF",
         approval: "#EBCB8B", controlling: "#A99AE8", error: "#EAA7BB", idle: "#A493D8"
     })
     readonly property color stateColor: statePalette[mode] || statePalette.idle
+    readonly property color styleBase: bubbleStyle === "emerald" ? "#E9FFF2" : bubbleStyle === "crimson" ? "#FFF0F0" : bubbleStyle === "amethyst" ? "#F7EEFF" : bubbleStyle === "solaris" ? "#FFF8DF" : bubbleStyle === "ocean" ? "#E9FCFF" : "#EDF8FC"
+    readonly property color styleMid: bubbleStyle === "emerald" ? "#B9F5D2" : bubbleStyle === "crimson" ? "#FFC6C7" : bubbleStyle === "amethyst" ? "#D6B8FF" : bubbleStyle === "solaris" ? "#FFE09A" : bubbleStyle === "ocean" ? "#A9EEF3" : "#BFEAF5"
+    readonly property color styleLow: bubbleStyle === "emerald" ? "#57DFA0" : bubbleStyle === "crimson" ? "#FF818B" : bubbleStyle === "amethyst" ? "#A66CFF" : bubbleStyle === "solaris" ? "#FFBD4A" : bubbleStyle === "ocean" ? "#36C9D9" : "#91B9EF"
+    readonly property color styleDeep: bubbleStyle === "emerald" ? "#18B981" : bubbleStyle === "crimson" ? "#E63F68" : bubbleStyle === "amethyst" ? "#7135C5" : bubbleStyle === "solaris" ? "#E66B24" : bubbleStyle === "ocean" ? "#1979B8" : "#8078DD"
+    readonly property color styleBottom: bubbleStyle === "emerald" ? "#057A68" : bubbleStyle === "crimson" ? "#98194E" : bubbleStyle === "amethyst" ? "#3A1A82" : bubbleStyle === "solaris" ? "#B94A24" : bubbleStyle === "ocean" ? "#124A96" : "#4C46A8"
     property color animatedStateColor: stateColor
     property real tintStrength: mode === "listening" ? 0.34
         : mode === "speaking" ? 0.34
@@ -139,11 +156,11 @@ Item {
                 fillGradient: LinearGradient {
                     x1: 22; y1: 4; x2: 95; y2: 112
                     GradientStop { position: 0.00; color: "#FFFDFC" }
-                    GradientStop { position: 0.19; color: bubbleStyle === "emerald" ? "#E9FFF2" : bubbleStyle === "crimson" ? "#FFF0F0" : "#EDF8FC" }
-                    GradientStop { position: 0.42; color: bubbleStyle === "emerald" ? "#B9F5D2" : bubbleStyle === "crimson" ? "#FFC6C7" : "#BFEAF5" }
-                    GradientStop { position: 0.66; color: bubbleStyle === "emerald" ? "#57DFA0" : bubbleStyle === "crimson" ? "#FF818B" : "#91B9EF" }
-                    GradientStop { position: 0.84; color: bubbleStyle === "emerald" ? "#18B981" : bubbleStyle === "crimson" ? "#E63F68" : "#8078DD" }
-                    GradientStop { position: 1.00; color: bubbleStyle === "emerald" ? "#057A68" : bubbleStyle === "crimson" ? "#98194E" : "#4C46A8" }
+                    GradientStop { position: 0.19; color: root.styleBase }
+                    GradientStop { position: 0.42; color: root.styleMid }
+                    GradientStop { position: 0.66; color: root.styleLow }
+                    GradientStop { position: 0.84; color: root.styleDeep }
+                    GradientStop { position: 1.00; color: root.styleBottom }
                 }
                 PathAngleArc { centerX: 57; centerY: 57; radiusX: 56; radiusY: 56; startAngle: 0; sweepAngle: 360 }
             }
