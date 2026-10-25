@@ -276,8 +276,8 @@ class PersonalizationWizard(QDialog):
         self.setModal(True)
         # Give cards and form fields a real horizontal rhythm.  The previous
         # compact width forced labels and buttons to collide on Fedora fonts.
-        self.setMinimumSize(900, 600)
-        self.resize(980, 620)
+        self.setMinimumSize(900, 420)
+        self.resize(980, 470)
         self._dark_theme = True
         self.setStyleSheet(self._stylesheet(True))
 
@@ -334,6 +334,19 @@ class PersonalizationWizard(QDialog):
         self._current_page = 0
         self._set_page(0, animated=False)
         self._center()
+
+    def _fit_current_page(self):
+        """Keep short pages compact instead of inheriting the tallest page."""
+        if not self.stack or not self.stack.currentWidget():
+            return
+        page_height = self.stack.currentWidget().sizeHint().height()
+        page_height = max(270, min(620, page_height))
+        self.stack.setFixedHeight(page_height)
+        # Header, eyebrow and footer need roughly 118 px around the page.
+        target_height = max(420, min(760, page_height + 118))
+        if abs(self.height() - target_height) > 4:
+            self.resize(self.width(), target_height)
+            self._center()
 
     def _system_prefers_dark(self):
         from PySide6.QtWidgets import QApplication
@@ -688,6 +701,7 @@ class PersonalizationWizard(QDialog):
         previous = self._current_page
         self._current_page = page
         self.stack.setCurrentIndex(page)
+        QTimer.singleShot(0, self._fit_current_page)
         self.back_button.setVisible(page > 0 and page < 6)
         labels = (("Boas-vindas · 1 de 6", "Seu perfil · 2 de 6", "Ativação · 3 de 6", "Sua Bolha · 4 de 6", "Sua voz · 5 de 6", "Seus sons · 6 de 6", "")
                   if self._needs_training else
