@@ -41,6 +41,7 @@ def test_first_install_onboarding_marker_preserves_private_user_settings(tmp_pat
     assert saved["num_ctx"] == 2048
     assert saved["onboarding_pending"] is True
     assert saved["onboarding_boot_id"] == "boot-1"
+    assert "onboarding_session_id" in saved
     assert config.stat().st_mode & 0o777 == 0o600
 
 

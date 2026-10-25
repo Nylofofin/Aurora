@@ -65,6 +65,7 @@ def test_first_run_settings_have_custom_identity_and_bubble_defaults():
     assert config.DEFAULTS["profile_configured"] is False
     assert config.DEFAULTS["bubble_style"] == "boreal"
     assert config.DEFAULTS["onboarding_pending"] is False
+    assert config.DEFAULTS["onboarding_session_id"] == ""
 
 
 def test_onboarding_waits_until_a_different_boot_then_shows_once():
@@ -72,6 +73,16 @@ def test_onboarding_waits_until_a_different_boot_then_shows_once():
     assert config.onboarding_state(pending, "boot-a") == (True, False)
     assert config.onboarding_state(pending, "boot-b") == (False, True)
     assert config.onboarding_state({"onboarding_pending": False}, "boot-b") == (False, False)
+
+
+def test_onboarding_shows_after_logout_login_without_reboot():
+    pending = {
+        "onboarding_pending": True,
+        "onboarding_boot_id": "same-boot",
+        "onboarding_session_id": "session-old",
+    }
+    assert config.onboarding_state(pending, "same-boot", "session-old") == (True, False)
+    assert config.onboarding_state(pending, "same-boot", "session-new") == (False, True)
 
 
 def test_concurrent_settings_saves_do_not_race_on_shared_temporary_file(monkeypatch, tmp_path):

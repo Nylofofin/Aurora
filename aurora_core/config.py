@@ -30,6 +30,7 @@ DEFAULTS = {
     'bubble_style':'boreal',
     'onboarding_pending':False,
     'onboarding_boot_id':'',
+    'onboarding_session_id':'',
     'bubble_position':None,
     'agent_num_ctx':2048,
     'agent_num_predict':384,
@@ -48,10 +49,18 @@ def current_boot_id():
     try: return Path('/proc/sys/kernel/random/boot_id').read_text().strip()
     except OSError: return ''
 
-def onboarding_state(settings, boot_id=None):
-    """Return (wait_for_reboot, show_wizard) for an onboarding marker."""
+def current_session_id():
+    """Return the login session identifier used to trigger first-run setup."""
+    return str(os.environ.get('XDG_SESSION_ID') or '').strip()
+
+def onboarding_state(settings, boot_id=None, session_id=None):
+    """Return (wait_for_new_login, show_wizard) for an onboarding marker."""
     if not isinstance(settings,dict) or not settings.get('onboarding_pending'):
         return False,False
+    current_session = current_session_id() if session_id is None else str(session_id)
+    installed_session = str(settings.get('onboarding_session_id') or '')
+    if current_session and installed_session:
+        return installed_session == current_session, installed_session != current_session
     current=current_boot_id() if boot_id is None else str(boot_id)
     installed=str(settings.get('onboarding_boot_id') or '')
     if not current:

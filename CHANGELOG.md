@@ -1,5 +1,11 @@
 # Histórico de versões
 
+## Aurora Desktop 1.8.4 — Sirius Session Onboarding, 2026-10-24 (release estável)
+
+- Dispara o onboarding no próximo login, mesmo quando a instalação terminou sem reinicialização.
+- Oferece no Launchpad as opções explícitas de reiniciar ou encerrar a sessão.
+- Mantém compatibilidade com marcadores antigos baseados no boot.
+
 ## Aurora Desktop 1.8.3 — Sirius Clean Desktop, 2026-10-24 (release estável)
 
 - Remove a integração Spotify, o fluxo OAuth, o token local e a configuração `spotify_client_id`.

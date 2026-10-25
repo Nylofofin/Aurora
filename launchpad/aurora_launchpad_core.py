@@ -46,8 +46,9 @@ def is_official_github_download_url(value: str) -> bool:
     return parsed.scheme == "https" and parsed.hostname in OFFICIAL_GITHUB_DOWNLOAD_HOSTS
 
 
-def prepare_first_boot_onboarding(config_path: Path, boot_id: str, *, existing_install: bool) -> bool:
-    """Mark a fresh install for onboarding after the next machine reboot."""
+def prepare_first_boot_onboarding(config_path: Path, boot_id: str, *, existing_install: bool,
+                                  session_id: str = "") -> bool:
+    """Mark a fresh install for onboarding after the next login session."""
     if existing_install or not boot_id:
         return False
     path = Path(config_path)
@@ -65,6 +66,7 @@ def prepare_first_boot_onboarding(config_path: Path, boot_id: str, *, existing_i
         raise ValueError("O arquivo de configurações não contém um objeto JSON.")
     settings["onboarding_pending"] = True
     settings["onboarding_boot_id"] = str(boot_id)
+    settings["onboarding_session_id"] = str(session_id or os.environ.get("XDG_SESSION_ID", ""))
     fd, temporary_name = tempfile.mkstemp(prefix=".aurora-settings-", suffix=".tmp", dir=path.parent)
     temporary = Path(temporary_name)
     with os.fdopen(fd, "w", encoding="utf-8") as stream:

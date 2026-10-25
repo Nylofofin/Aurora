@@ -824,14 +824,15 @@ class Launchpad(Adw.Application):
     def _done_page(self) -> Gtk.Widget:
         col = self._column()
         col.append(self._label("Aurora pronta para despertar.", "title-1"))
-        detail = ("A instalação terminou. Reinicie o computador para carregar todos os componentes. No próximo login, a Aurora abrirá o assistente de personalização."
+        detail = ("A instalação terminou. Reinicie o computador ou encerre a sessão e entre novamente. No próximo login, a Aurora abrirá o assistente de personalização."
                   if self.onboarding_scheduled else
                   "A instalação terminou. Reinicie o computador para carregar todos os componentes e testar a Aurora.")
         col.append(self._label(detail, "subtle", True))
-        self.reboot_status = self._label("Você também pode reiniciar mais tarde.", "subtle", True)
+        self.reboot_status = self._label("Você também pode reiniciar ou sair da sessão mais tarde.", "subtle", True)
         col.append(self.reboot_status)
         buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12, halign=Gtk.Align.END)
         buttons.append(self._button("Abrir status do serviço", self._show_service_status))
+        buttons.append(self._button("Sair da sessão", self._request_logout))
         buttons.append(self._button("Reiniciar depois", lambda *_: self.window.close()))
         buttons.append(self._button("Reiniciar agora", self._request_reboot, suggested=True))
         col.append(buttons)
@@ -929,7 +930,7 @@ class Launchpad(Adw.Application):
                 try:
                     boot_id = boot_id_path.read_text(encoding="utf-8").strip()
                 except OSError as exc:
-                    raise RuntimeError("Não consegui identificar o boot atual para agendar a personalização inicial.") from exc
+                    raise RuntimeError("Não consegui identificar a sessão atual para agendar a personalização inicial.") from exc
                 prepare_first_boot_onboarding(config_root/"aurora"/"aurora-settings.json", boot_id,
                                               existing_install=False)
             stop_old = subprocess.run([SYSTEMCTL, "--user", "stop", "aurora.service"], capture_output=True, text=True, timeout=30)
@@ -1053,6 +1054,25 @@ class Launchpad(Adw.Application):
                     message = "Reinicialização solicitada. A personalização aparecerá no próximo login." if self.onboarding_scheduled else "Reinicialização solicitada."
             except (OSError, subprocess.SubprocessError) as exc:
                 message = f"Não consegui solicitar a reinicialização ({type(exc).__name__}). Reinicie pelo menu do sistema."
+            GLib.idle_add(self.reboot_status.set_text, message)
+        threading.Thread(target=worker, daemon=True).start()
+        return False
+
+    def _request_logout(self, *_):
+        self.reboot_status.set_text("Solicitando encerramento da sessão…")
+        def worker():
+            command = shutil.which("gnome-session-quit")
+            if not command:
+                message = "Não encontrei o comando de sessão do GNOME. Encerre a sessão pelo menu do sistema."
+            else:
+                try:
+                    result = subprocess.run([command, "--logout", "--no-prompt"], capture_output=True,
+                                            text=True, timeout=30)
+                    message = ("Sessão encerrada. A personalização aparecerá no próximo login."
+                               if result.returncode == 0 else
+                               f"Não consegui encerrar a sessão: {(result.stderr or result.stdout or 'o GNOME recusou o pedido').strip()}")
+                except (OSError, subprocess.SubprocessError) as exc:
+                    message = f"Não consegui encerrar a sessão ({type(exc).__name__}). Use o menu do sistema."
             GLib.idle_add(self.reboot_status.set_text, message)
         threading.Thread(target=worker, daemon=True).start()
         return False

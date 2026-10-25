@@ -1,9 +1,9 @@
 # Aurora Desktop
 
-**Versão:** `1.8.3` (PC) · `1.2.3` (Android, arquivada) · **Build:** `aurora-desktop-1.8.3-sirius-clean-desktop`
-**Release:** **Aurora Desktop 1.8.3 — Sirius Clean Desktop** — patch estável.
+**Versão:** `1.8.4` (PC) · `1.2.3` (Android, arquivada) · **Build:** `aurora-desktop-1.8.4-sirius-session-onboarding`
+**Release:** **Aurora Desktop 1.8.4 — Sirius Session Onboarding** — patch estável.
 
-> **Release estável 1.8.3 — Sirius Clean Desktop.** Esta rodada remove a integração opcional com Spotify e suas credenciais, mantendo o desktop focado em automação local, pesquisa, voz e OBS. Destina-se ao Fedora Workstation com GNOME/Wayland e Ollama local. Provedores externos, periféricos, portais do GNOME e integrações opcionais continuam sujeitos à rede, permissões e configuração local. A Aurora não instala atualizações sem confirmação. O Launchpad consulta metadados públicos do GitHub e só baixa a versão escolhida após confirmação explícita.
+> **Release estável 1.8.4 — Sirius Session Onboarding.** Esta rodada dispara a personalização no próximo login, mesmo sem reiniciar o computador, e oferece no Launchpad a escolha explícita entre reiniciar e encerrar a sessão. Mantém o desktop focado em automação local, pesquisa, voz e OBS. Destina-se ao Fedora Workstation com GNOME/Wayland e Ollama local. Provedores externos, periféricos, portais do GNOME e integrações opcionais continuam sujeitos à rede, permissões e configuração local. A Aurora não instala atualizações sem confirmação.
 
 As releases seguem o formato **Aurora Desktop `<versão>` — `<codinome>`**. O codinome descreve a mudança principal daquela versão; o identificador técnico usa `aurora-desktop-<versão>-<codinome>`, sem siglas ambíguas. A tag SemVer (`vMAJOR.MINOR.PATCH`) continua sendo a referência exata do código. Nomes anteriores permanecem no changelog como registro histórico.
 
@@ -47,7 +47,7 @@ O código está separado por responsabilidade em `aurora_core/`: `system/` cont�
 
 ### Instalação gráfica experimental
 
-O RPM do **Aurora Launchpad** instala o assistente GTK/libadwaita para Fedora Workstation com GNOME em Wayland. Baixe o RPM nos assets da release e instale pelo GNOME Software ou com `sudo dnf install ./aurora-launchpad-<versão>.noarch.rpm`. O Launchpad verifica o ambiente, mostra até três versões recomendadas e os efeitos previstos; após escolher uma versão e confirmar, baixa aquela tag, prepara Python/Vosk/Ollama e os modelos Gemma, configura `aurora.service` e mostra o progresso. Ao abrir uma cópia antiga, ele consulta o asset RPM mais recente, valida host, tamanho e SHA-256 e oferece um único botão obrigatório para atualizar o próprio Launchpad antes de instalar a Aurora. O RPM contém somente o assistente; modelos grandes são baixados após a confirmação. Em uma instalação nova, o Launchpad recomenda reiniciar o computador; no primeiro login seguinte, aparece o assistente de personalização. O botão de reinício é explícito e pode ser adiado.
+O RPM do **Aurora Launchpad** instala o assistente GTK/libadwaita para Fedora Workstation com GNOME em Wayland. Baixe o RPM nos assets da release e instale pelo GNOME Software ou com `sudo dnf install ./aurora-launchpad-<versão>.noarch.rpm`. O Launchpad verifica o ambiente, mostra até três versões recomendadas e os efeitos previstos; após escolher uma versão e confirmar, baixa aquela tag, prepara Python/Vosk/Ollama e os modelos Gemma, configura `aurora.service` e mostra o progresso. Ao abrir uma cópia antiga, ele consulta o asset RPM mais recente, valida host, tamanho e SHA-256 e oferece um único botão obrigatório para atualizar o próprio Launchpad antes de instalar a Aurora. O RPM contém somente o assistente; modelos grandes são baixados após a confirmação. Em uma instalação nova, o Launchpad oferece reiniciar o computador ou encerrar a sessão; no próximo login, aparece o assistente de personalização. Ambas as opções ficam sob ação explícita do usuário.
 
 ### Personalização inicial
 
