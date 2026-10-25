@@ -446,7 +446,6 @@ class PersonalizationWizard(QDialog):
         self.page_progress.setRange(0, 5)
         root.addWidget(self.page_progress)
         self.stack = QStackedWidget()
-        self.stack.setGraphicsEffect(QGraphicsOpacityEffect(self.stack))
         self._build_welcome()
         self._build_profile()
         self._build_wake_training()
@@ -894,9 +893,9 @@ class PersonalizationWizard(QDialog):
         if self._feedback_step_pending or not hasattr(self, "feedback_center"):
             return
         left, center, right = self._feedback_geometries()
-        for card, rect, opacity in ((self.feedback_side_left, left, .48),
+        for card, rect, opacity in ((self.feedback_side_left, left, .64),
                                     (self.feedback_center, center, 1.0),
-                                    (self.feedback_side_right, right, .48)):
+                                    (self.feedback_side_right, right, .64)):
             card.setGeometry(rect)
             card.graphicsEffect().setOpacity(opacity)
             card.show()
@@ -915,19 +914,19 @@ class PersonalizationWizard(QDialog):
         if direction > 0:
             incoming_index = (index + 1) % count
             shifts = ((old_left, left_rect.translated(-100, 0), 0.0),
-                      (old_center, left_rect, .48), (old_right, center_rect, 1.0))
+                      (old_center, left_rect, .64), (old_right, center_rect, 1.0))
             incoming_rect, incoming_end, outgoing = right_rect.translated(100, 0), right_rect, old_left
         else:
             incoming_index = (index - 1) % count
             shifts = ((old_right, right_rect.translated(100, 0), 0.0),
-                      (old_center, right_rect, .48), (old_left, center_rect, 1.0))
+                      (old_center, right_rect, .64), (old_left, center_rect, 1.0))
             incoming_rect, incoming_end, outgoing = left_rect.translated(-100, 0), left_rect, old_right
         entering = self._feedback_card(incoming_index)
         entering.setGeometry(incoming_rect)
         entering.graphicsEffect().setOpacity(0.0)
         entering.show()
         group = QParallelAnimationGroup(self)
-        for card, destination, opacity in (*shifts, (entering, incoming_end, .48)):
+        for card, destination, opacity in (*shifts, (entering, incoming_end, .64)):
             move = QPropertyAnimation(card, b"geometry", group)
             move.setDuration(390); move.setStartValue(card.geometry()); move.setEndValue(destination)
             move.setEasingCurve(QEasingCurve.Type.OutCubic); group.addAnimation(move)
@@ -1422,13 +1421,6 @@ class PersonalizationWizard(QDialog):
         self.next_button.setVisible(page < 6)
         self.next_button.setText(("Começar", "Próximo", "Próximo", "Próximo", "Próximo", "Finalizar", "")[page])
         if animated:
-            effect = self.stack.graphicsEffect()
-            effect.setOpacity(0.0)
-            fade = QPropertyAnimation(effect, b"opacity", self)
-            fade.setDuration(360)
-            fade.setStartValue(0.0)
-            fade.setEndValue(1.0)
-            fade.setEasingCurve(QEasingCurve.Type.OutCubic)
             # A small directional glide makes the page change feel connected
             # instead of replacing the entire panel in one frame.
             origin = self.stack.pos()
@@ -1439,7 +1431,6 @@ class PersonalizationWizard(QDialog):
             slide.setEndValue(origin)
             slide.setEasingCurve(QEasingCurve.Type.OutCubic)
             group = QParallelAnimationGroup(self)
-            group.addAnimation(fade)
             group.addAnimation(slide)
             self._transition_group = group
             group.start()
