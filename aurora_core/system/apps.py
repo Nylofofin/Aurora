@@ -17,10 +17,32 @@ def _flatpak_instance_active(app_id, flatpak=None):
         listing = subprocess.run([flatpak, 'ps', '--json'], capture_output=True,
                                  text=True, timeout=.6, check=True)
         rows = json.loads(listing.stdout or '[]')
+        if isinstance(rows, dict):
+            rows = rows.get('instances', [])
         return any(str(item.get('application', '')).casefold() == app_id.casefold()
                    and item.get('instance') for item in rows if isinstance(item, dict))
     except (OSError, subprocess.SubprocessError, ValueError, TypeError):
         return False
+
+def _flatpak_launch_args(app, app_id, *, background=False):
+    """Recreate the desktop entry's Flatpak command without URI placeholders."""
+    try:
+        parts = shlex.split(str(app.get('exec', '')))
+    except ValueError:
+        parts = []
+    if parts and Path(parts[0]).name == 'flatpak' and len(parts) > 1 and parts[1] == 'run':
+        args = [part for part in parts[1:] if not part.startswith('%') and not part.startswith('@@')]
+        # Desktop entries use a ``--`` separator before file forwarding. It is
+        # safe to retain it only when the launcher has no URI to forward.
+        while args and args[-1] == '--':
+            args.pop()
+        if background and app_id == 'com.obsproject.Studio':
+            args.append('--minimize-to-tray')
+        return args
+    args = ['run', app_id]
+    if background and app_id == 'com.obsproject.Studio':
+        args.append('--minimize-to-tray')
+    return args
 
 def _flatpak_app_id(app):
     if not app:
@@ -126,8 +148,8 @@ def launch_application(name, *, background=False):
             # must select the user's native Wayland/X11 backend themselves;
             # inheriting this override can break Sober and OBS startup.
             env.pop('QT_QPA_PLATFORM', None)
-            arguments = ['--minimize-to-tray'] if background and app_id == 'com.obsproject.Studio' else []
-            process=subprocess.Popen([flatpak,'run',app_id,*arguments],start_new_session=True,
+            arguments = _flatpak_launch_args(app, app_id, background=background)
+            process=subprocess.Popen([flatpak,*arguments],start_new_session=True,
                                      stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,
                                      stderr=subprocess.DEVNULL,env=env)
         except OSError:

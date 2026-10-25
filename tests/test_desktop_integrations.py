@@ -240,6 +240,16 @@ def test_flatpak_application_id_is_only_taken_from_exported_desktop_entries(tmp_
     assert apps_module._flatpak_app_id({"file": native}) is None
 
 
+def test_flatpak_launch_reuses_desktop_entry_command_without_uri_placeholders(tmp_path):
+    exported = tmp_path / "flatpak/exports/share/applications/org.vinegarhq.Sober.desktop"
+    app = {"file": exported, "name": "Sober",
+           "exec": "/usr/bin/flatpak run --branch=stable --arch=x86_64 --command=sober --file-forwarding org.vinegarhq.Sober -- @@u %u @@"}
+    assert apps_module._flatpak_launch_args(app, "org.vinegarhq.Sober") == [
+        "run", "--branch=stable", "--arch=x86_64", "--command=sober",
+        "--file-forwarding", "org.vinegarhq.Sober"
+    ]
+
+
 def test_flatpak_application_launches_by_id_and_reports_window_state_honestly(monkeypatch, tmp_path):
     desktop_file = tmp_path / "flatpak/exports/share/applications/com.obsproject.Studio.desktop"
     app = {"file": desktop_file, "name": "OBS Studio", "exec": "flatpak run com.obsproject.Studio",
