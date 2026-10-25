@@ -53,6 +53,16 @@ def test_custom_wake_name_grammar_checks_model_vocabulary():
     assert wake_grammar_phrases("Luna") == ["Luna", "ei Luna", "olá Luna"]
 
 
+def test_custom_wake_name_treats_vosk_minus_one_as_missing():
+    from aurora_core.voice.wake import wake_name_supported
+
+    class Model:
+        def vosk_model_find_word(self, _word):
+            return -1
+
+    assert not wake_name_supported("Zorblax", Model())
+
+
 def test_microphone_energy_is_normalized_for_voice_reactive_orb():
     from array import array
 

@@ -27,7 +27,20 @@ def wake_name_supported(name,model):
     """Check a custom wake phrase against a Vosk small-model vocabulary."""
     words=wake_name_words(name)
     find_word=getattr(model,'vosk_model_find_word',None)
-    return bool(words and callable(find_word) and all(find_word(word) for word in words))
+    if not words or not callable(find_word): return False
+    # Vosk returns -1 for an unknown token.  ``bool(-1)`` is True in Python,
+    # so a truthiness check silently accepted every custom wake name and
+    # skipped the local enrollment screen.
+    try:
+        def present(word):
+            value=find_word(word)
+            # Keep compatibility with lightweight test doubles that return a
+            # boolean, while treating Vosk's integer -1 as missing.
+            if isinstance(value,bool): return value
+            return int(value) >= 0
+        return all(present(word) for word in words)
+    except (TypeError, ValueError):
+        return False
 
 def wake_grammar_phrases(name):
     value=' '.join(str(name or 'Aurora').split()) or 'Aurora'
