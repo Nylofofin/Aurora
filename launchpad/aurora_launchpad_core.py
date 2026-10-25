@@ -171,8 +171,10 @@ def latest_launchpad_update(releases, current_version: str) -> dict | None:
     return {"release": release, "asset": asset}
 
 
-def newer_aurora_releases(releases, installed_version: str, limit: int = 3) -> tuple[dict, ...]:
-    """Return at most ``limit`` published Aurora builds newer than installed."""
+def newer_aurora_releases(
+    releases, installed_version: str, limit: int = 3, *, stable_only: bool = False
+) -> tuple[dict, ...]:
+    """Return published Aurora builds newer than installed, optionally stable-only."""
     current = _rpm_version_key(installed_version)
     if current is None or not isinstance(limit, int) or limit < 1:
         return ()
@@ -183,7 +185,8 @@ def newer_aurora_releases(releases, installed_version: str, limit: int = 3) -> t
         tag = release.get("tag_name")
         match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)(?:[-+][A-Za-z0-9.-]+)?", str(tag or ""))
         published = str(release.get("published_at") or "")
-        if not match or not isinstance(release.get("prerelease"), bool):
+        prerelease = release.get("prerelease")
+        if not match or not isinstance(prerelease, bool) or (stable_only and prerelease):
             continue
         version = tuple(int(part) for part in match.groups())
         if version <= current:

@@ -297,6 +297,16 @@ def test_newer_aurora_releases_returns_only_three_builds_above_installed():
     assert [item["tag_name"] for item in found] == ["v2.0.0-alpha.1", "v1.8.0", "v1.7.4-beta.1"]
 
 
+def test_stable_update_candidates_skip_newer_prereleases():
+    releases = [
+        {"tag_name": "v2.2.0-beta.1", "published_at": "2026-10-25T20:00:00Z", "draft": False, "prerelease": True},
+        {"tag_name": "v2.1.1", "published_at": "2026-10-25T19:00:00Z", "draft": False, "prerelease": False},
+        {"tag_name": "v2.1.0", "published_at": "2026-10-25T18:00:00Z", "draft": False, "prerelease": False},
+    ]
+    found = newer_aurora_releases(releases, "2.1.0", 1, stable_only=True)
+    assert [item["tag_name"] for item in found] == ["v2.1.1"]
+
+
 def test_launchpad_release_picker_names_stability_channel():
     from launchpad.aurora_launchpad_core import release_channel_label
 

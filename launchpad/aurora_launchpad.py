@@ -49,7 +49,6 @@ from aurora_launchpad_core import (
     is_official_github_download_url,
     latest_launchpad_update,
     newer_aurora_releases,
-    release_channel_label,
     MAX_LAUNCHPAD_RPM_BYTES,
     parse_ollama_models,
     prepare_first_boot_onboarding,
@@ -58,7 +57,7 @@ from aurora_launchpad_core import (
 
 
 APP_ID = "com.nylofofin.AuroraLaunchpad"
-INSTALLER_VERSION = "0.4.4"
+INSTALLER_VERSION = "0.4.5"
 PKEXEC = "/usr/bin/pkexec"
 SYSTEMCTL = "/usr/bin/systemctl"
 DNF = "/usr/bin/dnf"
@@ -353,6 +352,8 @@ class Launchpad(Adw.Application):
         self.selected_release = None
         self.install_acknowledged = False
         self.loading_releases = False
+        self.aurora_update_in_progress = False
+        self.aurora_update_mode = False
         self.ollama = shutil.which("ollama", path=SYSTEM_PATH)
         self.existing_install = (MANAGED_APP / "aurora.py").is_file()
         self.onboarding_scheduled = not self.existing_install
@@ -369,7 +370,9 @@ class Launchpad(Adw.Application):
         self.update_in_progress = False
         self.installed_aurora_version = installed_aurora_version(MANAGED_APP)
         self.new_aurora_releases = ()
-        self.maintenance_updates_status = None
+        self.aurora_update_status = None
+        self.aurora_update_button = None
+        self.done_detail = None
 
     def _installation_health(self):
         unit = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home()/".config"))) / "systemd/user/aurora.service"
@@ -440,7 +443,7 @@ class Launchpad(Adw.Application):
         hero.add_css_class("hero")
         hero.append(self._label("AURORA DESKTOP · PAINEL LOCAL", "caption"))
         hero.append(self._label("Aurora instalada", "title-1"))
-        hero.append(self._label("Confira o estado básico sem abrir o instalador. Atualizações só aparecem quando há builds novas acima da versão instalada.", "subtle", True))
+        hero.append(self._label("Confira o estado básico e mantenha a Aurora atualizada sem perder suas preferências locais.", "subtle", True))
         col.append(hero)
 
         status = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
@@ -493,16 +496,18 @@ class Launchpad(Adw.Application):
         actions_grid.attach(self.update_panel, 1, 0, 1, 1)
         col.append(actions_grid)
 
-        builds = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        builds.add_css_class("panel")
-        builds.append(self._label("BUILDS NOVAS", "caption"))
-        self.maintenance_updates_status = self._label("Procurando builds novas…", "subtle", True)
-        builds.append(self.maintenance_updates_status)
-        self.refresh_releases_button = self._button("Checar builds novas", self._check_new_builds, suggested=True)
-        builds.append(self.refresh_releases_button)
-        self.maintenance_releases_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        builds.append(self.maintenance_releases_box)
-        col.append(builds)
+        aurora_update = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        aurora_update.add_css_class("panel")
+        aurora_update.append(self._label("ATUALIZAÇÃO DA AURORA", "caption"))
+        self.aurora_update_status = self._label(
+            f"Versão instalada: {self.installed_aurora_version}. O perfil, nome, voz, aparência e dados locais serão preservados.",
+            "subtle", True,
+        )
+        aurora_update.append(self.aurora_update_status)
+        self.aurora_update_button = self._button("Atualizar Aurora", self._start_aurora_update, suggested=True)
+        self.aurora_update_button.set_sensitive(False)
+        aurora_update.append(self.aurora_update_button)
+        col.append(aurora_update)
 
         actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12, halign=Gtk.Align.END)
         actions.append(self._button("Remover Aurora…", self._confirm_uninstall))
@@ -625,22 +630,15 @@ class Launchpad(Adw.Application):
             self.release_status.set_text("Buscando versões no GitHub…")
         threading.Thread(target=self._load_releases_worker, daemon=True).start()
 
-    def _check_new_builds(self, *_):
-        """Refresh GitHub metadata; the completed request renders its results."""
-        if self.maintenance_releases_box:
-            while self.maintenance_releases_box.get_first_child():
-                self.maintenance_releases_box.remove(self.maintenance_releases_box.get_first_child())
-        if self.maintenance_updates_status:
-            self.maintenance_updates_status.set_text("Consultando novamente as releases publicadas no GitHub…")
-        self._load_releases()
-
     def _load_releases_worker(self):
         try:
             api = f"https://api.github.com/repos/{GITHUB_REPOSITORY}"
             releases = _github_json(api + "/releases?per_page=100")
             options = recommend_releases(releases)
             update = latest_launchpad_update(releases, INSTALLER_VERSION)
-            newer = newer_aurora_releases(releases, self.installed_aurora_version, 3) if self.existing_install else ()
+            newer = newer_aurora_releases(
+                releases, self.installed_aurora_version, 100, stable_only=True
+            ) if self.existing_install else ()
             GLib.idle_add(self._show_release_options, options, None, update, newer)
         except Exception as exc:
             GLib.idle_add(self._show_release_options, (), str(exc), None, ())
@@ -659,9 +657,8 @@ class Launchpad(Adw.Application):
         if self.existing_install:
             if error:
                 self.update_status.set_text("Não consegui consultar as atualizações agora. Tente novamente.")
-                self.maintenance_updates_status.set_text(f"Falha ao consultar o GitHub: {str(error)[:180]}")
-                self.refresh_releases_button.set_visible(True)
-                self.refresh_releases_button.set_sensitive(True)
+                self.aurora_update_status.set_text(f"Falha ao consultar as versões: {str(error)[:180]}")
+                self.aurora_update_button.set_sensitive(True)
                 return False
             if update:
                 version = update["asset"]["name"].split("aurora-launchpad-", 1)[1].split("-", 1)[0]
@@ -669,22 +666,20 @@ class Launchpad(Adw.Application):
                     f"Esta cópia é {INSTALLER_VERSION}; a versão {version} está disponível. Atualize antes de continuar."
                 )
                 self.update_button.set_visible(True)
-                self.maintenance_updates_status.set_text("Atualize o Launchpad para consultar e instalar builds da Aurora.")
-                self.refresh_releases_button.set_sensitive(False)
+                self.aurora_update_status.set_text("Atualize o Launchpad antes de atualizar a Aurora.")
+                self.aurora_update_button.set_sensitive(False)
                 return False
-            self.refresh_releases_button.set_sensitive(True)
+            self.aurora_update_button.set_sensitive(True)
             self.update_status.set_text(f"Launchpad {INSTALLER_VERSION} está atualizado.")
             if self.new_aurora_releases:
-                count = len(self.new_aurora_releases)
-                noun = "build nova" if count == 1 else "builds novas"
-                self.maintenance_updates_status.set_text(f"{count} {noun} acima da versão {self.installed_aurora_version}.")
+                release = self.new_aurora_releases[0]
+                self.aurora_update_status.set_text(
+                    f"Versão {release['tag_name']} disponível. Nome, voz, aparência, modelos e dados locais serão preservados."
+                )
             else:
-                self.maintenance_updates_status.set_text("Nenhuma build nova foi publicada desde a versão instalada.")
-            if self.new_aurora_releases:
-                self._show_new_aurora_releases()
-            else:
-                while self.maintenance_releases_box.get_first_child():
-                    self.maintenance_releases_box.remove(self.maintenance_releases_box.get_first_child())
+                self.aurora_update_status.set_text(
+                    f"Aurora {self.installed_aurora_version} já está na versão estável mais recente."
+                )
             self._refresh_maintenance_status()
             return False
         self.release_cards.clear()
@@ -743,29 +738,56 @@ class Launchpad(Adw.Application):
 
         return False
 
-    def _show_new_aurora_releases(self, *_):
-        if not self.new_aurora_releases:
+    def _start_aurora_update(self, *_):
+        if self.aurora_update_in_progress:
             return
-        while self.maintenance_releases_box.get_first_child():
-            self.maintenance_releases_box.remove(self.maintenance_releases_box.get_first_child())
-        self.release_options = tuple(ReleaseRecommendation("new_build", release) for release in self.new_aurora_releases)
-        for option in self.release_options:
-            release = option.release
-            title = str(release.get("name") or release.get("tag_name"))
-            button = Gtk.Button()
-            button.add_css_class("release-card")
-            card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, halign=Gtk.Align.FILL)
-            card.append(self._label(release_channel_label(release), "caption", True))
-            card.append(self._label(title, "title-2", True))
-            card.append(self._label(
-                f"{release.get('tag_name')} · {self._format_release_date(release.get('published_at'))}",
-                "subtle", True,
-            ))
-            button.set_child(card)
-            button.set_halign(Gtk.Align.FILL)
-            button.set_hexpand(True)
-            button.connect("clicked", self._choose_release, option)
-            self.maintenance_releases_box.append(button)
+        if self.launchpad_update:
+            self.aurora_update_status.set_text("Atualize o Launchpad antes de atualizar a Aurora.")
+            return
+        self.aurora_update_in_progress = True
+        self.aurora_update_button.set_sensitive(False)
+        self.aurora_update_status.set_text("Buscando a versão estável mais recente no GitHub…")
+        threading.Thread(target=self._aurora_update_worker, daemon=True).start()
+
+    def _aurora_update_worker(self):
+        try:
+            api = f"https://api.github.com/repos/{GITHUB_REPOSITORY}"
+            releases = _github_json(api + "/releases?per_page=100")
+            candidates = newer_aurora_releases(
+                releases, self.installed_aurora_version, 100, stable_only=True
+            )
+            if not candidates:
+                GLib.idle_add(self._aurora_already_current)
+                return
+            GLib.idle_add(self._begin_aurora_update, candidates[0])
+        except Exception as exc:
+            GLib.idle_add(self._aurora_update_failed, str(exc))
+
+    def _aurora_already_current(self):
+        self.aurora_update_in_progress = False
+        self.aurora_update_button.set_sensitive(True)
+        self.aurora_update_status.set_text(
+            f"Aurora {self.installed_aurora_version} já está na versão estável mais recente."
+        )
+        return False
+
+    def _begin_aurora_update(self, release):
+        self.selected_release = release
+        self.install_acknowledged = True
+        self.aurora_update_mode = True
+        self.failed_operation = "update"
+        self.stack.set_visible_child_name("progress")
+        self.lines.clear()
+        self._append(f"Atualizando Aurora para {release['tag_name']}…")
+        self.cancel_button.set_sensitive(False)
+        threading.Thread(target=self._install_worker, args=(release,), daemon=True).start()
+        return False
+
+    def _aurora_update_failed(self, message):
+        self.aurora_update_in_progress = False
+        self.aurora_update_button.set_sensitive(True)
+        self.aurora_update_status.set_text(f"Não foi possível atualizar a Aurora: {message[:180]}")
+        return False
 
     def _refresh_maintenance_status(self):
         if not hasattr(self, "maintenance_status"):
@@ -910,7 +932,8 @@ class Launchpad(Adw.Application):
         detail = ("A instalação terminou. Reinicie o computador ou encerre a sessão e entre novamente. No próximo login, a Aurora abrirá o assistente de personalização."
                   if self.onboarding_scheduled else
                   "A instalação terminou. Reinicie o computador para carregar todos os componentes e testar a Aurora.")
-        col.append(self._label(detail, "subtle", True))
+        self.done_detail = self._label(detail, "subtle", True)
+        col.append(self.done_detail)
         self.reboot_status = self._label("Você também pode reiniciar ou sair da sessão mais tarde.", "subtle", True)
         col.append(self.reboot_status)
         buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12, halign=Gtk.Align.END)
@@ -944,9 +967,9 @@ class Launchpad(Adw.Application):
     def _start_install(self, *_):
         if not self.install_acknowledged or not self.selected_release:
             return
-        if not self.report.supported or self.report.free_gib < 10:
+        if not self.report.supported or (not self.aurora_update_mode and self.report.free_gib < 10):
             return
-        self.failed_operation = "install"
+        self.failed_operation = "update" if self.aurora_update_mode else "install"
         self.stack.set_visible_child_name("progress")
         self.lines.clear(); self._append("Preparando o ambiente…")
         self.cancel_button.set_sensitive(False)
@@ -961,7 +984,8 @@ class Launchpad(Adw.Application):
 
     def _install_worker(self, selected_release: dict):
         try:
-            self._set_stage("1/7 · Baixando a Aurora", f"Preparando a versão escolhida {selected_release['tag_name']}.", .03)
+            action = "Atualizando a Aurora" if self.aurora_update_mode else "Baixando a Aurora"
+            self._set_stage("1/7 · " + action, f"Preparando {selected_release['tag_name']}.", .03)
             with tempfile.TemporaryDirectory(prefix="aurora-release-") as workspace:
                 source, release = download_release_payload(
                     Path(workspace),
@@ -1121,6 +1145,14 @@ class Launchpad(Adw.Application):
         run_process([PKEXEC, *command], self._stream_line, timeout=60)
 
     def _finish_install(self):
+        if self.aurora_update_mode:
+            self.installed_aurora_version = installed_aurora_version(MANAGED_APP)
+            self.aurora_update_in_progress = False
+            if self.done_detail:
+                self.done_detail.set_text(
+                    f"Aurora atualizada para {self.installed_aurora_version}. Seu perfil, nome, voz, aparência, "
+                    "preferências, memória local e modelos foram preservados. O serviço já foi iniciado novamente."
+                )
         self.progress_bar.set_fraction(1.0); self.progress_bar.set_text("100%")
         self.stack.set_visible_child_name("done")
         return False
@@ -1161,9 +1193,14 @@ class Launchpad(Adw.Application):
         return False
 
     def _install_failed(self, message: str):
+        if self.aurora_update_mode:
+            self.aurora_update_in_progress = False
         if self.failed_operation == "uninstall":
             self.progress_title.set_text("A remoção foi interrompida")
             self.progress_subtitle.set_text("Leia o detalhe abaixo. A nova tentativa continuará a remoção dos itens restantes.")
+        elif self.failed_operation == "update":
+            self.progress_title.set_text("A atualização foi interrompida")
+            self.progress_subtitle.set_text("As configurações do usuário não foram apagadas. Leia o detalhe e tente novamente.")
         else:
             self.progress_title.set_text("A instalação foi interrompida")
             self.progress_subtitle.set_text("Leia o último detalhe abaixo. Os arquivos baixados ficam disponíveis para tentar novamente.")
