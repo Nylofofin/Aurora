@@ -20,6 +20,19 @@ MIN_MATCH_RMS = 0.02
 MIN_ENROLL_RMS = 0.008
 MIN_VOICED_FRAMES = 4
 MAX_CLIPPED_RATIO = 0.02
+_SPECTRAL_FREQUENCIES = (180, 420, 760, 1200, 1900, 2800)
+# These coefficients are shared across every frame. Calculating trig functions
+# inside the always-on microphone loop made custom wake checks unnecessarily
+# expensive and could make its small PCM queue fall behind.
+_SPECTRAL_COEFFICIENTS = tuple(
+    (
+        tuple(math.cos(2.0 * math.pi * frequency * index / SAMPLE_RATE)
+              for index in range(FRAME_SAMPLES)),
+        tuple(math.sin(2.0 * math.pi * frequency * index / SAMPLE_RATE)
+              for index in range(FRAME_SAMPLES)),
+    )
+    for frequency in _SPECTRAL_FREQUENCIES
+)
 
 
 def _samples(pcm: bytes) -> list[float]:
@@ -72,10 +85,9 @@ def feature_vector(pcm: bytes) -> list[float]:
         vector.extend((min(1.0, rms * 8.0), min(1.0, crossings * 3.0)))
         # A few stable spectral samples distinguish phonemes without pulling
         # in a heavyweight ML dependency in the always-on microphone thread.
-        for frequency in (180, 420, 760, 1200, 1900, 2800):
-            step = 2.0 * math.pi * frequency / SAMPLE_RATE
-            real = sum(sample * math.cos(step * index) for index, sample in enumerate(frame)) / len(frame)
-            imag = sum(sample * math.sin(step * index) for index, sample in enumerate(frame)) / len(frame)
+        for cosine, sine in _SPECTRAL_COEFFICIENTS:
+            real = sum(sample * coefficient for sample, coefficient in zip(frame, cosine)) / len(frame)
+            imag = sum(sample * coefficient for sample, coefficient in zip(frame, sine)) / len(frame)
             vector.append(min(1.0, math.sqrt(real * real + imag * imag) * 18.0))
     return vector
 

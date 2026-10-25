@@ -75,8 +75,16 @@ class LocalVoice(QThread):
     def is_final_wake_phrase(text,finalized,assistant_name='Aurora'):
         """Accept only a completed Vosk result containing the wake phrase alone."""
         if not finalized: return False
-        name=normalize_words(assistant_name or 'Aurora') or 'aurora'
-        return bool(re.fullmatch(r'(?:ei\s+|ola\s+)?'+re.escape(name),normalize_words(text)))
+        name=re.sub(r'[^a-z0-9]+',' ',normalize_words(assistant_name or 'Aurora')).strip() or 'aurora'
+        spoken=re.sub(r'[^a-z0-9]+',' ',normalize_words(text)).strip()
+        return spoken in {name, 'ei '+name, 'ola '+name}
+    @staticmethod
+    def contains_wake_name(text,assistant_name='Aurora'):
+        """Check that a local transcript starts with the configured wake name."""
+        transcript=re.sub(r'[^a-z0-9]+',' ',normalize_words(text)).strip()
+        name=re.sub(r'[^a-z0-9]+',' ',normalize_words(assistant_name or 'Aurora')).strip() or 'aurora'
+        return any(transcript == prefix or transcript.startswith(prefix+' ')
+                   for prefix in (name, 'ei '+name, 'ola '+name))
     @staticmethod
     def is_final_cancel_phrase(text,finalized):
         return finalized and normalize_words(text) in {
@@ -169,6 +177,7 @@ class LocalVoice(QThread):
                 with sd.RawInputStream(samplerate=SAMPLE_RATE,blocksize=MIC_BLOCK_FRAMES,dtype='int16',channels=1,callback=callback):
                     self.status.emit('hidden')
                     active=False; started=0.0; buffer=[]; wake_audio=[]; profile_checked_at=0.0; profile_cooldown_until=0.0; profile_hit_streak=0; barge_frames=0
+                    profile_candidate=False; profile_candidate_audio=bytearray()
                     while self.running and not self.mobile_owned.is_set():
                         try: block=q.get(timeout=.25)
                         except queue.Empty: continue
@@ -210,7 +219,15 @@ class LocalVoice(QThread):
                         if not active:
                             wake_audio.append(block)
                             if len(wake_audio)>176: wake_audio=wake_audio[-176:]
-                            if (wake_profile and time.monotonic() >= profile_cooldown_until
+                            if profile_candidate:
+                                profile_candidate_audio.extend(block)
+                                # Bound confirmation latency and private audio
+                                # retention; a wake phrase should resolve quickly.
+                                if len(profile_candidate_audio) > SAMPLE_RATE * 2 * 8:
+                                    profile_candidate=False; profile_candidate_audio.clear()
+                                    profile_cooldown_until=time.monotonic()+1.0
+                                    profile_hit_streak=0
+                            if (wake_profile and not profile_candidate and time.monotonic() >= profile_cooldown_until
                                     and len(wake_audio) >= 12
                                     and len(wake_audio) % 8 == 0
                                     and time.monotonic() - profile_checked_at >= .45):
@@ -228,17 +245,19 @@ class LocalVoice(QThread):
                                 profile_hit_streak = profile_hit_streak + 1 if profile_hit else 0
                                 if profile_hit_streak >= 3:
                                     profile_hit_streak = 0
-                                    # Let feedback/TTS and the tail of the
-                                    # spoken wake name leave the microphone
-                                    # before looking for another activation.
-                                    profile_cooldown_until = time.monotonic() + 3.0
-                                    self.begin_request()
-                                    self.wake.emit(); self.status.emit('listening')
-                                    active=True; buffer=list(wake_audio); wake_audio=[]
-                                    started=time.monotonic(); rec.Reset(); wake_rec.Reset()
-                                    continue
+                                    # A voice signature identifies the speaker,
+                                    # not the word they said. Treat it only as a
+                                    # candidate and confirm the actual name with
+                                    # the local recognizer after Vosk closes the
+                                    # utterance; this prevents unrelated speech
+                                    # or room noise from waking a custom profile.
+                                    profile_candidate=True
+                                    # Keep only a short pre-roll: the rolling
+                                    # wake buffer otherwise contains unrelated
+                                    # speech and delays local STT.
+                                    profile_candidate_audio=bytearray(b''.join(wake_audio[-40:]))
                             if self.one_shot.is_set():
-                                self.one_shot.clear(); active=True; buffer=[]; wake_audio=[]; started=time.monotonic(); self.status.emit('listening'); rec.Reset(); wake_rec.Reset(); continue
+                                self.one_shot.clear(); profile_candidate=False; profile_candidate_audio.clear(); profile_hit_streak=0; active=True; buffer=[]; wake_audio=[]; started=time.monotonic(); self.status.emit('listening'); rec.Reset(); wake_rec.Reset(); continue
                         else:
                             buffer.append(block)
                             if len(buffer)>240: buffer=buffer[-240:]
@@ -277,11 +296,38 @@ class LocalVoice(QThread):
                             elif time.monotonic()-started>22:
                                 active=False; buffer=[]; wake_audio=[]; rec.Reset(); wake_rec.Reset(); self.end_request(); self.status.emit('hidden')
                         elif text or candidate_texts:
-                            if any(self.is_final_wake_phrase(candidate,True,self.cfg.get('assistant_name','Aurora'))
-                                   for candidate in candidate_texts):
+                            assistant_name=self.cfg.get('assistant_name','Aurora')
+                            exact_wake=any(self.is_final_wake_phrase(candidate,True,assistant_name)
+                                           for candidate in candidate_texts)
+                            if exact_wake:
+                                profile_candidate=False; profile_candidate_audio.clear()
                                 self.begin_request()
                                 self.wake.emit(); self.status.emit('listening')
                                 active=True; buffer=list(wake_audio); wake_audio=[]; started=time.monotonic(); rec.Reset(); wake_rec.Reset()
+                            elif profile_candidate:
+                                profile_candidate=False
+                                candidate_pcm=bytes(profile_candidate_audio)
+                                profile_candidate_audio.clear()
+                                recognized=''
+                                try:
+                                    from .stt import transcribe_pcm
+                                    recognized=transcribe_pcm(candidate_pcm,SAMPLE_RATE)
+                                except Exception as exc:
+                                    print(f'[voice] validação local do nome personalizado falhou ({type(exc).__name__})',file=sys.stderr,flush=True)
+                                if self.contains_wake_name(recognized,assistant_name):
+                                    command=self.strip_wake_word(recognized,assistant_name)
+                                    profile_cooldown_until=time.monotonic()+3.0
+                                    print('[voice] nome personalizado confirmado pela transcrição local',file=sys.stderr,flush=True)
+                                    self.begin_request(); self.wake.emit()
+                                    if command:
+                                        self.audio_level.emit(0.0); self.status.emit('thinking'); self.speaking=True
+                                        self.transcript.emit(command)
+                                    else:
+                                        self.status.emit('listening'); active=True; buffer=[]; started=time.monotonic()
+                                        rec.Reset(); wake_rec.Reset()
+                                else:
+                                    print('[voice] candidato de wake personalizado descartado após validação local',file=sys.stderr,flush=True)
+                                    wake_audio=[]; profile_hit_streak=0
                             else:
                                 wake_audio=[]
                 if self.mobile_owned.is_set():

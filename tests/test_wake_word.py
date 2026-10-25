@@ -35,6 +35,18 @@ def test_custom_wake_name_is_used_for_exact_detection_and_stripping():
     assert strip_wake_word("Olá Nova Aurora: abra o terminal", "Nova Aurora") == "abra o terminal"
 
 
+def test_custom_wake_name_accepts_punctuation_but_requires_a_word_boundary():
+    from aurora_core.system.text import strip_wake_word
+
+    assert LocalVoice.is_final_wake_phrase("Ei, Luna!", True, "Luna")
+    assert LocalVoice.is_final_wake_phrase("Nova-Aurora.", True, "Nova Aurora")
+    assert LocalVoice.contains_wake_name("Ei, Luna: abra o terminal", "Luna")
+    assert LocalVoice.contains_wake_name("Nova Aurora, abra o terminal", "Nova Aurora")
+    assert not LocalVoice.contains_wake_name("Lunático, abra o terminal", "Luna")
+    assert not LocalVoice.contains_wake_name("abra o terminal", "Luna")
+    assert strip_wake_word("Ei, Luna: abra o terminal", "Luna") == "abra o terminal"
+
+
 def test_custom_wake_name_grammar_checks_model_vocabulary():
     from aurora_core.voice.wake import wake_grammar_phrases, wake_name_supported, wake_name_words
 
