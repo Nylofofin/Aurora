@@ -5,8 +5,8 @@
 **Uma assistente de voz para Linux, com uma presença pequena na tela e o processamento principal no próprio computador.** A Aurora desperta por voz, entende pedidos cotidianos, conversa em uma sessão contínua e pode pesquisar na web ou executar ações locais.
 
 <p align="center">
-  <img src="docs/media/bubble-enter.gif" width="220" alt="A bolha da Aurora surgindo na tela">
-  <img src="docs/media/bubble-exit.gif" width="220" alt="A bolha da Aurora concluindo a fala e recolhendo">
+  <img src="docs/media/bubble-enter.gif" width="360" alt="A bolha real da Aurora entrando com a animação de escuta">
+  <img src="docs/media/bubble-exit.gif" width="360" alt="A Aurora falando e recolhendo a bolha ao concluir">
 </p>
 
 ## Veja a Aurora
@@ -15,9 +15,17 @@ A esfera mantém o formato circular e muda de cor, luz e detalhes conforme o est
 
 ![Seis estilos de bolha da Aurora](docs/media/bubble-skins.png)
 
-O onboarding deixa a pessoa configurar nome, palavra de ativação, aparência, voz e assinatura sonora. O treinamento de um nome personalizado aparece quando necessário. **[▶ Assistir ao tour de 8 segundos](docs/media/onboarding-tour.mp4)**
+O onboarding deixa a pessoa configurar nome, palavra de ativação, aparência, voz e assinatura sonora. O treinamento de um nome personalizado aparece quando necessário.
 
-[![Prévia da escolha de aparência no onboarding](docs/media/onboarding-skins.png)](docs/media/onboarding-tour.mp4)
+As animações abaixo foram capturadas dos próprios componentes do onboarding: a troca de páginas desliza, e as escolhas percorrem os carrosséis com o mesmo movimento usado na configuração.
+
+![Fluxo animado do onboarding: perfil, aparência, voz e sons, com as transições entre etapas](docs/media/onboarding-transitions.gif)
+
+<p align="center">
+  <img src="docs/media/onboarding-skins.gif" width="32%" alt="Carrossel animado de estilos da bolha">
+  <img src="docs/media/onboarding-voices.gif" width="32%" alt="Carrossel animado de vozes locais">
+  <img src="docs/media/onboarding-sounds.gif" width="32%" alt="Carrossel animado de assinaturas sonoras">
+</p>
 
 ## O que ela faz
 
