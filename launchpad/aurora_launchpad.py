@@ -49,6 +49,7 @@ from aurora_launchpad_core import (
     is_official_github_download_url,
     latest_launchpad_update,
     newer_aurora_releases,
+    release_channel_label,
     MAX_LAUNCHPAD_RPM_BYTES,
     parse_ollama_models,
     prepare_first_boot_onboarding,
@@ -635,7 +636,8 @@ class Launchpad(Adw.Application):
             self.update_status.set_text(f"Launchpad {INSTALLER_VERSION} está atualizado.")
             if self.new_aurora_releases:
                 count = len(self.new_aurora_releases)
-                self.maintenance_updates_status.set_text(f"{count} build(s) nova(s) acima da versão {self.installed_aurora_version}.")
+                noun = "build nova" if count == 1 else "builds novas"
+                self.maintenance_updates_status.set_text(f"{count} {noun} acima da versão {self.installed_aurora_version}.")
                 self.maintenance_updates_button.set_visible(True)
             else:
                 self.maintenance_updates_status.set_text("Nenhuma build nova foi publicada desde a versão instalada.")
@@ -707,9 +709,18 @@ class Launchpad(Adw.Application):
         for option in self.release_options:
             release = option.release
             title = str(release.get("name") or release.get("tag_name"))
-            button = Gtk.Button(label=f"{title} · {release.get('tag_name')}")
-            button.add_css_class("pill")
-            button.add_css_class("suggested-action")
+            button = Gtk.Button()
+            button.add_css_class("release-card")
+            card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, halign=Gtk.Align.FILL)
+            card.append(self._label(release_channel_label(release), "caption", True))
+            card.append(self._label(title, "title-2", True))
+            card.append(self._label(
+                f"{release.get('tag_name')} · {self._format_release_date(release.get('published_at'))}",
+                "subtle", True,
+            ))
+            button.set_child(card)
+            button.set_halign(Gtk.Align.FILL)
+            button.set_hexpand(True)
             button.connect("clicked", self._choose_release, option)
             self.maintenance_releases_box.append(button)
 
