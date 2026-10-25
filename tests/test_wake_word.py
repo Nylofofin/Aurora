@@ -47,6 +47,18 @@ def test_custom_wake_name_accepts_punctuation_but_requires_a_word_boundary():
     assert strip_wake_word("Ei, Luna: abra o terminal", "Luna") == "abra o terminal"
 
 
+def test_wake_decoders_reset_together_at_an_utterance_boundary():
+    class Recognizer:
+        def __init__(self): self.resets = 0
+        def Reset(self): self.resets += 1
+
+    grammar = Recognizer()
+    fallback = Recognizer()
+    LocalVoice.reset_wake_recognizers(grammar, fallback, None)
+    assert grammar.resets == 1
+    assert fallback.resets == 1
+
+
 def test_custom_wake_name_grammar_checks_model_vocabulary():
     from aurora_core.voice.wake import wake_grammar_phrases, wake_name_supported, wake_name_words
 

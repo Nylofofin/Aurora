@@ -69,6 +69,12 @@ class LocalVoice(QThread):
         """Map 16-bit microphone RMS to a quiet-safe 0..1 orb signal."""
         return min(1.0,max(0.0,(cls.pcm_level(block)-180.0)/7600.0))
     @staticmethod
+    def reset_wake_recognizers(*recognizers):
+        """Keep grammar and free-form wake decoders aligned at utterance boundaries."""
+        for recognizer in recognizers:
+            if recognizer is not None:
+                recognizer.Reset()
+    @staticmethod
     def strip_wake_word(text,assistant_name='Aurora'):
         return strip_wake_word(text,assistant_name)
     @staticmethod
@@ -282,8 +288,11 @@ class LocalVoice(QThread):
                                 continue
                         else:
                             text=candidate_texts[0] if candidate_texts else ''
-                        if not active and wake_fallback_rec is not None:
-                            wake_fallback_rec.Reset()
+                        if not active and wake_finalized:
+                            # Both recognizers received the same PCM. Reset both
+                            # at either endpoint so one decoder cannot carry a
+                            # partial fragment into the next utterance.
+                            self.reset_wake_recognizers(wake_rec, wake_fallback_rec)
                         if active:
                             if text:
                                 self.audio_level.emit(0.0)
