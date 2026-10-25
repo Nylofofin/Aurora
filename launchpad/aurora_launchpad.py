@@ -66,26 +66,26 @@ MANAGED_APP = Path.home() / ".local/share/aurora"
 OWNED_MODELS = Path.home() / ".local/share/aurora-launchpad/owned-models.txt"
 PRESERVED_MEMORY = Path.home() / ".local/share/aurora-launchpad/aurora-memory.json"
 CSS = """
-window.launchpad { background: #f5f5fa; color: #1b1b22; }
-.hero { background: #eeebf8; border-radius: 26px; padding: 24px; }
-.panel { background: #ffffff; border: 1px solid #e5e3eb; border-radius: 22px; padding: 20px; }
-.release-card { background: #ffffff; border: 1px solid #e2e0e8; border-radius: 20px; padding: 17px; }
-button.release-card:hover { background: #f8f7fc; }
-button.release-card.selected { background: #f0edfa; border: 2px solid #6750a4; }
-.subtle { color: #5f5d66; }
-.caption { color: #625b71; font-size: 11px; letter-spacing: .08em; font-weight: 700; }
-.title-1 { font-size: 30px; font-weight: 700; letter-spacing: -.025em; }
-.title-2 { font-size: 19px; font-weight: 700; }
-.status-good { color: #146c51; }
-.status-bad { color: #b3261e; }
-.status-warn { color: #805b00; }
-.step { color: #49454f; font-size: 13px; }
-.log { font-family: monospace; font-size: 11px; color: #49454f; }
-progressbar trough { min-height: 9px; border-radius: 99px; background: #e7e4ed; }
-progressbar progress { min-height: 9px; border-radius: 99px; background: #6750a4; }
-button.suggested-action { background: #6750a4; color: #ffffff; font-weight: 700; }
+window.launchpad { background: #101016; color: #f5f2fa; }
+.hero { background: #1b1726; border-radius: 20px; padding: 18px; }
+.panel { background: #181820; border: 1px solid #302d3a; border-radius: 18px; padding: 15px; }
+.release-card { background: #1c1b24; border: 1px solid #35313f; border-radius: 16px; padding: 13px; }
+button.release-card:hover { background: #25222f; }
+button.release-card.selected { background: #2c2340; border: 2px solid #a98ade; }
+.subtle { color: #b8b2c2; }
+.caption { color: #b6acc8; font-size: 10px; letter-spacing: .08em; font-weight: 700; }
+.title-1 { font-size: 26px; font-weight: 700; letter-spacing: -.025em; }
+.title-2 { font-size: 17px; font-weight: 700; }
+.status-good { color: #7fe0bb; }
+.status-bad { color: #ff9b9b; }
+.status-warn { color: #f4cb72; }
+.step { color: #c5bfce; font-size: 12px; }
+.log { font-family: monospace; font-size: 10px; color: #c5bfce; }
+progressbar trough { min-height: 8px; border-radius: 99px; background: #302d3a; }
+progressbar progress { min-height: 8px; border-radius: 99px; background: #8b6bc2; }
+button.suggested-action { background: #8b6bc2; color: #ffffff; font-weight: 700; }
 button.pill { border-radius: 999px; }
-checkbutton { color: #27252d; }
+checkbutton { color: #ddd7e6; }
 """
 
 
@@ -374,13 +374,13 @@ class Launchpad(Adw.Application):
         if self.window:
             self.window.present()
             return
-        Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.PREFER_LIGHT)
+        Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
         provider = Gtk.CssProvider()
         provider.load_from_data(CSS.encode())
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self.report = assess_environment(read_os_release(), dict(os.environ), memory_total_bytes(), disk_free_bytes(Path.home()))
         self.install_health = self._installation_health()
-        self.window = Adw.ApplicationWindow(application=self, title="Aurora Launchpad", default_width=1040, default_height=800)
+        self.window = Adw.ApplicationWindow(application=self, title="Aurora Launchpad", default_width=860, default_height=660)
         self.window.add_css_class("launchpad")
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         header = Adw.HeaderBar()

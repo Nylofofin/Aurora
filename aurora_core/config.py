@@ -23,6 +23,7 @@ DEFAULTS = {
     'num_gpu':99,
     'keep_alive':-1,
     'tts_voice':'pt-BR-ThalitaMultilingualNeural',
+    'feedback_theme':'boreal',
     'user_name':'',
     'profile_configured':False,
     'assistant_name':'Aurora',

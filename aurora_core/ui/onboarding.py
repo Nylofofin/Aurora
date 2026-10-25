@@ -245,13 +245,17 @@ class PersonalizationWizard(QDialog):
         self._wake_profile = None
         self._needs_training = False
         self._sfx = {}
+        self._feedback_sfx = {}
+        self._selected_feedback = str(cfg.get("feedback_theme", "boreal"))
+        if self._selected_feedback not in {"boreal", "pulse", "void"}:
+            self._selected_feedback = "boreal"
         self.setWindowTitle("Personalizar a Aurora")
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
         self.setModal(True)
-        self.setMinimumSize(760, 560)
-        self.resize(900, 620)
-        self._dark_theme = self._system_prefers_dark()
-        self.setStyleSheet(self._stylesheet(self._dark_theme))
+        self.setMinimumSize(660, 480)
+        self.resize(760, 540)
+        self._dark_theme = True
+        self.setStyleSheet(self._stylesheet(True))
 
         # Keep the wizard compact on small screens and let the platform palette
         # decide whether text and surfaces should be light or dark.
@@ -263,10 +267,16 @@ class PersonalizationWizard(QDialog):
             effect.setSource(QUrl.fromLocalFile(str(__import__("pathlib").Path(__file__).resolve().parents[2] / "assets" / "audio" / f"{name}.wav")))
             effect.setVolume(0.16 if name in {"select", "step"} else (0.22 if name != "error" else 0.30))
             self._sfx[name] = effect
+        for theme in ("boreal", "pulse", "void"):
+            for direction in ("entrada", "saida"):
+                effect = QSoundEffect(self)
+                effect.setSource(QUrl.fromLocalFile(str(__import__("pathlib").Path(__file__).resolve().parents[2] / "assets" / "audio" / f"{direction}-{theme}.wav")))
+                effect.setVolume(0.28)
+                self._feedback_sfx[f"{theme}:{direction}"] = effect
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(30, 24, 30, 22)
-        root.setSpacing(14)
+        root.setContentsMargins(22, 18, 22, 16)
+        root.setSpacing(10)
         self.eyebrow = QLabel("AURORA · PRIMEIRA CONFIGURAÇÃO")
         self.eyebrow.setObjectName("eyebrow")
         root.addWidget(self.eyebrow)
@@ -277,6 +287,7 @@ class PersonalizationWizard(QDialog):
         self._build_wake_training()
         self._build_bubble()
         self._build_voice()
+        self._build_feedback()
         self._build_loading()
         root.addWidget(self.stack, 1)
         footer = QHBoxLayout()
@@ -356,17 +367,18 @@ class PersonalizationWizard(QDialog):
             """
 
     def _apply_system_theme(self):
-        dark = self._system_prefers_dark()
-        if dark != self._dark_theme:
-            self._dark_theme = dark
-            self.setStyleSheet(self._stylesheet(dark))
+        # The onboarding surface intentionally stays dark so its cards and
+        # orb previews keep the same identity on every desktop theme.
+        if not self._dark_theme:
+            self._dark_theme = True
+            self.setStyleSheet(self._stylesheet(True))
 
     def _panel(self, title, subtitle=""):
         frame = QFrame()
         frame.setObjectName("panel")
         layout = QVBoxLayout(frame)
-        layout.setContentsMargins(24, 22, 24, 22)
-        layout.setSpacing(12)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(9)
         heading = QLabel(title)
         heading.setObjectName("title")
         heading.setWordWrap(True)
@@ -494,6 +506,41 @@ class PersonalizationWizard(QDialog):
         self._update_preview_phrase()
         self.stack.addWidget(frame)
 
+    def _build_feedback(self):
+        frame, layout = self._panel(
+            "Escolha seus sons",
+            "Cada assinatura tem uma entrada e uma saída próprias. Ouça o par antes de salvar.",
+        )
+        cards = QHBoxLayout(); cards.setSpacing(12)
+        self.feedback_group = QButtonGroup(self); self.feedback_group.setExclusive(True)
+        self.feedback_cards = {}
+        choices = (("boreal", "Boreal", "Cristalino · suave"),
+                   ("pulse", "Pulse", "Rítmico · energético"),
+                   ("void", "Void", "Profundo · futurista"))
+        for key, title, detail in choices:
+            card = QFrame(); card.setObjectName("choiceCard")
+            card.setProperty("selected", key == self._selected_feedback)
+            box = QVBoxLayout(card); box.setContentsMargins(12, 12, 12, 12); box.setSpacing(7)
+            heading = QLabel(title); heading.setObjectName("cardTitle"); heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            box.addWidget(heading)
+            caption = QLabel(detail); caption.setObjectName("cardDetail"); caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            box.addWidget(caption)
+            preview = QPushButton("▶  Entrada · Saída")
+            preview.setObjectName("previewVoice")
+            preview.clicked.connect(lambda _=False, value=key: self._preview_feedback(value))
+            box.addWidget(preview)
+            radio = QRadioButton("Usar estes sons")
+            radio.setChecked(key == self._selected_feedback)
+            radio.toggled.connect(lambda checked, value=key: self._select_feedback(value, checked))
+            self.feedback_group.addButton(radio); box.addWidget(radio, 0, Qt.AlignmentFlag.AlignHCenter)
+            self.feedback_cards[key] = card
+            cards.addWidget(card, 1)
+        layout.addLayout(cards)
+        self.feedback_status = QLabel("Prévia: entrada … saída …")
+        self.feedback_status.setObjectName("cardDetail"); self.feedback_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.feedback_status)
+        self.stack.addWidget(frame)
+
     def _build_loading(self):
         frame, layout = self._panel("Vamos configurar tudo para você…", "Aguarde enquanto aplicamos suas escolhas à Aurora.")
         self.loading_mark = QLabel("◌")
@@ -530,6 +577,28 @@ class PersonalizationWizard(QDialog):
     def _select_voice(self, voice, checked):
         if checked:
             self._selected_voice = voice
+
+    def _select_feedback(self, theme, checked):
+        if not checked: return
+        self._selected_feedback = theme
+        for key, card in self.feedback_cards.items():
+            card.setProperty("selected", key == theme)
+            card.style().unpolish(card); card.style().polish(card)
+        self._play_sfx("select")
+
+    def _preview_feedback(self, theme):
+        entry = self._feedback_sfx.get(f"{theme}:entrada")
+        exit_ = self._feedback_sfx.get(f"{theme}:saida")
+        if not entry or not exit_ or not entry.source().isValid() or not exit_.source().isValid():
+            self.feedback_status.setText("Prévia indisponível")
+            return
+        for effect in self._feedback_sfx.values(): effect.stop()
+        self.feedback_status.setText("Prévia: entrada …")
+        entry.play()
+        def play_exit():
+            self.feedback_status.setText("Prévia: saída …")
+            exit_.play()
+        QTimer.singleShot(760, play_exit)
 
     def _preview_name(self):
         return "Aurora" if self.default_name.isChecked() else (self.assistant_name.text().strip() or "Aurora")
@@ -573,13 +642,13 @@ class PersonalizationWizard(QDialog):
         previous = self._current_page
         self._current_page = page
         self.stack.setCurrentIndex(page)
-        self.back_button.setVisible(page > 0 and page < 5)
-        labels = (("Boas-vindas · 1 de 5", "Seu perfil · 2 de 5", "Ativação · 3 de 5", "Sua Bolha · 4 de 5", "Sua voz · 5 de 5", "")
+        self.back_button.setVisible(page > 0 and page < 6)
+        labels = (("Boas-vindas · 1 de 6", "Seu perfil · 2 de 6", "Ativação · 3 de 6", "Sua Bolha · 4 de 6", "Sua voz · 5 de 6", "Seus sons · 6 de 6", "")
                   if self._needs_training else
-                  ("Boas-vindas · 1 de 4", "Seu perfil · 2 de 4", "", "Sua Bolha · 3 de 4", "Sua voz · 4 de 4", ""))
+                  ("Boas-vindas · 1 de 5", "Seu perfil · 2 de 5", "", "Sua Bolha · 3 de 5", "Sua voz · 4 de 5", "Seus sons · 5 de 5", ""))
         self.step_label.setText(labels[page])
-        self.next_button.setVisible(page < 5)
-        self.next_button.setText(("Começar", "Próximo", "Próximo", "Próximo", "Finalizar", "")[page])
+        self.next_button.setVisible(page < 6)
+        self.next_button.setText(("Começar", "Próximo", "Próximo", "Próximo", "Próximo", "Finalizar", "")[page])
         if animated:
             effect = self.stack.graphicsEffect()
             effect.setOpacity(0.0)
@@ -671,11 +740,11 @@ class PersonalizationWizard(QDialog):
                 self.wake_training_status.setText("Grave as quatro amostras antes de continuar.")
                 return
             self._set_page(3)
-        elif self._current_page < 4:
+        elif self._current_page < 5:
             if self._current_page == 3 and not self._selected_style:
                 return
             self._set_page(self._current_page + 1)
-        elif self._current_page == 4:
+        elif self._current_page == 5:
             if not getattr(self, "_selected_voice", None):
                 self.voice_status.setText("Escolha uma voz para continuar.")
                 return
@@ -697,6 +766,7 @@ class PersonalizationWizard(QDialog):
             "wake_profile": self._wake_profile if self._needs_training else None,
             "bubble_style": self._selected_style,
             "tts_voice": voice or self.cfg.get("tts_voice", "pt-BR-ThalitaMultilingualNeural"),
+            "feedback_theme": self._selected_feedback,
             "onboarding_pending": False,
             "onboarding_boot_id": "",
         }

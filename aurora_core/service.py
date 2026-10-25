@@ -193,8 +193,11 @@ class AuroraService(QObject):
         self.mode_watchdog=QTimer(self); self.mode_watchdog.setInterval(750)
         self.mode_watchdog.timeout.connect(self._settle_stale_controlling_mode)
         self.mode_watchdog.start()
-        self.feedback=QSoundEffect(); self.feedback.setSource(QUrl.fromLocalFile(str(APP_DIR/'assets'/'audio'/'entrada.wav'))); self.feedback.setVolume(.34)
-        self.exit_feedback=QSoundEffect(); self.exit_feedback.setSource(QUrl.fromLocalFile(str(APP_DIR/'assets'/'audio'/'saida.wav'))); self.exit_feedback.setVolume(.30)
+        feedback_theme=str(self.cfg.get('feedback_theme','boreal') or 'boreal').strip().lower()
+        if feedback_theme not in {'boreal','pulse','void'}: feedback_theme='boreal'
+        feedback_dir=APP_DIR/'assets'/'audio'
+        self.feedback=QSoundEffect(); self.feedback.setSource(QUrl.fromLocalFile(str(feedback_dir/f'entrada-{feedback_theme}.wav'))); self.feedback.setVolume(.34)
+        self.exit_feedback=QSoundEffect(); self.exit_feedback.setSource(QUrl.fromLocalFile(str(feedback_dir/f'saida-{feedback_theme}.wav'))); self.exit_feedback.setVolume(.30)
         self.error_audio=QMediaPlayer(self); self.error_audio_output=QAudioOutput(self); self.error_audio.setAudioOutput(self.error_audio_output); self.error_audio_output.setVolume(.62)
         error_audio_path=user_data_dir()/'error.mp3'
         if error_audio_path.is_file(): self.error_audio.setSource(QUrl.fromLocalFile(str(error_audio_path)))

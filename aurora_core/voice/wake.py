@@ -213,16 +213,16 @@ class LocalVoice(QThread):
                                 profile_checked_at = time.monotonic()
                                 try:
                                     profile_pcm = b''.join(wake_audio[-12:])
-                                    profile_hit = profile_matches(wake_profile, profile_pcm)
+                                    profile_hit = profile_matches(wake_profile, profile_pcm, threshold=0.84)
                                 except Exception:
                                     profile_hit = False
                                 # One noisy 1.2s window is not enough to
-                                # activate a custom name. Require two
+                                # activate a custom name. Require three
                                 # consecutive overlapping windows; this keeps
                                 # real speech responsive while suppressing
                                 # isolated room noise and residual echo.
                                 profile_hit_streak = profile_hit_streak + 1 if profile_hit else 0
-                                if profile_hit_streak >= 2:
+                                if profile_hit_streak >= 3:
                                     profile_hit_streak = 0
                                     # Let feedback/TTS and the tail of the
                                     # spoken wake name leave the microphone

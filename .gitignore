@@ -11,6 +11,12 @@ assets/vosk-model/
 !assets/audio/step.wav
 !assets/audio/success.wav
 !assets/audio/error.wav
+!assets/audio/entrada-boreal.wav
+!assets/audio/saida-boreal.wav
+!assets/audio/entrada-pulse.wav
+!assets/audio/saida-pulse.wav
+!assets/audio/entrada-void.wav
+!assets/audio/saida-void.wav
 *.log
 *-preview.png
 
