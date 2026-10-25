@@ -922,7 +922,11 @@ class AuroraService(QObject):
             digest=format_news_digest(items,current_search_window(self.current_prompt))
             self.quick_summary_done(digest,generation); return
         evidence=[]
-        for item in items[:5]:
+        # The pipeline may retain reserve pages for validation, but speech
+        # synthesis only needs the best three independent sources. This keeps
+        # the response focused and avoids making the model paraphrase every
+        # page that happened to survive collection.
+        for item in items[:3]:
             parts=[f'Título: {item["title"]}']
             if item['snippet']: parts.append(f'Trecho: {item["snippet"]}')
             if item['publisher']: parts.append(f'Publicação: {item["publisher"]}')
