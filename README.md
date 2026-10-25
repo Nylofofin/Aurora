@@ -21,11 +21,17 @@ As animações abaixo foram capturadas dos próprios componentes do onboarding: 
 
 ![Fluxo animado do onboarding: perfil, aparência, voz e sons, com as transições entre etapas](docs/media/onboarding-transitions.gif)
 
-<p align="center">
-  <img src="docs/media/onboarding-skins.gif" width="32%" alt="Carrossel animado de estilos da bolha">
-  <img src="docs/media/onboarding-voices.gif" width="32%" alt="Carrossel animado de vozes locais">
-  <img src="docs/media/onboarding-sounds.gif" width="32%" alt="Carrossel animado de assinaturas sonoras">
-</p>
+### Escolha da bolha
+
+<img src="docs/media/onboarding-skins.gif" width="820" alt="Carrossel animado de estilos da bolha, em tamanho legível">
+
+### Escolha da voz
+
+<img src="docs/media/onboarding-voices.gif" width="820" alt="Carrossel animado de vozes locais, em tamanho legível">
+
+### Escolha dos sons
+
+<img src="docs/media/onboarding-sounds.gif" width="820" alt="Carrossel animado de assinaturas sonoras, em tamanho legível">
 
 ## O que ela faz
 
