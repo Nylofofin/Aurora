@@ -309,6 +309,20 @@ def test_flatpak_launch_confirms_active_sober_instance(monkeypatch, tmp_path):
     assert apps_module.launch_application("Roblox") == "Abri Sober; o processo Flatpak está ativo."
 
 
+def test_flatpak_active_instance_wins_over_wrapper_exit_code(monkeypatch, tmp_path):
+    desktop_file = tmp_path / "flatpak/exports/share/applications/org.vinegarhq.Sober.desktop"
+    app = {"file": desktop_file, "name": "Sober", "exec": "flatpak run org.vinegarhq.Sober",
+           "class": "org.vinegarhq.Sober"}
+    class FailedWrapper:
+        def poll(self): return 1
+    monkeypatch.setattr(apps_module, "find_desktop_app", lambda _name: app)
+    monkeypatch.setattr(apps_module.shutil, "which", lambda name: "/usr/bin/flatpak" if name == "flatpak" else None)
+    monkeypatch.setattr(apps_module.subprocess, "Popen", lambda *_args, **_kwargs: FailedWrapper())
+    monkeypatch.setattr(apps_module.subprocess, "run", lambda *args, **kwargs: __import__("subprocess").CompletedProcess(
+        args[0], 0, stdout='[{"application":"org.vinegarhq.Sober","instance":"42"}]', stderr=""))
+    assert apps_module.launch_application("Roblox") == "Abri Sober; o processo Flatpak está ativo."
+
+
 def test_polite_app_commands_are_routed_without_llm_fallback(monkeypatch):
     import aurora_core.system.commands as commands
     monkeypatch.setattr(commands, "find_desktop_app", lambda _name: {"name": "Sober"})
