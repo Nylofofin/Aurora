@@ -58,7 +58,7 @@ from aurora_launchpad_core import (
 
 
 APP_ID = "com.nylofofin.AuroraLaunchpad"
-INSTALLER_VERSION = "0.4.2"
+INSTALLER_VERSION = "0.4.3"
 PKEXEC = "/usr/bin/pkexec"
 SYSTEMCTL = "/usr/bin/systemctl"
 DNF = "/usr/bin/dnf"
@@ -137,6 +137,8 @@ def _github_json(url: str, *, maximum: int = 4 * 1024 * 1024) -> dict | list:
         "Accept": "application/vnd.github+json",
         "User-Agent": f"Aurora-Launchpad/{INSTALLER_VERSION}",
         "X-GitHub-Api-Version": "2022-11-28",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
     })
     with urllib.request.urlopen(request, timeout=20) as response:
         if response.status != 200:
@@ -367,7 +369,7 @@ class Launchpad(Adw.Application):
         self.update_in_progress = False
         self.installed_aurora_version = installed_aurora_version(MANAGED_APP)
         self.new_aurora_releases = ()
-        self.maintenance_updates_button = None
+        self.show_new_builds_when_loaded = False
         self.maintenance_updates_status = None
 
     def _installation_health(self):
@@ -497,11 +499,8 @@ class Launchpad(Adw.Application):
         builds.append(self._label("BUILDS NOVAS", "caption"))
         self.maintenance_updates_status = self._label("Procurando builds novas…", "subtle", True)
         builds.append(self.maintenance_updates_status)
-        self.refresh_releases_button = self._button("Atualizar lista", self._load_releases)
+        self.refresh_releases_button = self._button("Checar builds novas", self._check_new_builds, suggested=True)
         builds.append(self.refresh_releases_button)
-        self.maintenance_updates_button = self._button("Ver builds novas", self._show_new_aurora_releases, suggested=True)
-        self.maintenance_updates_button.set_visible(False)
-        builds.append(self.maintenance_updates_button)
         self.maintenance_releases_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         builds.append(self.maintenance_releases_box)
         col.append(builds)
@@ -627,6 +626,16 @@ class Launchpad(Adw.Application):
             self.release_status.set_text("Buscando versões no GitHub…")
         threading.Thread(target=self._load_releases_worker, daemon=True).start()
 
+    def _check_new_builds(self, *_):
+        """Refresh GitHub metadata and show newer builds in the same action."""
+        self.show_new_builds_when_loaded = True
+        if self.maintenance_releases_box:
+            while self.maintenance_releases_box.get_first_child():
+                self.maintenance_releases_box.remove(self.maintenance_releases_box.get_first_child())
+        if self.maintenance_updates_status:
+            self.maintenance_updates_status.set_text("Consultando novamente as releases publicadas no GitHub…")
+        self._load_releases()
+
     def _load_releases_worker(self):
         try:
             api = f"https://api.github.com/repos/{GITHUB_REPOSITORY}"
@@ -652,8 +661,10 @@ class Launchpad(Adw.Application):
         if self.existing_install:
             if error:
                 self.update_status.set_text("Não consegui consultar as atualizações agora. Tente novamente.")
-                self.maintenance_updates_status.set_text("Não foi possível consultar builds novas agora.")
+                self.maintenance_updates_status.set_text(f"Falha ao consultar o GitHub: {str(error)[:180]}")
                 self.refresh_releases_button.set_visible(True)
+                self.refresh_releases_button.set_sensitive(True)
+                self.show_new_builds_when_loaded = False
                 return False
             if update:
                 version = update["asset"]["name"].split("aurora-launchpad-", 1)[1].split("-", 1)[0]
@@ -662,16 +673,20 @@ class Launchpad(Adw.Application):
                 )
                 self.update_button.set_visible(True)
                 self.maintenance_updates_status.set_text("Atualize o Launchpad para consultar e instalar builds da Aurora.")
-                self.maintenance_updates_button.set_visible(False)
+                self.refresh_releases_button.set_sensitive(False)
+                self.show_new_builds_when_loaded = False
                 return False
+            self.refresh_releases_button.set_sensitive(True)
             self.update_status.set_text(f"Launchpad {INSTALLER_VERSION} está atualizado.")
             if self.new_aurora_releases:
                 count = len(self.new_aurora_releases)
                 noun = "build nova" if count == 1 else "builds novas"
                 self.maintenance_updates_status.set_text(f"{count} {noun} acima da versão {self.installed_aurora_version}.")
-                self.maintenance_updates_button.set_visible(True)
             else:
                 self.maintenance_updates_status.set_text("Nenhuma build nova foi publicada desde a versão instalada.")
+            if self.show_new_builds_when_loaded and self.new_aurora_releases:
+                self._show_new_aurora_releases()
+            self.show_new_builds_when_loaded = False
             self._refresh_maintenance_status()
             return False
         self.release_cards.clear()
@@ -735,7 +750,6 @@ class Launchpad(Adw.Application):
             return
         while self.maintenance_releases_box.get_first_child():
             self.maintenance_releases_box.remove(self.maintenance_releases_box.get_first_child())
-        self.maintenance_updates_button.set_visible(False)
         self.release_options = tuple(ReleaseRecommendation("new_build", release) for release in self.new_aurora_releases)
         for option in self.release_options:
             release = option.release
