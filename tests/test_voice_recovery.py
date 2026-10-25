@@ -57,6 +57,13 @@ def test_vosk_malformed_metadata_recovers_transcript_without_logging_it(capsys):
     assert "abrir calculadora" not in output
 
 
+def test_vosk_malformed_metadata_recovers_only_valid_word_confidences(capsys):
+    payload = '{"text": "abrir calculadora", "result": [{"word": "abrir", "conf": 0.94}, {"word": "calculadora", "conf": 0.97}], bad}'
+    result = parse_vosk_result(payload, "comando")
+    assert result == {"text": "abrir calculadora", "result": [{"conf": 0.94}, {"conf": 0.97}]}
+    assert "abrir calculadora" not in capsys.readouterr().err
+
+
 def test_vosk_invalid_result_without_text_is_nonfatal(capsys):
     assert parse_vosk_result('{not-json}', "wake") == {"text": "", "result": []}
     assert "sem texto recuperável" in capsys.readouterr().err

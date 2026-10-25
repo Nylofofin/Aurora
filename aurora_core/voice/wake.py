@@ -31,7 +31,19 @@ def parse_vosk_result(raw,stage='recognition'):
             except (json.JSONDecodeError,TypeError): text=''
             print(f'[voice] JSON Vosk inválido em {stage}; texto recuperado sem metadados ({type(exc).__name__})',
                   file=sys.stderr,flush=True)
-            return {'text':text if isinstance(text,str) else '','result':[]}
+            # Vosk's transcript may remain intact while its optional metadata
+            # contains a malformed token. Recover only numeric word confidence
+            # values; this lets the caller use the fast path when every word is
+            # strongly recognized, without trusting malformed text metadata.
+            result_match=re.search(r'"result"\s*:\s*\[(.*?)\]',str(raw),flags=re.DOTALL)
+            confidences=[]
+            if result_match:
+                for value in re.findall(r'"conf"\s*:\s*(-?(?:\d+(?:\.\d*)?|\.\d+))',result_match.group(1)):
+                    try: confidence=float(value)
+                    except ValueError: continue
+                    if math.isfinite(confidence) and 0.0 <= confidence <= 1.0:
+                        confidences.append({'conf':confidence})
+            return {'text':text if isinstance(text,str) else '','result':confidences}
         print(f'[voice] JSON Vosk inválido em {stage}; sem texto recuperável ({type(exc).__name__})',
               file=sys.stderr,flush=True)
         return {'text':'','result':[]}
@@ -127,11 +139,10 @@ class LocalVoice(QThread):
     def local_transcribe(self,pcm,fallback,confidence=None):
         from .telemetry import elapsed_ms, log_voice_timing
         started=time.perf_counter(); outcome='whisper_cpp'; command=''
-        # Vosk already produced a final transcript while listening. Use it
-        # immediately when its per-word confidence is solid; reserve Whisper
-        # for uncertain utterances instead of imposing a ~3 s decode on every
-        # simple command.
-        if fallback and confidence is not None and confidence >= 0.62:
+        # Vosk is fast but can sound plausible while dropping or replacing
+        # words. Only skip Whisper when its average word confidence is high;
+        # otherwise preserve Whisper's better recovery on informal speech.
+        if fallback and confidence is not None and confidence >= 0.90:
             command=fallback; outcome='vosk_fast'
         else:
             try:
@@ -316,7 +327,11 @@ class LocalVoice(QThread):
                             if active and isinstance(result_payload.get('result'),list):
                                 confidences=[float(word.get('conf')) for word in result_payload['result']
                                              if isinstance(word,dict) and isinstance(word.get('conf'),(int,float))]
-                                if confidences: command_confidence=sum(confidences)/len(confidences)
+                                # Refuse partial metadata: a confidence score
+                                # must cover every recognized word before it
+                                # can authorize skipping the stronger decoder.
+                                if confidences and len(confidences)>=len(str(result_payload.get('text','')).split()):
+                                    command_confidence=sum(confidences)/len(confidences)
                         if fallback_finalized:
                             candidate_texts.append(parse_vosk_result(wake_fallback_rec.Result(),'wake alternativo').get('text','').strip())
                         if not finalized:

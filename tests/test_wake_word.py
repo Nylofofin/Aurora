@@ -71,7 +71,15 @@ def test_confident_vosk_transcript_skips_slow_whisper_decode(monkeypatch):
 
     monkeypatch.setattr(stt, "transcribe_pcm", lambda *_args: pytest.fail("Whisper should not run"))
     voice = LocalVoice({"assistant_name": "Luna"})
-    assert voice.local_transcribe(b"", "Ei, Luna, abra o terminal", 0.9) == "abra o terminal"
+    assert voice.local_transcribe(b"", "Ei, Luna, abra o terminal", 0.95) == "abra o terminal"
+
+
+def test_moderate_vosk_confidence_keeps_whisper_accuracy_path(monkeypatch):
+    import aurora_core.voice.stt as stt
+
+    monkeypatch.setattr(stt, "transcribe_pcm", lambda *_args: "Ei Luna, abra o terminal")
+    voice = LocalVoice({"assistant_name": "Luna"})
+    assert voice.local_transcribe(b"pcm", "Ei Luna, abre o terminal", 0.89) == "abra o terminal"
 
 
 def test_uncertain_vosk_transcript_uses_whisper_and_keeps_vosk_fallback(monkeypatch):
