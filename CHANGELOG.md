@@ -1,5 +1,12 @@
 # Histórico de versões
 
+## Aurora Desktop 2.1.2 — Rigel Update Integrity, 2026-10-25 (release estável)
+
+- Torna a atualização da Aurora transacional: prepara os arquivos antes da troca, preserva dados locais e recupera a versão anterior se a ativação falhar.
+- Atualiza o Launchpad para 0.4.6-1, com nova tentativa para consultas ao GitHub e sem baixar de novo modelos já instalados.
+- Adiciona três assinaturas sonoras originais para a entrada e a saída da bolha.
+- Reescreve o README e inclui GIFs da bolha, uma prancha das skins e um tour em vídeo do onboarding.
+
 ## Aurora Desktop 2.1.1 — Capella Interface Polish, 2026-10-25 (release estável)
 
 - Reduz a latência inicial da síntese local com blocos de áudio menores e menos etapas de denoising no Supertonic.
