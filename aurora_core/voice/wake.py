@@ -164,7 +164,7 @@ class LocalVoice(QThread):
                         except (queue.Empty,queue.Full): pass
                 with sd.RawInputStream(samplerate=SAMPLE_RATE,blocksize=MIC_BLOCK_FRAMES,dtype='int16',channels=1,callback=callback):
                     self.status.emit('hidden')
-                    active=False; started=0.0; buffer=[]; wake_audio=[]; profile_checked_at=0.0; profile_cooldown_until=0.0; barge_frames=0
+                    active=False; started=0.0; buffer=[]; wake_audio=[]; profile_checked_at=0.0; profile_cooldown_until=0.0; profile_hit_streak=0; barge_frames=0
                     while self.running and not self.mobile_owned.is_set():
                         try: block=q.get(timeout=.25)
                         except queue.Empty: continue
@@ -216,7 +216,14 @@ class LocalVoice(QThread):
                                     profile_hit = profile_matches(wake_profile, profile_pcm)
                                 except Exception:
                                     profile_hit = False
-                                if profile_hit:
+                                # One noisy 1.2s window is not enough to
+                                # activate a custom name. Require two
+                                # consecutive overlapping windows; this keeps
+                                # real speech responsive while suppressing
+                                # isolated room noise and residual echo.
+                                profile_hit_streak = profile_hit_streak + 1 if profile_hit else 0
+                                if profile_hit_streak >= 2:
+                                    profile_hit_streak = 0
                                     # Let feedback/TTS and the tail of the
                                     # spoken wake name leave the microphone
                                     # before looking for another activation.

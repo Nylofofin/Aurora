@@ -16,7 +16,7 @@ SAMPLE_RATE = 16_000
 FRAME_SAMPLES = 400  # 25 ms
 FRAME_COUNT = 48
 PROFILE_VERSION = 1
-MIN_MATCH_RMS = 0.012
+MIN_MATCH_RMS = 0.02
 
 
 def _samples(pcm: bytes) -> list[float]:
