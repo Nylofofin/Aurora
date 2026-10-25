@@ -1,5 +1,12 @@
 # Histórico de versões
 
+## Aurora Desktop 2.1.1 — Capella Interface Polish, 2026-10-25 (release estável)
+
+- Reduz a latência inicial da síntese local com blocos de áudio menores e menos etapas de denoising no Supertonic.
+- Refina o onboarding e o Launchpad com etapas mais compactas, transições mais claras e carrossel de SFX com prévias separadas.
+- Cria três pares de sons de entrada e saída com assinaturas sonoras próprias e mantém a seleção visível durante a personalização.
+- Atualiza o Aurora Launchpad para 0.4.2-1.
+
 ## Aurora Desktop 2.1.0 — Proxima Local Voice, 2026-10-25 (release estável)
 
 - Adiciona transcrição local de comandos com Whisper.cpp Base Q5, mantendo o Vosk local para wake word e interrupção.
