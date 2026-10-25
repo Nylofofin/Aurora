@@ -48,12 +48,13 @@ def _trim_silence(samples):
 
 
 def _audio_context(sample_count: int) -> int:
-    """Scale Whisper's encoder context to short commands, with a safe margin."""
+    """Scale Whisper's encoder context to speech duration with a short-command floor."""
     # whisper.cpp uses 1500 context tokens for 30 seconds (50 tokens/s).
-    # The extra 256 tokens add 5.12 seconds of headroom around speech. A 512
-    # token floor avoids unstable decoding on very short utterances.
+    # Keep 1.28 seconds of headroom, and a 5.12 second floor for short speech.
+    # The old 512-token floor forced 10.24 seconds of encoder context even for
+    # 2-4 second commands, wasting CPU without improving our local samples.
     duration = sample_count / SAMPLE_RATE
-    return min(1500, max(512, math.ceil(duration * 50) + 256))
+    return min(1500, max(256, math.ceil(duration * 50) + 64))
 
 
 def _get_model():

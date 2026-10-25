@@ -90,6 +90,14 @@ def test_uncertain_vosk_transcript_uses_whisper_and_keeps_vosk_fallback(monkeypa
     assert voice.local_transcribe(b"pcm", "luna", 0.4) == "abra o navegador"
 
 
+def test_whisper_audio_context_scales_to_short_commands():
+    from aurora_core.voice.stt import SAMPLE_RATE, _audio_context
+
+    assert _audio_context(round(3.6 * SAMPLE_RATE)) == 256
+    assert _audio_context(8 * SAMPLE_RATE) == 464
+    assert _audio_context(30 * SAMPLE_RATE) == 1500
+
+
 def test_custom_wake_name_grammar_checks_model_vocabulary():
     from aurora_core.voice.wake import wake_grammar_phrases, wake_name_supported, wake_name_words
 
