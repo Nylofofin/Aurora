@@ -1,5 +1,13 @@
 # Histórico de versões
 
+## Aurora Desktop 3.1.0 — Eris Skin Studio, 2026-10-25 (release estável)
+
+- Amplia de seis para nove aparências circulares, com identidades visuais próprias para Titã, Ío e Tritão.
+- Mantém as mesmas cores e detalhes entre o carrossel do onboarding e a bolha flutuante ativa.
+- Refina o onboarding: prévia inicial acompanha a aparência escolhida, progresso numerado e dimensões mais compactas.
+- Atualiza a prancha e as demonstrações animadas com capturas dos widgets reais; adiciona script reproduzível para gerar as mídias.
+- Mantém o Aurora Launchpad 0.4.8 disponível como RPM nos assets da release.
+
 ## Aurora Desktop 3.0.0e — Vega Voice & Wake, 2026-10-25 (release estável)
 
 - Ajusta o Supertonic para cinco passos, equilibrando qualidade vocal e latência no hardware de referência.

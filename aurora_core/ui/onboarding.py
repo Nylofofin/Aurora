@@ -22,12 +22,15 @@ from ..voice.catalog import VOICES, voice_available, voice_runtime_available, en
 # Public appearance catalog shared by onboarding and the live orb.  Keep the
 # keys stable so a saved preference survives upgrades.
 BUBBLE_STYLES = (
-    ("boreal", "Véu Boreal", "Vidro azul-violeta · faixa luminosa interna"),
-    ("emerald", "Europa", "Verde mineral · contorno macio de porcelana"),
-    ("crimson", "Júpiter", "Âmbar e creme · bandas e tempestade discreta"),
-    ("amethyst", "Reia", "Lavanda glacial · anel inclinado e lua próxima"),
-    ("solaris", "Dione", "Rosa-violeta · eclipse e pequeno satélite"),
-    ("ocean", "Miranda", "Gelo ciano · relevo orgânico e crista luminosa"),
+    ("boreal", "Véu Boreal", "Azul-violeta · vidro refratado"),
+    ("emerald", "Europa", "Verde mineral · porcelana"),
+    ("crimson", "Júpiter", "Âmbar · faixas atmosféricas"),
+    ("amethyst", "Reia", "Lavanda · anel inclinado"),
+    ("solaris", "Dione", "Rosa-violeta · eclipse"),
+    ("ocean", "Miranda", "Ciano · crista de gelo"),
+    ("titan", "Titã", "Índigo · halo enevoado"),
+    ("io", "Ío", "Mel vulcânico · fissura"),
+    ("triton", "Tritão", "Azul glacial · correntes polares"),
 )
 BUBBLE_STYLE_KEYS = {key for key, _title, _detail in BUBBLE_STYLES}
 
@@ -147,6 +150,9 @@ class _AnimatedOrb(QWidget):
             "amethyst": ("#f6f3ff", "#b4b9ee", "#626bb2"),
             "solaris": ("#fff8f6", "#dfa2b4", "#6d4a80"),
             "ocean": ("#f4ffff", "#70d2d4", "#356fa6"),
+            "titan": ("#f4f3ff", "#9299c8", "#343958"),
+            "io": ("#fff8df", "#f1a34a", "#a94435"),
+            "triton": ("#effcff", "#70c9e2", "#244d87"),
         }
         return tuple(QColor(color) for color in palette.get(style, palette["boreal"]))
 
@@ -239,6 +245,21 @@ class _AnimatedOrb(QWidget):
             for stop, color in ((0.0, "#f2ffff"), (.35, "#9be5df"),
                                 (.60, "#5dc4cc"), (1.0, "#3a78a8")):
                 gradient.setColorAt(stop, QColor(color))
+        elif self.style == "titan":
+            gradient = QLinearGradient(size*.12, 0, size*.82, size)
+            for stop, color in ((0.0, "#f7f5ff"), (.28, "#c3c6e2"),
+                                (.55, "#7e86b7"), (.78, "#4b527e"), (1.0, "#292d49")):
+                gradient.setColorAt(stop, QColor(color))
+        elif self.style == "io":
+            gradient = QLinearGradient(size*.14, 0, size*.82, size)
+            for stop, color in ((0.0, "#fffbea"), (.28, "#ffe69b"),
+                                (.51, "#ffb94f"), (.73, "#ed7041"), (1.0, "#8d3540")):
+                gradient.setColorAt(stop, QColor(color))
+        elif self.style == "triton":
+            gradient = QLinearGradient(0, size*.08, size, size*.96)
+            for stop, color in ((0.0, "#f3ffff"), (.3, "#b8edf0"),
+                                (.58, "#64c4df"), (.82, "#397db7"), (1.0, "#243a73")):
+                gradient.setColorAt(stop, QColor(color))
         else:
             gradient.setColorAt(0, QColor("#f4fdff"))
             gradient.setColorAt(.58, QColor("#72c7f3"))
@@ -252,6 +273,9 @@ class _AnimatedOrb(QWidget):
             "solaris": ((.77, .74), "#664777", 136, .45),
             "ocean": ((.70, .76), "#315d9c", 136, .48),
             "crimson": ((.32, .20), "#ffffff", 90, .30),
+            "titan": ((.72, .72), "#e9b978", 82, .46),
+            "io": ((.72, .68), "#ff4d32", 116, .38),
+            "triton": ((.29, .75), "#e9ffff", 110, .43),
         }
         if self.style in radial_fields:
             (cx, cy), color, alpha, radius = radial_fields[self.style]
@@ -327,6 +351,31 @@ class _AnimatedOrb(QWidget):
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor(255, 255, 255, 225))
             painter.drawEllipse(QRectF(size*.69, size*.27, size*.045, size*.045))
+        elif self.style == "titan":
+            # A broad, low-contrast atmospheric band gives Titan a hazy edge.
+            painter.setPen(QPen(QColor(246, 215, 157, 138), max(1.0, size*.026)))
+            painter.drawArc(QRectF(size*.08, size*.13, size*.84, size*.76), 205*16, 134*16)
+            painter.setPen(QPen(QColor(255, 255, 255, 82), max(1.0, size*.009)))
+            painter.drawArc(QRectF(size*.15, size*.20, size*.70, size*.62), 205*16, 134*16)
+        elif self.style == "io":
+            # One restrained volcanic fissure and its warm vent, both inside glass.
+            fissure = QPainterPath()
+            fissure.moveTo(size*.62, size*.28)
+            fissure.cubicTo(size*.48, size*.39, size*.67, size*.48, size*.53, size*.61)
+            fissure.cubicTo(size*.44, size*.69, size*.56, size*.74, size*.47, size*.82)
+            painter.setPen(QPen(QColor(111, 43, 49, 150), max(1.0, size*.032), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+            painter.drawPath(fissure)
+            painter.setPen(QPen(QColor(255, 224, 139, 220), max(1.0, size*.012), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            painter.drawPath(fissure)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(255, 242, 183, 218))
+            painter.drawEllipse(QRectF(size*.60, size*.24, size*.09, size*.09))
+        elif self.style == "triton":
+            # Two icy currents sweep around one pole, like frozen surface ridges.
+            painter.setPen(QPen(QColor(239, 255, 255, 210), max(1.0, size*.025), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            painter.drawArc(QRectF(size*.08, size*.22, size*.82, size*.56), 212*16, 116*16)
+            painter.setPen(QPen(QColor(186, 238, 248, 125), max(1.0, size*.012), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            painter.drawArc(QRectF(size*.16, size*.28, size*.68, size*.44), 212*16, 116*16)
         elif self.style == "emerald":
             painter.setPen(QPen(QColor(255, 255, 255, 92), max(1.0, size*.014)))
             painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -419,8 +468,8 @@ class PersonalizationWizard(QDialog):
         self.setModal(True)
         # Give cards and form fields a real horizontal rhythm.  The previous
         # compact width forced labels and buttons to collide on Fedora fonts.
-        self.setMinimumSize(720, 420)
-        self.resize(820, 470)
+        self.setMinimumSize(700, 410)
+        self.resize(780, 450)
         self._dark_theme = True
         self.setStyleSheet(self._stylesheet(True))
 
@@ -450,7 +499,13 @@ class PersonalizationWizard(QDialog):
         root.setSpacing(10)
         self.eyebrow = QLabel("AURORA · PRIMEIRA CONFIGURAÇÃO")
         self.eyebrow.setObjectName("eyebrow")
-        root.addWidget(self.eyebrow)
+        progress_header = QHBoxLayout()
+        progress_header.addWidget(self.eyebrow)
+        progress_header.addStretch(1)
+        self.progress_counter = QLabel("01 / 05")
+        self.progress_counter.setObjectName("stepCounter")
+        progress_header.addWidget(self.progress_counter)
+        root.addLayout(progress_header)
         self.page_progress = QProgressBar()
         self.page_progress.setObjectName("stepProgress")
         self.page_progress.setTextVisible(False)
@@ -490,10 +545,10 @@ class PersonalizationWizard(QDialog):
         if not self.stack or not self.stack.currentWidget():
             return
         page_height = self.stack.currentWidget().sizeHint().height()
-        page_height = max(270, min(620, page_height))
+        page_height = max(270, min(540, page_height))
         self.stack.setFixedHeight(page_height)
         # Header, eyebrow and footer need roughly 118 px around the page.
-        target_height = max(420, min(760, page_height + 118))
+        target_height = max(410, min(660, page_height + 108))
         if abs(self.height() - target_height) > 4:
             self.resize(self.width(), target_height)
             self._center()
@@ -510,6 +565,7 @@ class PersonalizationWizard(QDialog):
             QDialog { background:#111117; color:#f5f2fa; }
             QLabel { color:#eeeaf5; }
             QLabel#eyebrow { color:#b6acc8; font-size:11px; font-weight:700; letter-spacing:2px; }
+            QLabel#stepCounter { color:#c6b2e7; font-size:11px; font-weight:700; letter-spacing:1px; }
             QLabel#title { color:#faf8ff; font-size:25px; font-weight:700; }
             QLabel#subtitle { color:#c5bfce; font-size:14px; }
             QLabel#cardTitle { color:#f4f0fa; font-size:16px; font-weight:700; }
@@ -548,6 +604,7 @@ class PersonalizationWizard(QDialog):
             QDialog { background:#f3f2f8; color:#1b1b22; }
             QLabel { color:#27242d; }
             QLabel#eyebrow { color:#625b70; font-size:11px; font-weight:700; letter-spacing:2px; }
+            QLabel#stepCounter { color:#7052a8; font-size:11px; font-weight:700; letter-spacing:1px; }
             QLabel#title { color:#1c1b20; font-size:25px; font-weight:700; }
             QLabel#subtitle { color:#5e5b66; font-size:14px; }
             QLabel#cardTitle { color:#25232b; font-size:16px; font-weight:700; }
@@ -612,10 +669,9 @@ class PersonalizationWizard(QDialog):
         frame, layout = self._panel("Vamos personalizar sua experiência",
                                     "Seu perfil fica salvo apenas neste computador. Você poderá mudar essas escolhas depois.")
         overview = QHBoxLayout()
-        overview.setSpacing(24)
+        overview.setSpacing(20)
         copy = QVBoxLayout()
         copy.setSpacing(10)
-        copy.addStretch(1)
         label = QLabel("FEITO PARA VOCÊ")
         label.setObjectName("eyebrow")
         copy.addWidget(label)
@@ -625,17 +681,29 @@ class PersonalizationWizard(QDialog):
         copy.addWidget(note)
         facts = QHBoxLayout()
         facts.setSpacing(8)
-        for text in ("6 estilos redondos", "11 vozes locais", "3 pares sonoros"):
+        for text in (f"{len(BUBBLE_STYLES)} acabamentos", f"{len(VOICES)} vozes locais", f"{len(FEEDBACK_THEMES)} assinaturas sonoras"):
             badge = QLabel(text)
             badge.setObjectName("onboardingBadge")
             facts.addWidget(badge)
         facts.addStretch(1)
         copy.addLayout(facts)
-        copy.addStretch(1)
         overview.addLayout(copy, 1)
-        glow = _AnimatedOrb("boreal")
+        hero = QVBoxLayout()
+        hero.setSpacing(4)
+        glow = _AnimatedOrb(self._selected_style)
         glow.setFixedSize(158, 158)
-        overview.addWidget(glow, 0, Qt.AlignmentFlag.AlignCenter)
+        self.welcome_orb = glow
+        hero.addWidget(glow, 0, Qt.AlignmentFlag.AlignCenter)
+        initial_style_name = next(item[1] for item in BUBBLE_STYLES if item[0] == self._selected_style)
+        self.welcome_style_title = QLabel(initial_style_name)
+        self.welcome_style_title.setObjectName("cardTitle")
+        self.welcome_style_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hero.addWidget(self.welcome_style_title)
+        hero_note = QLabel("aparência selecionada")
+        hero_note.setObjectName("cardDetail")
+        hero_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hero.addWidget(hero_note)
+        overview.addLayout(hero, 0)
         layout.addLayout(overview, 1)
         self.stack.addWidget(frame)
 
@@ -996,6 +1064,9 @@ class PersonalizationWizard(QDialog):
         self._style_index = next((i for i, item in enumerate(BUBBLE_STYLES) if item[0] == key), 0)
         if hasattr(self, "style_orb"):
             self._refresh_style_carousel()
+        if hasattr(self, "welcome_orb"):
+            self.welcome_orb.set_style(key)
+            self.welcome_style_title.setText(next(item[1] for item in BUBBLE_STYLES if item[0] == key))
         if hasattr(self, "voice_orb"):
             for voice_orb in (self.voice_side_left, self.voice_orb, self.voice_side_right):
                 voice_orb.set_style(key)
@@ -1114,6 +1185,9 @@ class PersonalizationWizard(QDialog):
         if hasattr(self, "voice_orb"):
             for voice_orb in (self.voice_side_left, self.voice_orb, self.voice_side_right):
                 voice_orb.set_style(self._selected_style)
+        if hasattr(self, "welcome_orb"):
+            self.welcome_orb.set_style(self._selected_style)
+            self.welcome_style_title.setText(title)
 
         self._style_step_pending = False
         self.style_prev.setEnabled(True)
@@ -1418,14 +1492,15 @@ class PersonalizationWizard(QDialog):
         self.stack.setCurrentIndex(page)
         QTimer.singleShot(0, self._fit_current_page)
         self.back_button.setVisible(page > 0 and page < 6)
-        labels = (("Boas-vindas · 1 de 6", "Seu perfil · 2 de 6", "Ativação · 3 de 6", "Sua Bolha · 4 de 6", "Sua voz · 5 de 6", "Seus sons · 6 de 6", "")
+        labels = (("Boas-vindas", "Seu perfil", "Ativação", "Sua Bolha", "Sua voz", "Seus sons", "")
                   if self._needs_training else
-                  ("Boas-vindas · 1 de 5", "Seu perfil · 2 de 5", "", "Sua Bolha · 3 de 5", "Sua voz · 4 de 5", "Seus sons · 5 de 5", ""))
+                  ("Boas-vindas", "Seu perfil", "", "Sua Bolha", "Sua voz", "Seus sons", ""))
         self.step_label.setText(labels[page])
         steps = 6 if self._needs_training else 5
         progress_value = page if self._needs_training or page < 3 else page - 1
         self.page_progress.setRange(0, steps)
         self.page_progress.setValue(min(steps, progress_value))
+        self.progress_counter.setText(f"{min(progress_value + 1, steps):02d} / {steps:02d}")
         self.next_button.setVisible(page < 6)
         self.next_button.setText(("Começar", "Próximo", "Próximo", "Próximo", "Próximo", "Finalizar", "")[page])
         if animated:

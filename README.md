@@ -1,6 +1,6 @@
 # Aurora Desktop
 
-**Versão:** `3.0.0e` · **Canal:** Stable · **Codinome:** `Vega Voice & Wake` · **Build:** `aurora-desktop-3.0.0e-vega-voice-wake`
+**Versão:** `3.1.0` · **Canal:** Stable · **Codinome:** `Eris Skin Studio` · **Build:** `aurora-desktop-3.1.0-eris-skin-studio`
 
 **Uma assistente de voz para Linux, com uma presença pequena na tela e o processamento principal no próprio computador.** A Aurora desperta por voz, entende pedidos cotidianos, conversa em uma sessão contínua e pode pesquisar na web ou executar ações locais.
 
@@ -11,19 +11,19 @@
 
 ## Veja a Aurora
 
-A esfera mantém o formato circular e muda de cor, luz e detalhes conforme o estilo escolhido.
+A esfera mantém o formato circular e muda de cor, luz, refração e detalhes conforme o estilo escolhido. São nove acabamentos, cada um com identidade própria; o onboarding e a bolha ativa compartilham as mesmas prévias.
 
-![Seis estilos de bolha da Aurora](docs/media/bubble-skins.png)
+![Prancha dos nove estilos circulares da Aurora: Véu Boreal, Europa, Júpiter, Reia, Dione, Miranda, Titã, Ío e Tritão](docs/media/bubble-skins.png)
 
 O onboarding deixa a pessoa configurar nome, palavra de ativação, aparência, voz e assinatura sonora. O treinamento de um nome personalizado aparece quando necessário.
 
 As animações abaixo foram capturadas dos próprios componentes do onboarding: a troca de páginas desliza, e as escolhas percorrem os carrosséis com o mesmo movimento usado na configuração.
 
-![Fluxo animado do onboarding: perfil, aparência, voz e sons, com as transições entre etapas](docs/media/onboarding-transitions.gif)
+![Fluxo animado do onboarding: boas-vindas, perfil, treinamento opcional do nome, aparência, voz e sons](docs/media/onboarding-transitions.gif)
 
 ### Escolha da bolha
 
-<img src="docs/media/onboarding-skins.gif" width="820" alt="Carrossel animado de estilos da bolha, em tamanho legível">
+<img src="docs/media/onboarding-skins.gif" width="820" alt="Carrossel animado com nove estilos próprios da bolha e transições laterais">
 
 ### Escolha da voz
 
