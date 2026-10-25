@@ -16,6 +16,7 @@ SAMPLE_RATE = 16_000
 FRAME_SAMPLES = 400  # 25 ms
 FRAME_COUNT = 48
 PROFILE_VERSION = 1
+MIN_MATCH_RMS = 0.012
 
 
 def _samples(pcm: bytes) -> list[float]:
@@ -76,4 +77,12 @@ def similarity(profile: dict, pcm: bytes) -> float:
 
 
 def matches(profile: dict, pcm: bytes, threshold: float = 0.78) -> bool:
+    # A low-energy window can otherwise resemble a quiet custom profile
+    # after normalization. Never wake from silence or room-floor noise.
+    values = _samples(pcm)
+    if not values:
+        return False
+    rms = math.sqrt(sum(sample * sample for sample in values) / len(values))
+    if rms < MIN_MATCH_RMS:
+        return False
     return similarity(profile, pcm) >= threshold

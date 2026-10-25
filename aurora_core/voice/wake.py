@@ -164,7 +164,7 @@ class LocalVoice(QThread):
                         except (queue.Empty,queue.Full): pass
                 with sd.RawInputStream(samplerate=SAMPLE_RATE,blocksize=MIC_BLOCK_FRAMES,dtype='int16',channels=1,callback=callback):
                     self.status.emit('hidden')
-                    active=False; started=0.0; buffer=[]; wake_audio=[]; profile_checked_at=0.0; barge_frames=0
+                    active=False; started=0.0; buffer=[]; wake_audio=[]; profile_checked_at=0.0; profile_cooldown_until=0.0; barge_frames=0
                     while self.running and not self.mobile_owned.is_set():
                         try: block=q.get(timeout=.25)
                         except queue.Empty: continue
@@ -206,7 +206,8 @@ class LocalVoice(QThread):
                         if not active:
                             wake_audio.append(block)
                             if len(wake_audio)>176: wake_audio=wake_audio[-176:]
-                            if (wake_profile and len(wake_audio) >= 12
+                            if (wake_profile and time.monotonic() >= profile_cooldown_until
+                                    and len(wake_audio) >= 12
                                     and len(wake_audio) % 8 == 0
                                     and time.monotonic() - profile_checked_at >= .45):
                                 profile_checked_at = time.monotonic()
@@ -216,6 +217,10 @@ class LocalVoice(QThread):
                                 except Exception:
                                     profile_hit = False
                                 if profile_hit:
+                                    # Let feedback/TTS and the tail of the
+                                    # spoken wake name leave the microphone
+                                    # before looking for another activation.
+                                    profile_cooldown_until = time.monotonic() + 3.0
                                     self.begin_request()
                                     self.wake.emit(); self.status.emit('listening')
                                     active=True; buffer=list(wake_audio); wake_audio=[]

@@ -24,3 +24,10 @@ def test_wake_profile_does_not_match_silence():
     profile = enroll("Luna", samples)
     silence = array("h", [0] * 25_600).tobytes()
     assert not matches(profile, silence)
+
+
+def test_wake_profile_rejects_low_energy_microphone_floor():
+    samples = [_tone(220, phase) for phase in (0.0, 0.08, 0.16)]
+    profile = enroll("Luna", samples)
+    quiet = array("h", [200] * 25_600).tobytes()
+    assert not matches(profile, quiet)
