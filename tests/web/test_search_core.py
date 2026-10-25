@@ -1079,13 +1079,17 @@ def test_composite_query_runs_distinct_subagents_in_bounded_provider_pool(monkey
 def test_short_cache_avoids_duplicate_search(monkeypatch):
     aurora._SEARCH_CACHE.clear()
     calls = []
-    def fake(query, freshness=None, news_only=None):
+    def fake(query, freshness=None, news_only=None, progress=None):
         calls.append(query)
+        if progress:
+            progress({"stage": "validating", "accepted": 1})
         return "cached evidence"
     monkeypatch.setattr(search_pipeline, "_search_public_web_uncached", fake)
-    assert aurora.search_public_web("Nexa current value", "30d") == "cached evidence"
-    assert aurora.search_public_web("Nexa current value", "30d") == "cached evidence"
+    events = []
+    assert aurora.search_public_web("Nexa current value", "30d", progress=events.append) == "cached evidence"
+    assert aurora.search_public_web("Nexa current value", "30d", progress=events.append) == "cached evidence"
     assert calls == ["Nexa current value"]
+    assert any(event.get("cache_hit") for event in events)
     aurora._SEARCH_CACHE.clear()
 
 
