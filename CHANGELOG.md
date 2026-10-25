@@ -1,5 +1,13 @@
 # Histórico de versões
 
+## Aurora Desktop 2.0.0a — Kepler-452b, 2026-10-25 (release estável)
+
+- Reorganiza o onboarding em uma composição horizontal, com campos e cartões que não se sobrepõem.
+- Corrige o contraste dos textos e melhora a legibilidade dos controles no tema escuro.
+- Amplia a transição entre etapas com deslocamento elástico e fade sincronizados.
+- Refina os seis estilos de orb e renova os SFX temáticos com assinaturas rítmicas distintas.
+- Atualiza o Launchpad para 0.4.0-2.
+
 ## Aurora Desktop 1.9.2 — Launchpad Update Fix, 2026-10-24 (release estável)
 
 - Compacta e escurece o onboarding e o Launchpad.

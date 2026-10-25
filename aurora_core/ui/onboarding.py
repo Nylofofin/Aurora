@@ -270,8 +270,10 @@ class PersonalizationWizard(QDialog):
         self.setWindowTitle("Personalizar a Aurora")
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
         self.setModal(True)
-        self.setMinimumSize(660, 480)
-        self.resize(760, 540)
+        # Give cards and form fields a real horizontal rhythm.  The previous
+        # compact width forced labels and buttons to collide on Fedora fonts.
+        self.setMinimumSize(900, 600)
+        self.resize(980, 620)
         self._dark_theme = True
         self.setStyleSheet(self._stylesheet(True))
 
@@ -339,6 +341,7 @@ class PersonalizationWizard(QDialog):
         if dark:
             return """
             QDialog { background:#111117; color:#f5f2fa; }
+            QLabel { color:#eeeaf5; }
             QLabel#eyebrow { color:#b6acc8; font-size:11px; font-weight:700; letter-spacing:2px; }
             QLabel#title { color:#faf8ff; font-size:25px; font-weight:700; }
             QLabel#subtitle { color:#c5bfce; font-size:14px; }
@@ -362,6 +365,7 @@ class PersonalizationWizard(QDialog):
             """
         return """
             QDialog { background:#f3f2f8; color:#1b1b22; }
+            QLabel { color:#27242d; }
             QLabel#eyebrow { color:#625b70; font-size:11px; font-weight:700; letter-spacing:2px; }
             QLabel#title { color:#1c1b20; font-size:25px; font-weight:700; }
             QLabel#subtitle { color:#5e5b66; font-size:14px; }
@@ -422,32 +426,38 @@ class PersonalizationWizard(QDialog):
 
     def _build_profile(self):
         frame, layout = self._panel("Quem está por aqui?", "A Aurora usará esse nome nas saudações, em vez do nome da conta do desktop.")
+        columns = QHBoxLayout()
+        columns.setSpacing(22)
+        user_column = QVBoxLayout(); user_column.setSpacing(8)
+        assistant_column = QVBoxLayout(); assistant_column.setSpacing(8)
         self.user_name = QLineEdit(str(self.cfg.get("user_name", "")))
         self.user_name.setPlaceholderText("Ex.: Alex")
         self.user_name.setClearButtonEnabled(True)
         self.user_name.setMinimumHeight(48)
-        layout.addWidget(QLabel("Como devo te chamar?")); layout.addWidget(self.user_name)
+        user_column.addWidget(QLabel("Como devo te chamar?")); user_column.addWidget(self.user_name)
         self.user_name_note = QLabel("Digite como você quer ser chamada na saudação.")
-        self.user_name_note.setStyleSheet("color:#746d7d;font-size:12px")
-        layout.addWidget(self.user_name_note)
-        layout.addSpacing(6)
-        layout.addWidget(QLabel("Nome de ativação da assistente"))
+        self.user_name_note.setObjectName("cardDetail")
+        user_column.addWidget(self.user_name_note)
+        assistant_column.addWidget(QLabel("Nome de ativação da assistente"))
         self.assistant_name = QLineEdit(str(self.cfg.get("assistant_name", "Aurora")))
         self.assistant_name.setPlaceholderText("Ex.: Aurora")
         self.assistant_name.setClearButtonEnabled(True)
         self.assistant_name.setMinimumHeight(48)
-        layout.addWidget(self.assistant_name)
+        assistant_column.addWidget(self.assistant_name)
         self.default_name = QCheckBox("Nah, prefiro Aurora")
         self.default_name.setChecked(str(self.cfg.get("assistant_name", "Aurora")).casefold() == "aurora")
         self.default_name.toggled.connect(self.assistant_name.setHidden)
         self.default_name.toggled.connect(self._update_preview_phrase)
         self.assistant_name.textChanged.connect(self._update_preview_phrase)
         self.assistant_name.setHidden(self.default_name.isChecked())
-        layout.addWidget(self.default_name)
+        assistant_column.addWidget(self.default_name)
         self.name_note = QLabel("O nome será validado no Vosk. Se alguma palavra não existir, a Aurora oferecerá um treinamento local curto.")
         self.name_note.setWordWrap(True)
-        self.name_note.setStyleSheet("color:#746d7d;font-size:12px")
-        layout.addWidget(self.name_note)
+        self.name_note.setObjectName("cardDetail")
+        assistant_column.addWidget(self.name_note)
+        columns.addLayout(user_column, 1)
+        columns.addLayout(assistant_column, 1)
+        layout.addLayout(columns)
         self.stack.addWidget(frame)
 
     def _build_wake_training(self):
@@ -670,7 +680,7 @@ class PersonalizationWizard(QDialog):
             effect = self.stack.graphicsEffect()
             effect.setOpacity(0.0)
             fade = QPropertyAnimation(effect, b"opacity", self)
-            fade.setDuration(420)
+            fade.setDuration(480)
             fade.setStartValue(0.0)
             fade.setEndValue(1.0)
             fade.setEasingCurve(QEasingCurve.Type.OutCubic)
@@ -679,10 +689,10 @@ class PersonalizationWizard(QDialog):
             origin = self.stack.pos()
             direction = 1 if page >= previous else -1
             slide = QPropertyAnimation(self.stack, b"pos", self)
-            slide.setDuration(420)
+            slide.setDuration(480)
             slide.setStartValue(origin + QPoint(18 * direction, 0))
             slide.setEndValue(origin)
-            slide.setEasingCurve(QEasingCurve.Type.OutCubic)
+            slide.setEasingCurve(QEasingCurve.Type.OutBack)
             group = QParallelAnimationGroup(self)
             group.addAnimation(fade)
             group.addAnimation(slide)

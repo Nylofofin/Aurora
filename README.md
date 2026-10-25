@@ -1,7 +1,7 @@
 # Aurora Desktop
 
-**Versão:** `1.9.2` (PC) · `1.2.3` (Android, arquivada) · **Build:** `aurora-desktop-1.9.2-launchpad-update-fix`
-**Release:** **Aurora Desktop 1.9.2 — Launchpad Update Fix** — patch estável.
+**Versão:** `2.0.0a` (PC) · `1.2.3` (Android, arquivada) · **Build:** `aurora-desktop-2.0.0a-kepler-452b`
+**Release:** **Aurora Desktop 2.0.0a — Kepler-452b** — release estável.
 
 > **Release estável 1.8.6 — Sirius Control Panel.** Esta rodada adiciona uma seção de personalização ao Launchpad para reescolher nome, voz e estilo sem reinstalar, e corrige o fechamento genérico de aplicativos Flatpak em Wayland. Destina-se ao Fedora Workstation com GNOME/Wayland e Ollama local. Provedores externos, periféricos, portais do GNOME e integrações opcionais continuam sujeitos à rede, permissões e configuração local. A Aurora não instala atualizações sem confirmação.
 
