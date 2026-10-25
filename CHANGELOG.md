@@ -1,6 +1,6 @@
 # Histórico de versões
 
-## Aurora Desktop 1.9.1 — Event Horizon, 2026-10-24 (release estável)
+## Aurora Desktop 1.9.2 — Launchpad Update Fix, 2026-10-24 (release estável)
 
 - Compacta e escurece o onboarding e o Launchpad.
 - Adiciona três pares originais de feedback sonoro selecionáveis.

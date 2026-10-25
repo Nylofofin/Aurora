@@ -3,8 +3,8 @@ from __future__ import annotations
 
 """Release identity for the Aurora local desktop build."""
 
-__version__ = "1.9.1"
+__version__ = "1.9.2"
 
-CODENAME = "EVENT HORIZON"
+CODENAME = "LAUNCHPAD UPDATE FIX"
 
-BUILD_ID = "aurora-desktop-1.9.1-event-horizon"
+BUILD_ID = "aurora-desktop-1.9.2-launchpad-update-fix"
