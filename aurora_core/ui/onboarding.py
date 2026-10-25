@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 
 from ..config import VOSK_PATH
 from ..voice.wake import wake_name_supported, wake_name_words
-from ..voice.profile import enroll as enroll_wake_profile
+from ..voice.profile import enroll as enroll_wake_profile, validate_recording
 
 
 SUPPORTED_VOICES = (
@@ -757,6 +757,13 @@ class PersonalizationWizard(QDialog):
         self._wake_worker.start()
 
     def _wake_sample_captured(self, pcm):
+        valid, reason = validate_recording(pcm)
+        if not valid:
+            count = len(self._wake_recordings)
+            self.wake_training_status.setText(reason)
+            self.wake_training_button.setText(f"Gravar amostra {count + 1} de 4")
+            self.wake_training_button.setEnabled(True)
+            return
         self._wake_recordings.append(bytes(pcm))
         count = len(self._wake_recordings)
         if count >= 4:

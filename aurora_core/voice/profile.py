@@ -17,6 +17,9 @@ FRAME_SAMPLES = 400  # 25 ms
 FRAME_COUNT = 48
 PROFILE_VERSION = 1
 MIN_MATCH_RMS = 0.02
+MIN_ENROLL_RMS = 0.008
+MIN_VOICED_FRAMES = 4
+MAX_CLIPPED_RATIO = 0.02
 
 
 def _samples(pcm: bytes) -> list[float]:
@@ -25,6 +28,31 @@ def _samples(pcm: bytes) -> list[float]:
     if __import__("sys").byteorder != "little":
         values.byteswap()
     return [sample / 32768.0 for sample in values]
+
+
+def validate_recording(pcm: bytes) -> tuple[bool, str]:
+    """Reject unusable enrollment takes before they poison a local profile."""
+    raw = bytes(pcm or b"")
+    if len(raw) % 2:
+        return False, "A gravação ficou incompleta. Tente novamente."
+    values = _samples(raw)
+    if len(values) < FRAME_SAMPLES * 8:
+        return False, "A gravação ficou curta demais. Tente novamente."
+    rms = math.sqrt(sum(sample * sample for sample in values) / len(values))
+    if rms < MIN_ENROLL_RMS:
+        return False, "Não ouvi o nome com clareza. Fale um pouco mais perto do microfone e tente novamente."
+    clipped = sum(abs(sample) >= 0.995 for sample in values) / len(values)
+    if clipped > MAX_CLIPPED_RATIO:
+        return False, "O áudio distorceu. Afaste um pouco o microfone e tente novamente."
+    voiced = 0
+    for start in range(0, len(values) - FRAME_SAMPLES + 1, FRAME_SAMPLES):
+        frame = values[start:start + FRAME_SAMPLES]
+        frame_rms = math.sqrt(sum(sample * sample for sample in frame) / len(frame))
+        if frame_rms >= MIN_ENROLL_RMS:
+            voiced += 1
+    if voiced < MIN_VOICED_FRAMES:
+        return False, "Não consegui distinguir a fala do silêncio. Grave o nome novamente."
+    return True, "Amostra de voz válida."
 
 
 def feature_vector(pcm: bytes) -> list[float]:
@@ -53,7 +81,8 @@ def feature_vector(pcm: bytes) -> list[float]:
 
 
 def enroll(name: str, recordings: list[bytes]) -> dict:
-    vectors = [feature_vector(recording) for recording in recordings]
+    vectors = [feature_vector(recording) for recording in recordings
+               if validate_recording(recording)[0]]
     vectors = [vector for vector in vectors if vector]
     if len(vectors) < 3:
         raise ValueError("São necessárias pelo menos três amostras de voz.")
