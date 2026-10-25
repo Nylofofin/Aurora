@@ -143,8 +143,8 @@ def launch_application(name, *, background=False):
         if returncode not in (None,0):
             return f'O Flatpak encerrou com erro ao tentar iniciar {app["name"]} (código {returncode}).'
         if returncode==0:
-            return f'O Flatpak aceitou abrir {app["name"]}, mas não confirmei se a janela apareceu.'
-        return f'Iniciei o processo Flatpak de {app["name"]}; ainda não confirmei se a janela apareceu.'
+            return f'O Flatpak recebeu o pedido para abrir {app["name"]}; ele pode estar carregando.'
+        return f'Enviei o pedido para abrir {app["name"]}; o aplicativo pode levar alguns segundos para aparecer.'
     gio=shutil.which('gio')
     if app and gio:
         try:

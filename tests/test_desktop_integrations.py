@@ -250,7 +250,7 @@ def test_flatpak_application_launches_by_id_and_reports_window_state_honestly(mo
     monkeypatch.setattr(apps_module.shutil, "which", lambda name: "/usr/bin/flatpak" if name == "flatpak" else None)
     monkeypatch.setattr(apps_module.subprocess, "Popen", lambda command, **kwargs: calls.append((command, kwargs)))
     assert apps_module.launch_application("OBS Studio") == (
-        "Iniciei o processo Flatpak de OBS Studio; ainda não confirmei se a janela apareceu."
+        "Enviei o pedido para abrir OBS Studio; o aplicativo pode levar alguns segundos para aparecer."
     )
     assert calls[0][0] == ["/usr/bin/flatpak", "run", "com.obsproject.Studio"]
     assert calls[0][1]["start_new_session"] is True
@@ -269,7 +269,7 @@ def test_obs_background_launch_starts_minimized_to_tray(monkeypatch, tmp_path):
 
     result = apps_module.launch_application("OBS Studio", background=True)
 
-    assert result.startswith("Iniciei o processo Flatpak")
+    assert result.startswith("Enviei o pedido para abrir OBS Studio")
     assert calls[0][0] == ["/usr/bin/flatpak", "run", "com.obsproject.Studio", "--minimize-to-tray"]
     assert "QT_QPA_PLATFORM" not in calls[0][1]["env"]
 
@@ -290,7 +290,7 @@ def test_roblox_app_request_resolves_to_installed_sober_flatpak(monkeypatch, tmp
     )
     assert apps_module.find_desktop_app("Roblox") == app
     assert apps_module.launch_application("Roblox") == (
-        "Iniciei o processo Flatpak de Sober; ainda não confirmei se a janela apareceu."
+        "Enviei o pedido para abrir Sober; o aplicativo pode levar alguns segundos para aparecer."
     )
     assert calls[0][0] == ["/usr/bin/flatpak", "run", "org.vinegarhq.Sober"]
     assert "QT_QPA_PLATFORM" not in calls[0][1]["env"]
@@ -377,7 +377,7 @@ def test_flatpak_successful_short_process_does_not_claim_a_visible_window(monkey
 
     result = apps_module.launch_application("OBS Studio")
 
-    assert result == "O Flatpak aceitou abrir OBS Studio, mas não confirmei se a janela apareceu."
+    assert result == "O Flatpak recebeu o pedido para abrir OBS Studio; ele pode estar carregando."
 
 
 def test_close_flatpak_application_uses_instance_id(monkeypatch):
