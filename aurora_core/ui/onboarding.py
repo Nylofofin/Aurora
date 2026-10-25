@@ -31,6 +31,18 @@ BUBBLE_STYLES = (
 )
 BUBBLE_STYLE_KEYS = {key for key, _title, _detail in BUBBLE_STYLES}
 
+# Shared catalog for the onboarding carousel and playback validation. Keep
+# stable keys so the user's selected sound signature survives updates.
+FEEDBACK_THEMES = (
+    ("boreal", "Boreal", "Cristal aéreo", "∿   ✧   ∿"),
+    ("pulse", "Pulse", "Batida eletrônica", "▂   ▅   ▇"),
+    ("void", "Void", "Grave espacial", "◌   ·   ◌"),
+    ("prisma", "Prisma", "Sinos de vidro", "✧   ◇   ✧"),
+    ("marea", "Maré", "Gotas líquidas", "◦   〜   ◦"),
+    ("lumen", "Lúmen", "Farol harmônico", "◖   ●   ◗"),
+)
+FEEDBACK_THEME_KEYS = {item[0] for item in FEEDBACK_THEMES}
+
 
 class _OrbCarouselStage(QWidget):
     resized = Signal()
@@ -400,7 +412,7 @@ class PersonalizationWizard(QDialog):
         self._sfx = {}
         self._feedback_sfx = {}
         self._selected_feedback = str(cfg.get("feedback_theme", "boreal"))
-        if self._selected_feedback not in {"boreal", "pulse", "void"}:
+        if self._selected_feedback not in FEEDBACK_THEME_KEYS:
             self._selected_feedback = "boreal"
         self.setWindowTitle("Personalizar a Aurora")
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
@@ -426,7 +438,7 @@ class PersonalizationWizard(QDialog):
             effect.setSource(QUrl.fromLocalFile(str(__import__("pathlib").Path(__file__).resolve().parents[2] / "assets" / "audio" / f"{name}.wav")))
             effect.setVolume(0.16 if name in {"select", "step"} else (0.22 if name != "error" else 0.30))
             self._sfx[name] = effect
-        for theme in ("boreal", "pulse", "void"):
+        for theme, *_ in FEEDBACK_THEMES:
             for direction in ("entrada", "saida"):
                 effect = QSoundEffect(self)
                 effect.setSource(QUrl.fromLocalFile(str(__import__("pathlib").Path(__file__).resolve().parents[2] / "assets" / "audio" / f"{direction}-{theme}.wav")))
@@ -789,10 +801,7 @@ class PersonalizationWizard(QDialog):
         self.stack.addWidget(frame)
 
     def _feedback_card(self, index):
-        choices = (("boreal", "Boreal", "Cristal aéreo", "∿   ✧   ∿"),
-                   ("pulse", "Pulse", "Batida eletrônica", "▂   ▅   ▇"),
-                   ("void", "Void", "Grave espacial", "◌   ·   ◌"))
-        key, title, detail, signature_text = choices[index % len(choices)]
+        key, title, detail, signature_text = FEEDBACK_THEMES[index % len(FEEDBACK_THEMES)]
         card = QFrame(self.feedback_stage)
         card.setObjectName("choiceCard")
         card.setProperty("selected", False)
@@ -825,9 +834,7 @@ class PersonalizationWizard(QDialog):
             "Assinatura sonora",
             "Cada par tem uma entrada e uma saída diferentes. Percorra, ouça a sequência e escolha a que combina com a sua Aurora.",
         )
-        self._feedback_choices = (("boreal", "Boreal", "Cristal aéreo"),
-                                  ("pulse", "Pulse", "Batida eletrônica"),
-                                  ("void", "Void", "Grave espacial"))
+        self._feedback_choices = tuple(item[:3] for item in FEEDBACK_THEMES)
         self._feedback_index = next((i for i, item in enumerate(self._feedback_choices)
                                      if item[0] == self._selected_feedback), 0)
         self._feedback_step_pending = False
@@ -1297,7 +1304,8 @@ class PersonalizationWizard(QDialog):
         def play_exit():
             self.feedback_status.setText("Saída…")
             exit_.play()
-        gap_ms = {"boreal": 980, "pulse": 800, "void": 1080}.get(theme, 900)
+        gap_ms = {"boreal": 980, "pulse": 800, "void": 1080,
+                  "prisma": 900, "marea": 980, "lumen": 900}.get(theme, 900)
         QTimer.singleShot(gap_ms, play_exit)
 
     def _preview_name(self):

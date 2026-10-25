@@ -12,14 +12,18 @@ Attribution is not required by CC0, but is retained here for provenance.
 ## Feedback themes
 
 `entrada-boreal.wav` / `saida-boreal.wav`, `entrada-pulse.wav` /
-`saida-pulse.wav` and `entrada-void.wav` / `saida-void.wav` are original
-stereo cues synthesized by the Aurora project. Boreal uses airy glass-like
-glides, Pulse uses short low rhythmic impacts, and Void uses a deeper resonant
-bloom with a sparse high accent. Each exit has its own descending cadence; it
-is not a pitch-reversed copy of its entry. The cues are reproducible with
+`saida-pulse.wav`, `entrada-void.wav` / `saida-void.wav`, `entrada-prisma.wav` /
+`saida-prisma.wav`, `entrada-marea.wav` / `saida-marea.wav`, and
+`entrada-lumen.wav` / `saida-lumen.wav` are original stereo cues synthesized
+by the Aurora project. Boreal uses airy glass-like glides, Pulse uses short
+low rhythmic impacts, Void uses a deep resonant bloom, Prisma uses inharmonic
+glass strikes, Maré uses rounded liquid blips over a soft swell, and Lúmen uses
+a warm harmonic beacon. Every exit has its own descending cadence; it is not a
+pitch-reversed copy of its entry. The cues are reproducible with
 [`scripts/generate-feedback-sfx.py`](../../scripts/generate-feedback-sfx.py),
 contain no samples or third-party sounds, and are released under CC0-1.0.
-Onboarding previews each pair sequentially with a short gap.
+Onboarding previews each pair sequentially with a short gap. The six pairs are
+independent compositions, not simple pitch or volume variants of one sound.
 
 ## Onboarding UI cues
 

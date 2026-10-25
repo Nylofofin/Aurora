@@ -37,7 +37,7 @@ from .system.volume import control_volume
 from .system.windows import manage_window
 from .ui.orb import AuroraOrb
 from .ui.research_card import ResearchCard
-from .ui.onboarding import PersonalizationWizard
+from .ui.onboarding import FEEDBACK_THEME_KEYS, PersonalizationWizard
 from .voice.tts import Speaker
 from .voice.wake import LocalVoice
 from .web.freshness import _independent_recent_source_count
@@ -196,7 +196,7 @@ class AuroraService(QObject):
         self.mode_watchdog.timeout.connect(self._settle_stale_controlling_mode)
         self.mode_watchdog.start()
         feedback_theme=str(self.cfg.get('feedback_theme','boreal') or 'boreal').strip().lower()
-        if feedback_theme not in {'boreal','pulse','void'}: feedback_theme='boreal'
+        if feedback_theme not in FEEDBACK_THEME_KEYS: feedback_theme='boreal'
         feedback_dir=APP_DIR/'assets'/'audio'
         self.feedback=QSoundEffect(); self.feedback.setSource(QUrl.fromLocalFile(str(feedback_dir/f'entrada-{feedback_theme}.wav'))); self.feedback.setVolume(.34)
         self.exit_feedback=QSoundEffect(); self.exit_feedback.setSource(QUrl.fromLocalFile(str(feedback_dir/f'saida-{feedback_theme}.wav'))); self.exit_feedback.setVolume(.30)
