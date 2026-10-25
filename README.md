@@ -1,6 +1,6 @@
 # Aurora Desktop
 
-**Versão:** `3.0.0e Stable` · **Codinome:** `Vega Voice & Wake` · **Build:** `aurora-desktop-3.0.0e-vega-voice-wake`
+**Versão:** `3.0.0e` · **Canal:** Stable · **Codinome:** `Vega Voice & Wake` · **Build:** `aurora-desktop-3.0.0e-vega-voice-wake`
 
 **Uma assistente de voz para Linux, com uma presença pequena na tela e o processamento principal no próprio computador.** A Aurora desperta por voz, entende pedidos cotidianos, conversa em uma sessão contínua e pode pesquisar na web ou executar ações locais.
 
