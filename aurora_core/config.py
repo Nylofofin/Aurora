@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from urllib.parse import urlparse
-import json, os, platform, shutil, threading
+import json, os, platform, shutil, subprocess, threading
 
 APP_DIR = Path(__file__).resolve().parent.parent
 
@@ -51,7 +51,29 @@ def current_boot_id():
 
 def current_session_id():
     """Return the login session identifier used to trigger first-run setup."""
-    return str(os.environ.get('XDG_SESSION_ID') or '').strip()
+    value = str(os.environ.get('XDG_SESSION_ID') or '').strip()
+    if value:
+        return value
+    loginctl = shutil.which('loginctl')
+    if not loginctl:
+        return ''
+    try:
+        result = subprocess.run([loginctl, 'list-sessions', '--no-legend'],
+                                capture_output=True, text=True, timeout=2, check=False)
+        uid = str(os.getuid())
+        candidates = []
+        for line in result.stdout.splitlines():
+            fields = line.split()
+            if len(fields) < 2 or fields[1] != uid:
+                continue
+            session = fields[0]
+            active = subprocess.run([loginctl, 'show-session', session, '-p', 'Active', '--value'],
+                                    capture_output=True, text=True, timeout=2, check=False)
+            if active.stdout.strip().casefold() == 'yes':
+                candidates.append(session)
+        return candidates[-1] if candidates else ''
+    except (OSError, subprocess.SubprocessError):
+        return ''
 
 def onboarding_state(settings, boot_id=None, session_id=None):
     """Return (wait_for_new_login, show_wizard) for an onboarding marker."""
