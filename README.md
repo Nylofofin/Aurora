@@ -135,6 +135,10 @@ Comandos explícitos para abrir um site com domínio/URL, abrir ou fechar um apl
 
 Para OBS, habilite **WebSocket Server** nas configurações do servidor WebSocket. A conexão usa loopback (`127.0.0.1`) e timeouts curtos para o protocolo; a senha nunca é registrada nos logs. Se a autenticação estiver ligada em uma instalação nativa, configure `AURORA_OBS_PASSWORD` apenas no ambiente privado do serviço. Diga “comece a gravar minha tela” ou “pare de gravar a tela”. Iniciar a gravação pede confirmação; parar é imediato e, na instalação Flatpak, encerra o OBS após confirmar que a saída parou. Se a conexão cair durante o envio, Aurora avisa que o estado pode ter mudado e pede para conferir no OBS antes de repetir, para evitar iniciar/parar duas vezes. O log local registra a etapa que falhou e o tipo do erro, sem conteúdo da senha. A indicação **CONTROLANDO** aparece durante os comandos OBS. As ações são registradas localmente em `~/.local/state/aurora/actions.jsonl`, sem credenciais.
 
+### Diagnóstico de voz
+
+Para acompanhar o serviço e os detalhes de falha do microfone em tempo real, use `journalctl --user -fu aurora.service` ou `tail -f ~/.local/state/aurora/aurora-app.log`. Se o dispositivo de captura sofrer uma interrupção transitória, Aurora registra a exceção localmente e tenta reabrir o reconhecimento até três vezes; a contagem volta a zero quando o stream do microfone abre com sucesso.
+
 ## Adaptação local
 
 ### Controle de tela no GNOME/Wayland

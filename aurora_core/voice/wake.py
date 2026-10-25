@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QThread, Signal
 from array import array
-import json, queue, re, sys, threading, time
+import json, queue, re, sys, threading, time, traceback
 import math
 from concurrent.futures import Future, TimeoutError as FutureTimeout
 from ..config import VOSK_PATH
@@ -191,6 +191,10 @@ class LocalVoice(QThread):
                         try: q.get_nowait(); q.put_nowait(bytes(data))
                         except (queue.Empty,queue.Full): pass
                 with sd.RawInputStream(samplerate=SAMPLE_RATE,blocksize=MIC_BLOCK_FRAMES,dtype='int16',channels=1,callback=callback):
+                    # Distinguish a successfully reopened capture device from
+                    # a worker that merely loaded Vosk. The service uses this
+                    # signal to reset its bounded recovery counter.
+                    self.status.emit('ready')
                     self.status.emit('hidden')
                     active=False; started=0.0; buffer=[]; wake_audio=[]; profile_checked_at=0.0; profile_cooldown_until=0.0; profile_hit_streak=0; barge_frames=0
                     profile_candidate=False; profile_candidate_audio=bytearray()
@@ -359,5 +363,11 @@ class LocalVoice(QThread):
                     self.status.emit('hidden')
 
         except Exception as e:
-            self.unavailable.emit(str(e)); self.status.emit('error')
+            # Keep the underlying PortAudio/Vosk exception: the old UI only
+            # surfaced a generic message, leaving no evidence in the service
+            # journal or aurora-app.log to diagnose a dead microphone worker.
+            print(f'[voice] reconhecimento encerrado: {type(e).__name__}: {e}',
+                  file=sys.stderr, flush=True)
+            traceback.print_exc(file=sys.stderr)
+            self.unavailable.emit(f'{type(e).__name__}: {e}'); self.status.emit('error')
     def stop(self): self.running=False

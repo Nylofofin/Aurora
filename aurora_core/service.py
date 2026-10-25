@@ -175,6 +175,8 @@ class AuroraService(QObject):
         self._aurora_excepthook=self._uncaught_exception
         self._aurora_thread_excepthook=self._uncaught_thread_exception
         self._last_error_notification=None
+        self._voice_recovery_attempts=0
+        self._voice_error_announced=False
         self.critical_error_requested.connect(self._present_critical_error,Qt.ConnectionType.QueuedConnection)
         self.response_summary=''; self.response_finished=False; self.response_language='Português brasileiro'; self.activity_generation=0; self.request_generation=0; self.last_wake=0.0; self.background_requests=[]; self.context_history=[]; self.current_prompt=''; self.active_search_context=''
         self.continuous_mode=False; self.conversation_turns=0; self.conversation_token=0; self.current_turn_kind='action'
@@ -748,6 +750,10 @@ class AuroraService(QObject):
     @Slot(str)
     def voice_state(self,state):
         if self._mobile_audio_owned(): return
+        if state=='ready':
+            self._voice_recovery_attempts=0
+            self._voice_error_announced=False
+            return
         if state=='hidden':
             if self.pending_clarification and not self.voice.request_active.is_set():
                 self.pending_clarification=None; self.clarification_listening=False
@@ -765,8 +771,29 @@ class AuroraService(QObject):
             else: self.orb.reveal('listening')
         elif not (self.inf and self.inf.isRunning()): self.orb.set_mode(state)
     def voice_error(self,message):
+        # The worker logs its full traceback locally; keep the spoken message
+        # short and retry the capture thread in case PipeWire/PortAudio had a
+        # transient device interruption.
+        print(f'[voice] worker indisponível: {message}',file=sys.stderr,flush=True)
         self.response_finished=True; self.response_summary='Não consegui iniciar o reconhecimento de voz.'; self.orb.reveal('error')
-        self.speak_in_selected_language('Não consegui iniciar o reconhecimento de voz')
+        if not self._voice_error_announced:
+            self._voice_error_announced=True
+            self.speak_in_selected_language('Não consegui iniciar o reconhecimento de voz. Vou tentar reconectar o microfone.')
+        if self._voice_recovery_attempts < 3 and self.voice.running:
+            self._voice_recovery_attempts+=1
+            delay_ms=(1000,2500,5000)[self._voice_recovery_attempts-1]
+            print(f'[voice] tentativa de reconexão {self._voice_recovery_attempts}/3 em {delay_ms} ms',file=sys.stderr,flush=True)
+            QTimer.singleShot(delay_ms,self._restart_voice_after_error)
+    def _restart_voice_after_error(self):
+        voice=getattr(self,'voice',None)
+        if voice is None or not voice.running: return
+        # unavailable is queued from the worker; give QThread time to finish
+        # before calling start() again. A short poll avoids racing run() exit.
+        if voice.isRunning():
+            QTimer.singleShot(250,self._restart_voice_after_error)
+            return
+        print('[voice] reabrindo captura local',file=sys.stderr,flush=True)
+        voice.start()
     def ask(self,prompt):
         if self._handle_system_routine_confirmation(prompt): return
         if getattr(self,'continuous_mode',False) and is_conversation_closing(prompt):
