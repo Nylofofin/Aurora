@@ -136,7 +136,7 @@ class LocalVoice(QThread):
         else:
             try:
                 from .stt import transcribe_pcm
-                command=transcribe_pcm(pcm,SAMPLE_RATE)
+                command=transcribe_pcm(pcm,SAMPLE_RATE,self.cfg.get('assistant_name','Aurora'))
                 if not command:
                     command=fallback; outcome='vosk_fallback'
             except Exception:
@@ -338,7 +338,10 @@ class LocalVoice(QThread):
                         if active:
                             if text:
                                 self.audio_level.emit(0.0)
-                                pcm=b''.join(buffer[-80:]); active=False; buffer=[]; wake_audio=[]; started=time.monotonic(); self.speaking=True; self.status.emit('thinking')
+                                # Keep up to 20 seconds of command audio. The old
+                                # 8-second cap silently clipped natural pauses and
+                                # longer spoken requests before Whisper saw them.
+                                pcm=b''.join(buffer[-200:]); active=False; buffer=[]; wake_audio=[]; started=time.monotonic(); self.speaking=True; self.status.emit('thinking')
                                 command=self.local_transcribe(pcm,text,command_confidence)
                                 if command and self.request_active.is_set():
                                     print(f'[voice] comando transcrito e enviado; chars={len(command)}',file=sys.stderr,flush=True)
@@ -366,7 +369,7 @@ class LocalVoice(QThread):
                                 recognized=''
                                 try:
                                     from .stt import transcribe_pcm
-                                    recognized=transcribe_pcm(candidate_pcm,SAMPLE_RATE)
+                                    recognized=transcribe_pcm(candidate_pcm,SAMPLE_RATE,assistant_name)
                                 except Exception as exc:
                                     print(f'[voice] validação local do nome personalizado falhou ({type(exc).__name__})',file=sys.stderr,flush=True)
                                 if self.contains_wake_name(recognized,assistant_name):

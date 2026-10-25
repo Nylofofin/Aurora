@@ -639,6 +639,12 @@ def test_news_format_terms_are_removed_only_when_a_subject_remains():
     assert aurora._search_relevance("notícias de hoje sobre tecnologias", "Notícias sobre tecnologia", "") > 0
 
 
+def test_search_relevance_tolerates_a_missing_modifier_but_keeps_two_anchor_floor():
+    query = "GNOME Wayland documentation"
+    assert aurora._search_relevance(query, "GNOME Developer Documentation", "Essential reference for desktop developers") > 0
+    assert aurora._search_relevance("GNOME Wayland", "GNOME desktop documentation", "") == 0.0
+
+
 def test_current_dollar_question_does_not_require_question_words_for_relevance():
     query = "Quanto está o dólar agora"
     assert aurora._fresh_query_terms(query) == {"dolar"}

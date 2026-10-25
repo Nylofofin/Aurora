@@ -47,6 +47,13 @@ def test_custom_wake_name_accepts_punctuation_but_requires_a_word_boundary():
     assert strip_wake_word("Ei, Luna: abra o terminal", "Luna") == "abra o terminal"
 
 
+def test_wake_stripping_tolerates_one_transcription_error_and_optional_article():
+    from aurora_core.system.text import strip_wake_word
+
+    assert strip_wake_word("O Lune, qual é a previsão do tempo?", "Luna") == "qual é a previsão do tempo?"
+    assert strip_wake_word("Ei Nova Auror, abra o terminal", "Nova Aurora") == "Ei Nova Auror, abra o terminal"
+
+
 def test_wake_decoders_reset_together_at_an_utterance_boundary():
     class Recognizer:
         def __init__(self): self.resets = 0
@@ -218,7 +225,7 @@ def test_recognized_command_does_not_auto_rearm_continuous_listening():
     assert "if self.one_shot.is_set():" in source
     assert "self.one_shot.is_set() or self.request_active.is_set()" not in source
     assert MIC_BLOCK_FRAMES == 1600
-    assert "pcm=b''.join(buffer[-80:]); active=False" in source
+    assert "pcm=b''.join(buffer[-200:]); active=False" in source
     assert "getattr(self,'continuous_mode',False)" in service_source
 
 

@@ -162,7 +162,9 @@ def _search_relevance(query,title,snippet=''):
     numeric={term for term in wanted if term.isdigit()}
     if numeric and not numeric.issubset(found): return 0.0
     overlap={term for term in wanted if _search_term_forms(term) & found}
-    required=max(1,math.ceil(len(wanted)*0.75))
+    # Two-term queries still require both anchors. Longer natural-language
+    # queries tolerate omitted modifiers while requiring at least two matches.
+    required=len(wanted) if len(wanted)<=2 else max(2,math.ceil(len(wanted)*0.60))
     if len(overlap)<required: return 0.0
     return len(overlap)/max(1,len(wanted))
 

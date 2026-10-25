@@ -103,7 +103,7 @@ def _get_model():
     return _MODEL
 
 
-def transcribe_pcm(pcm: bytes, sample_rate: int = SAMPLE_RATE) -> str:
+def transcribe_pcm(pcm: bytes, sample_rate: int = SAMPLE_RATE, assistant_name: str = "Aurora") -> str:
     """Decode signed 16-bit mono PCM locally; audio never leaves this process."""
     if sample_rate != SAMPLE_RATE:
         raise ValueError("O áudio de reconhecimento precisa estar em 16 kHz")
@@ -127,6 +127,11 @@ def transcribe_pcm(pcm: bytes, sample_rate: int = SAMPLE_RATE) -> str:
     # whisper.cpp's Python API takes mono float samples in [-1, 1]. Keep the
     # conversion in one copy to avoid retaining microphone buffers.
     audio = samples.astype(np.float32) / 32768.0
+    safe_name = " ".join(str(assistant_name or "Aurora").split())[:48]
+    initial_prompt = (
+        "Português brasileiro falado informalmente. Perguntas e comandos curtos. "
+        f"O nome da assistente é {safe_name}."
+    )
     with _TRANSCRIBE_LOCK:
         segments = _get_model().transcribe(
             audio,
@@ -141,5 +146,6 @@ def transcribe_pcm(pcm: bytes, sample_rate: int = SAMPLE_RATE) -> str:
             print_realtime=False,
             suppress_nst=True,
             temperature=0.0,
+            initial_prompt=initial_prompt,
         )
     return " ".join(str(segment.text).strip() for segment in segments if segment.text.strip()).strip()
