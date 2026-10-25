@@ -196,9 +196,10 @@ def test_speaker_interrupt_discards_queued_speech():
 def test_voice_preview_queues_selected_voice_without_changing_saved_voice():
     speaker = aurora.Speaker({"tts_voice": "pt-BR-ThalitaMultilingualNeural"})
     speaker.say_with_voice("Olá!", "en-US-AriaNeural")
-    text, _queued_at, voice = speaker.q.get_nowait()
+    text, _queued_at, voice, engine = speaker.q.get_nowait()
     assert text == "Olá!"
     assert voice == "en-US-AriaNeural"
+    assert engine == "edge"
     assert speaker.cfg["tts_voice"] == "pt-BR-ThalitaMultilingualNeural"
 
 

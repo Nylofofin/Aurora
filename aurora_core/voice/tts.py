@@ -3,17 +3,31 @@ from __future__ import annotations
 
 from PySide6.QtCore import QThread, Signal
 import asyncio, queue, re, shutil, time
+import subprocess
+import importlib.util
+
+from ..config import PIPER_MODEL_PATH
+
+
+def local_piper_available():
+    """Whether the local runtime and the pinned Brazilian voice are present."""
+    try:
+        return (importlib.util.find_spec('piper') is not None and
+                PIPER_MODEL_PATH.is_file() and
+                PIPER_MODEL_PATH.with_suffix('.onnx.json').is_file())
+    except (ImportError, ValueError, OSError):
+        return False
 
 class Speaker(QThread):
     speaking=Signal(bool); audio_started=Signal(); drained=Signal(); speech_level=Signal(float); speech_error=Signal(str)
     def __init__(self,cfg): super().__init__(); self.cfg=cfg; self.q=queue.Queue(); self.running=True; self.active=False; self.playing=False; self.current_player=None; self.stream_loop=None; self.stream_task=None; self.cancel_generation=0; self.engine=shutil.which('ffplay')
     def say(self,text):
         text=self.clean(text)
-        if text: self.q.put((text[:1800],time.perf_counter(),None))
-    def say_with_voice(self,text,voice):
-        """Queue a short speech preview without changing the saved voice."""
+        if text: self.q.put((text[:1800],time.perf_counter(),None,None))
+    def say_with_voice(self,text,voice,engine='edge'):
+        """Queue a short preview without changing the saved voice or engine."""
         text=self.clean(text); voice=str(voice or '').strip()
-        if text and voice: self.q.put((text[:500],time.perf_counter(),voice))
+        if text: self.q.put((text[:500],time.perf_counter(),voice or None,engine))
     @staticmethod
     def clean(text):
         text=str(text)
@@ -84,12 +98,51 @@ class Speaker(QThread):
             except Exception as retry_error:
                 print(f'[voice] Edge TTS retry failed ({type(retry_error).__name__}); no alternate voice will be used', flush=True)
                 raise
+    def _load_piper_voice(self):
+        voice=getattr(self,'_piper_voice',None)
+        if voice is not None: return voice
+        if not PIPER_MODEL_PATH.is_file() or not PIPER_MODEL_PATH.with_suffix('.onnx.json').is_file():
+            raise FileNotFoundError('O modelo local Faber não está instalado; execute setup-voice.sh.')
+        from piper import PiperVoice
+        started=time.perf_counter()
+        voice=PiperVoice.load(str(PIPER_MODEL_PATH),use_cuda=False)
+        self._piper_voice=voice
+        print(f'[voice-timing] stage=tts_model_load elapsed_ms={int((time.perf_counter()-started)*1000)} outcome=ok',flush=True)
+        return voice
+    def _stream_piper(self,text,generation):
+        """Generate and play sentence chunks locally; no text leaves this machine."""
+        from .telemetry import elapsed_ms, log_voice_timing
+        started=time.perf_counter(); first_audio=False; player=None
+        voice=self._load_piper_voice()
+        try:
+            player=subprocess.Popen([self.engine,'-nodisp','-autoexit','-loglevel','quiet',
+                '-f','s16le','-ar',str(voice.config.sample_rate),'-ch_layout','mono','-i','pipe:0'],
+                stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+            self.current_player=player
+            for chunk in voice.synthesize(text):
+                if generation!=self.cancel_generation: raise RuntimeError('speech interrupted')
+                if not chunk.audio_int16_bytes: continue
+                player.stdin.write(chunk.audio_int16_bytes); player.stdin.flush()
+                if not first_audio:
+                    first_audio=True
+                    log_voice_timing('tts_first_audio',elapsed_ms(started))
+                    self.playing=True; self.audio_started.emit()
+                self.speech_level.emit(.42)
+            if player.stdin and not player.stdin.closed: player.stdin.close()
+            if player.wait(timeout=60)!=0: raise RuntimeError('ffplay failed')
+        except BaseException:
+            if player is not None and player.poll() is None: player.kill(); player.wait()
+            raise
+        finally:
+            self.speech_level.emit(0.0)
+            if player is not None and self.current_player is player: self.current_player=None
     def run(self):
         while self.running:
             try: item=self.q.get(timeout=.3)
             except queue.Empty: continue
-            voice=None
-            if isinstance(item,tuple) and len(item)==3: text,queued_at,voice=item
+            voice=None; engine=None
+            if isinstance(item,tuple) and len(item)==4: text,queued_at,voice,engine=item
+            elif isinstance(item,tuple) and len(item)==3: text,queued_at,voice=item
             elif isinstance(item,tuple) and len(item)==2: text,queued_at=item
             else: text,queued_at=item,time.perf_counter()
             from .telemetry import elapsed_ms, log_voice_timing
@@ -98,20 +151,27 @@ class Speaker(QThread):
             playback_started=time.perf_counter()
             if not self.engine:
                 log_voice_timing('tts_complete',elapsed_ms(playback_started),'unavailable')
-                self.speech_error.emit('O Edge TTS precisa do ffplay para reproduzir a voz Thalita.')
+                self.speech_error.emit('O ffplay é necessário para reproduzir a voz da Aurora.')
                 self.speaking.emit(False); self.drained.emit(); continue
             outcome='ok'
             self.active=True; self.speaking.emit(True)
             try:
-                if self.engine:
-                    import asyncio
+                selected_engine=engine or self.cfg.get('tts_engine','edge')
+                if selected_engine=='piper':
+                    self._stream_piper(text,generation)
+                elif selected_engine=='edge':
                     asyncio.run(self._stream_edge_retry(text,generation,voice))
+                else:
+                    raise ValueError('Mecanismo de voz desconhecido')
             except asyncio.CancelledError:
                 outcome='interrupted'
             except Exception:
                 outcome='error'
                 if self.running and generation==self.cancel_generation:
-                    self.speech_error.emit('Não consegui gerar a voz Thalita pelo Edge TTS.')
+                    selected_engine=engine or self.cfg.get('tts_engine','edge')
+                    message=('Não consegui gerar a voz local Faber.' if selected_engine=='piper'
+                             else 'Não consegui gerar a voz pelo Edge TTS.')
+                    self.speech_error.emit(message)
             finally:
                 self.current_player=None
                 log_voice_timing('tts_complete',elapsed_ms(playback_started),outcome)

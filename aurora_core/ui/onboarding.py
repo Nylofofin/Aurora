@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 from ..config import VOSK_PATH
 from ..voice.wake import wake_name_supported, wake_name_words
 from ..voice.profile import enroll as enroll_wake_profile, validate_recording
+from ..voice.tts import local_piper_available
 
 
 SUPPORTED_VOICES = (
@@ -285,6 +286,12 @@ class PersonalizationWizard(QDialog):
         # decide whether text and surfaces should be light or dark.
         self._transition_group = None
         self._selected_voice = str(cfg.get("tts_voice", SUPPORTED_VOICES[0][0]))
+        self._selected_tts_engine = str(cfg.get("tts_engine", "edge"))
+        if self._selected_tts_engine not in {"edge", "piper"}:
+            self._selected_tts_engine = "edge"
+        self._local_voice_available = local_piper_available()
+        if self._selected_tts_engine == "piper" and not self._local_voice_available:
+            self._selected_tts_engine = "edge"
 
         for name in ("select", "step", "success", "error"):
             effect = QSoundEffect(self)
@@ -328,9 +335,8 @@ class PersonalizationWizard(QDialog):
         footer.addWidget(self.next_button)
         root.addLayout(footer)
 
-        self._voice_worker = _VoiceCatalog(self)
-        self._voice_worker.loaded.connect(self._populate_voices)
-        self._voice_worker.start()
+        self._voice_worker = None
+        if self._selected_tts_engine == "edge": self._start_voice_catalog()
         self._current_page = 0
         self._set_page(0, animated=False)
         self._center()
@@ -521,7 +527,34 @@ class PersonalizationWizard(QDialog):
         self.stack.addWidget(frame)
 
     def _build_voice(self):
-        frame, layout = self._panel("Escolha a voz da Aurora", "Três vozes em português do Brasil. Ouça uma prévia e marque sua escolha.")
+        frame, layout = self._panel("Escolha a voz da Aurora", "Teste a síntese local ou mantenha uma das vozes Edge disponíveis.")
+        engine_choices = QHBoxLayout(); engine_choices.setSpacing(12)
+        self.engine_group = QButtonGroup(self); self.engine_group.setExclusive(True)
+        self.engine_cards = {}
+        self.engine_radios = {}
+        for key, title, detail in (("piper", "Faber · local", "Texto e áudio permanecem no computador"),
+                                   ("edge", "Edge TTS · online", "Vozes Thalita, Francisca e Antonio")):
+            card = QFrame(); card.setObjectName("choiceCard"); card.setMinimumHeight(92)
+            box = QVBoxLayout(card); box.setContentsMargins(12, 8, 12, 8); box.setSpacing(4)
+            heading = QLabel(title); heading.setObjectName("cardTitle"); heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            detail_label = QLabel(detail); detail_label.setObjectName("cardDetail"); detail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            radio = QRadioButton("Usar esta síntese")
+            radio.setChecked(key == self._selected_tts_engine)
+            radio.setEnabled(key != "piper" or self._local_voice_available)
+            radio.toggled.connect(lambda checked, value=key: self._select_tts_engine(value, checked))
+            box.addWidget(heading); box.addWidget(detail_label); box.addWidget(radio, 0, Qt.AlignmentFlag.AlignHCenter)
+            self.engine_group.addButton(radio); self.engine_cards[key] = card; self.engine_radios[key] = radio
+            engine_choices.addWidget(card, 1)
+        layout.addLayout(engine_choices)
+        self.local_voice_card = QFrame(); self.local_voice_card.setObjectName("choiceCard")
+        local_box = QVBoxLayout(self.local_voice_card); local_box.setContentsMargins(14, 10, 14, 10); local_box.setSpacing(7)
+        local_title = QLabel("Faber · Português do Brasil"); local_title.setObjectName("cardTitle"); local_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.local_preview_button = QPushButton("▶  Ouvir prévia local")
+        self.local_preview_button.setObjectName("previewVoice")
+        self.local_preview_button.setEnabled(self._local_voice_available)
+        self.local_preview_button.clicked.connect(self._preview_local_voice)
+        local_box.addWidget(local_title); local_box.addWidget(self.local_preview_button)
+        layout.addWidget(self.local_voice_card)
         cards = QHBoxLayout(); cards.setSpacing(14)
         self.voice_group = QButtonGroup(self); self.voice_group.setExclusive(True)
         self.voice_cards = {}
@@ -540,7 +573,7 @@ class PersonalizationWizard(QDialog):
         soon = QLabel("Mais vozes poderão ser adicionadas em versões futuras.")
         soon.setObjectName("cardDetail"); soon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(soon)
-        self.voice_status = QLabel("A prévia usa Edge TTS e precisa de internet.")
+        self.voice_status = QLabel("A voz Faber ainda não está instalada. Execute setup-voice.sh para habilitar a síntese local." if not self._local_voice_available else "A voz local não envia texto à internet; o primeiro uso carrega o modelo e pode levar alguns segundos.")
         self.voice_status.setObjectName("cardDetail")
         layout.addWidget(self.voice_status)
         self.preview_phrase = QLabel()
@@ -549,6 +582,7 @@ class PersonalizationWizard(QDialog):
         self.preview_phrase.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.preview_phrase)
         self._update_preview_phrase()
+        self._refresh_tts_choices()
         self.stack.addWidget(frame)
 
     def _build_feedback(self):
@@ -614,10 +648,17 @@ class PersonalizationWizard(QDialog):
         # language returned by Edge TTS.
         available = {str(v.get("ShortName")) for v in voices if isinstance(v, dict)}
         missing = [name for name, _label, _gender in SUPPORTED_VOICES if name not in available]
-        self.voice_status.setText(
-            "A prévia usa Edge TTS e precisa de internet."
-            if not missing else "Catálogo indisponível; as três vozes brasileiras continuam selecionáveis."
-        )
+        if self._selected_tts_engine == "edge":
+            self.voice_status.setText(
+                "Edge TTS usa a internet e envia o texto falado ao serviço Microsoft."
+                if not missing else "Catálogo indisponível; as três vozes brasileiras continuam selecionáveis."
+            )
+
+    def _start_voice_catalog(self):
+        if self._voice_worker is not None and self._voice_worker.isRunning(): return
+        self._voice_worker = _VoiceCatalog(self)
+        self._voice_worker.loaded.connect(self._populate_voices)
+        self._voice_worker.start()
 
     def _select_style(self, key):
         self._selected_style = key
@@ -628,6 +669,30 @@ class PersonalizationWizard(QDialog):
     def _select_voice(self, voice, checked):
         if checked:
             self._selected_voice = voice
+            self._selected_tts_engine = "edge"
+            radio = self.engine_radios.get("edge")
+            if radio is not None and not radio.isChecked(): radio.setChecked(True)
+            self._refresh_tts_choices()
+
+    def _select_tts_engine(self, engine, checked):
+        if not checked: return
+        if engine == "piper" and not self._local_voice_available:
+            return
+        self._selected_tts_engine = engine
+        if engine == "edge": self._start_voice_catalog()
+        radio = self.engine_radios.get(engine)
+        if radio is not None and not radio.isChecked(): radio.setChecked(True)
+        self._refresh_tts_choices()
+
+    def _refresh_tts_choices(self):
+        if not hasattr(self, "voice_cards"): return
+        local = self._selected_tts_engine == "piper"
+        for card in self.voice_cards.values(): card.setVisible(not local)
+        self.local_voice_card.setVisible(local)
+        self.voice_status.setText(
+            "Síntese local Faber: o primeiro uso carrega o modelo (~3–4 s medidos); depois gera frases em tempo real."
+            if local else "Edge TTS usa a internet e envia o texto falado ao serviço Microsoft."
+        )
 
     def _select_feedback(self, theme, checked):
         if not checked: return
@@ -679,6 +744,18 @@ class PersonalizationWizard(QDialog):
             interrupt()
         self.voice_status.setText(f"Reproduzindo prévia de {label}…")
         self.speaker.say_with_voice(f"Olá, eu sou {name}. Estou pronta para ajudar.", voice)
+        self._play_sfx("select")
+
+    def _preview_local_voice(self):
+        if not self._local_voice_available:
+            self.voice_status.setText("Voz local indisponível. Execute setup-voice.sh para instalar o modelo.")
+            return
+        interrupt = getattr(self.speaker, "interrupt", None)
+        if callable(interrupt): interrupt()
+        self.voice_status.setText("Gerando prévia local Faber…")
+        self.speaker.say_with_voice(
+            f"Olá, eu sou {self._preview_name()}. Estou pronta para ajudar.", None, engine="piper"
+        )
         self._play_sfx("select")
 
     def _center(self):
@@ -812,7 +889,10 @@ class PersonalizationWizard(QDialog):
                 return
             self._set_page(self._current_page + 1)
         elif self._current_page == 5:
-            if not getattr(self, "_selected_voice", None):
+            if self._selected_tts_engine == "piper" and not self._local_voice_available:
+                self.voice_status.setText("Instale a voz local com setup-voice.sh ou selecione Edge TTS.")
+                return
+            if self._selected_tts_engine == "edge" and not getattr(self, "_selected_voice", None):
                 self.voice_status.setText("Escolha uma voz para continuar.")
                 return
             self._apply()
@@ -833,6 +913,7 @@ class PersonalizationWizard(QDialog):
             "wake_profile": self._wake_profile if self._needs_training else None,
             "bubble_style": self._selected_style,
             "tts_voice": voice or self.cfg.get("tts_voice", "pt-BR-ThalitaMultilingualNeural"),
+            "tts_engine": self._selected_tts_engine,
             "feedback_theme": self._selected_feedback,
             "onboarding_pending": False,
             "onboarding_boot_id": "",

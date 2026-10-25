@@ -1,0 +1,132 @@
+from types import SimpleNamespace
+import io
+
+import pytest
+
+from aurora_core.config import DEFAULTS
+from aurora_core.voice import tts
+
+
+def test_existing_profiles_keep_edge_until_user_opts_in():
+    assert DEFAULTS["tts_engine"] == "edge"
+
+
+def test_edge_voice_preview_keeps_legacy_engine_explicit():
+    speaker = tts.Speaker({"tts_engine": "piper"})
+    speaker.say_with_voice("Olá!", "pt-BR-ThalitaMultilingualNeural")
+    _text, _queued_at, voice, engine = speaker.q.get_nowait()
+    assert voice == "pt-BR-ThalitaMultilingualNeural"
+    assert engine == "edge"
+
+
+def test_local_voice_preview_is_queued_without_changing_saved_engine():
+    speaker = tts.Speaker({"tts_engine": "edge"})
+    speaker.say_with_voice("Olá!", None, engine="piper")
+
+    text, _queued_at, voice, engine = speaker.q.get_nowait()
+    assert text == "Olá!"
+    assert voice is None
+    assert engine == "piper"
+    assert speaker.cfg["tts_engine"] == "edge"
+
+
+def test_speaker_routes_saved_local_engine_to_piper(monkeypatch):
+    speaker = tts.Speaker({"tts_engine": "piper"})
+    speaker.engine = "/usr/bin/ffplay"
+    calls = []
+
+    class OneItemQueue:
+        def __init__(self): self.read = False
+        def get(self, timeout):
+            if not self.read:
+                self.read = True
+                return ("resposta", 0.0, None, None)
+            speaker.running = False
+            raise __import__("queue").Empty
+        def empty(self): return True
+
+    speaker.q = OneItemQueue()
+    monkeypatch.setattr(speaker, "_stream_piper", lambda text, generation: calls.append((text, generation)))
+    speaker.run()
+    assert calls == [("resposta", 0)]
+
+
+def test_local_voice_requires_runtime_and_both_model_files(monkeypatch, tmp_path):
+    model = tmp_path / "pt_BR-faber-medium.onnx"
+    config = tmp_path / "pt_BR-faber-medium.onnx.json"
+    monkeypatch.setattr(tts, "PIPER_MODEL_PATH", model)
+    monkeypatch.setattr(tts.importlib.util, "find_spec", lambda _name: object())
+
+    assert not tts.local_piper_available()
+    model.touch(); config.touch()
+    assert tts.local_piper_available()
+    config.unlink()
+    assert not tts.local_piper_available()
+
+
+def test_local_piper_streams_pcm_chunks_to_ffplay(monkeypatch):
+    written = bytearray()
+
+    class Input(io.BytesIO):
+        def write(self, data):
+            written.extend(data)
+            return super().write(data)
+
+    class Player:
+        def __init__(self, args, **_kwargs):
+            self.args = args
+            self.stdin = Input()
+            self.returncode = None
+        def wait(self, timeout=None):
+            self.returncode = 0
+            return 0
+        def poll(self): return self.returncode
+        def kill(self): self.returncode = -9
+
+    player = None
+    def fake_popen(args, **kwargs):
+        nonlocal player
+        player = Player(args, **kwargs)
+        return player
+
+    chunks = [SimpleNamespace(audio_int16_bytes=b"\x01\x02"),
+              SimpleNamespace(audio_int16_bytes=b"\x03\x04")]
+    voice = SimpleNamespace(config=SimpleNamespace(sample_rate=22050),
+                            synthesize=lambda _text: iter(chunks))
+    speaker = tts.Speaker({"tts_engine": "piper"})
+    monkeypatch.setattr(speaker, "_load_piper_voice", lambda: voice)
+    monkeypatch.setattr(tts.subprocess, "Popen", fake_popen)
+    levels = []
+    speaker.speech_level.connect(levels.append)
+
+    speaker._stream_piper("Olá, mundo.", speaker.cancel_generation)
+
+    assert bytes(written) == b"\x01\x02\x03\x04"
+    assert player.args[player.args.index("-ar") + 1] == "22050"
+    assert player.args[player.args.index("-ch_layout") + 1] == "mono"
+    assert levels[-1] == 0.0
+    assert speaker.current_player is None
+
+
+def test_local_piper_failure_kills_player_and_clears_handle(monkeypatch):
+    class Player:
+        def __init__(self, *_args, **_kwargs):
+            self.stdin = io.BytesIO()
+            self.returncode = None
+            self.killed = False
+        def wait(self, timeout=None): self.returncode = -9; return -9
+        def poll(self): return self.returncode
+        def kill(self): self.killed = True; self.returncode = -9
+
+    player = Player()
+    class Voice:
+        config = SimpleNamespace(sample_rate=22050)
+        def synthesize(self, _text): raise RuntimeError("model error")
+
+    speaker = tts.Speaker({"tts_engine": "piper"})
+    monkeypatch.setattr(speaker, "_load_piper_voice", lambda: Voice())
+    monkeypatch.setattr(tts.subprocess, "Popen", lambda *_args, **_kwargs: player)
+    with pytest.raises(RuntimeError): speaker._stream_piper("texto", speaker.cancel_generation)
+
+    assert player.killed
+    assert speaker.current_player is None

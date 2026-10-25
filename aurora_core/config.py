@@ -13,6 +13,8 @@ LEGACY_APP_CONFIG = APP_DIR/'aurora-settings.json'
 _SETTINGS_SAVE_LOCK=threading.RLock()
 
 VOSK_PATH = APP_DIR/'assets/vosk-model'
+PIPER_MODEL_DIR = Path(os.environ.get('XDG_DATA_HOME', Path.home()/'.local/share'))/'aurora'/'voices'/'pt_BR-faber-medium'
+PIPER_MODEL_PATH = PIPER_MODEL_DIR/'pt_BR-faber-medium.onnx'
 
 DEFAULTS = {
     'endpoint':'http://127.0.0.1:11434',
@@ -23,6 +25,9 @@ DEFAULTS = {
     'num_gpu':99,
     'keep_alive':-1,
     'tts_voice':'pt-BR-ThalitaMultilingualNeural',
+    # Edge remains the compatibility default until the user explicitly
+    # chooses the experimental local Piper voice in personalization.
+    'tts_engine':'edge',
     'feedback_theme':'boreal',
     'user_name':'',
     'profile_configured':False,
