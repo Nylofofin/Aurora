@@ -57,7 +57,7 @@ from aurora_launchpad_core import (
 
 
 APP_ID = "com.nylofofin.AuroraLaunchpad"
-INSTALLER_VERSION = "0.4.6"
+INSTALLER_VERSION = "0.4.8"
 PKEXEC = "/usr/bin/pkexec"
 SYSTEMCTL = "/usr/bin/systemctl"
 DNF = "/usr/bin/dnf"

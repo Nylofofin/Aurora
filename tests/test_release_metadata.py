@@ -25,3 +25,15 @@ def test_readme_release_identity_matches_application_version():
         f"## Aurora Desktop {__version__} — {CODENAME.title()}, ".casefold()
     )
     assert "## Aurora Desktop 1.6.0 — Bellatrix Stability Baseline" in changelog
+
+
+def test_launchpad_runtime_version_matches_rpm_metadata():
+    root = Path(__file__).resolve().parents[1]
+    runtime = (root / "launchpad" / "aurora_launchpad.py").read_text(encoding="utf-8")
+    spec = (root / "packaging" / "rpm" / "aurora-launchpad.spec").read_text(encoding="utf-8")
+    runtime_version = re.search(r'^INSTALLER_VERSION = "([^"]+)"$', runtime, re.MULTILINE)
+    rpm_version = re.search(r"^Version:\s+(\S+)$", spec, re.MULTILINE)
+
+    assert runtime_version is not None
+    assert rpm_version is not None
+    assert runtime_version.group(1) == rpm_version.group(1)
