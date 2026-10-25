@@ -9,8 +9,8 @@ from PySide6.QtCore import (QAbstractAnimation, QElapsedTimer, QEasingCurve, QPa
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QRadialGradient, QLinearGradient, QPen
 from PySide6.QtMultimedia import QSoundEffect
 from PySide6.QtWidgets import (
-    QButtonGroup, QCheckBox, QDialog, QFrame, QGraphicsOpacityEffect, QGridLayout, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QRadioButton, QStackedWidget, QVBoxLayout, QWidget, QProgressBar,
+    QCheckBox, QDialog, QFrame, QGraphicsOpacityEffect, QHBoxLayout,
+    QLabel, QLineEdit, QPushButton, QStackedWidget, QVBoxLayout, QWidget, QProgressBar,
 )
 
 from ..config import VOSK_PATH
@@ -288,17 +288,7 @@ class _AnimatedOrb(QWidget):
     def _silhouette(self, x, y, size):
         path = QPainterPath()
         rect = QRectF(x + 2, y + 2, size - 4, size - 4)
-        if self.style == "emerald":
-            path.addRoundedRect(rect, size * .43, size * .43)
-        elif self.style == "ocean":
-            path.moveTo(rect.center().x(), rect.top())
-            path.cubicTo(rect.right()-size*.02, rect.top()+size*.03, rect.right()+size*.01, rect.center().y()-size*.12, rect.right()-size*.03, rect.center().y()+size*.10)
-            path.cubicTo(rect.right()-size*.02, rect.bottom()-size*.03, rect.center().x()+size*.14, rect.bottom()+size*.01, rect.center().x()-size*.05, rect.bottom())
-            path.cubicTo(rect.left()-size*.01, rect.bottom()-size*.10, rect.left()+size*.03, rect.center().y()+size*.08, rect.left()+size*.02, rect.center().y()-size*.12)
-            path.cubicTo(rect.left()+size*.03, rect.top()+size*.03, rect.center().x()-size*.14, rect.top()-size*.01, rect.center().x(), rect.top())
-            path.closeSubpath()
-        else:
-            path.addEllipse(rect)
+        path.addEllipse(rect)
         return path
 
     def _paint_style_detail(self, painter, size, lower, violet):
@@ -417,8 +407,8 @@ class PersonalizationWizard(QDialog):
         self.setModal(True)
         # Give cards and form fields a real horizontal rhythm.  The previous
         # compact width forced labels and buttons to collide on Fedora fonts.
-        self.setMinimumSize(780, 420)
-        self.resize(860, 470)
+        self.setMinimumSize(720, 420)
+        self.resize(820, 470)
         self._dark_theme = True
         self.setStyleSheet(self._stylesheet(True))
 
@@ -449,6 +439,12 @@ class PersonalizationWizard(QDialog):
         self.eyebrow = QLabel("AURORA · PRIMEIRA CONFIGURAÇÃO")
         self.eyebrow.setObjectName("eyebrow")
         root.addWidget(self.eyebrow)
+        self.page_progress = QProgressBar()
+        self.page_progress.setObjectName("stepProgress")
+        self.page_progress.setTextVisible(False)
+        self.page_progress.setFixedHeight(5)
+        self.page_progress.setRange(0, 5)
+        root.addWidget(self.page_progress)
         self.stack = QStackedWidget()
         self.stack.setGraphicsEffect(QGraphicsOpacityEffect(self.stack))
         self._build_welcome()
@@ -507,6 +503,9 @@ class PersonalizationWizard(QDialog):
             QLabel#subtitle { color:#c5bfce; font-size:14px; }
             QLabel#cardTitle { color:#f4f0fa; font-size:16px; font-weight:700; }
             QLabel#cardDetail { color:#b5afbd; font-size:12px; }
+            QLabel#onboardingBadge { color:#dfd5f2; background:#272332; border:1px solid #3f394c; border-radius:10px; padding:6px 9px; font-size:11px; font-weight:600; }
+            QLabel#soundSignature { color:#c5a6f5; font-size:25px; font-weight:700; letter-spacing:3px; }
+            QLabel#soundSequence { color:#a99db8; font-size:10px; font-weight:700; letter-spacing:1px; }
             QLabel#voiceGlyph { color:#c6a8f2; font-size:38px; font-weight:600; }
             QLabel#voiceGlyphSide { color:#c6a8f2; font-size:16px; font-weight:700; }
             QLabel#voiceOrbBadge { color:#ffffff; font-size:30px; font-weight:700; background:transparent; }
@@ -529,6 +528,8 @@ class PersonalizationWizard(QDialog):
             QPushButton#carouselArrow:hover { background:#3b3449; border-color:#b89be9; }
             QProgressBar { background:#292632; color:#f4effa; border:0; border-radius:7px; text-align:center; font-size:10px; }
             QProgressBar::chunk { background:#9a7bd1; border-radius:7px; }
+            QProgressBar#stepProgress { background:#292632; border:0; border-radius:3px; }
+            QProgressBar#stepProgress::chunk { background:#b89be9; border-radius:3px; }
             QCheckBox, QRadioButton { spacing:9px; color:#d1cbd9; }
             QRadioButton::indicator { width:18px; height:18px; }
             """
@@ -540,6 +541,9 @@ class PersonalizationWizard(QDialog):
             QLabel#subtitle { color:#5e5b66; font-size:14px; }
             QLabel#cardTitle { color:#25232b; font-size:16px; font-weight:700; }
             QLabel#cardDetail { color:#696673; font-size:12px; }
+            QLabel#onboardingBadge { color:#514668; background:#f1edf8; border:1px solid #e2dbea; border-radius:10px; padding:6px 9px; font-size:11px; font-weight:600; }
+            QLabel#soundSignature { color:#8062b7; font-size:25px; font-weight:700; letter-spacing:3px; }
+            QLabel#soundSequence { color:#716a7c; font-size:10px; font-weight:700; letter-spacing:1px; }
             QLabel#voiceGlyph { color:#7960ad; font-size:38px; font-weight:600; }
             QLabel#voiceGlyphSide { color:#7960ad; font-size:16px; font-weight:700; }
             QLabel#voiceOrbBadge { color:#ffffff; font-size:30px; font-weight:700; background:transparent; }
@@ -562,6 +566,8 @@ class PersonalizationWizard(QDialog):
             QPushButton#carouselArrow:hover { background:#e8e2f2; border-color:#8062b7; }
             QProgressBar { background:#e8e4ee; color:#302e37; border:0; border-radius:7px; text-align:center; font-size:10px; }
             QProgressBar::chunk { background:#8062b7; border-radius:7px; }
+            QProgressBar#stepProgress { background:#e8e4ee; border:0; border-radius:3px; }
+            QProgressBar#stepProgress::chunk { background:#8062b7; border-radius:3px; }
             QCheckBox, QRadioButton { spacing:9px; color:#494451; }
             QRadioButton::indicator { width:18px; height:18px; }
             """
@@ -594,13 +600,32 @@ class PersonalizationWizard(QDialog):
     def _build_welcome(self):
         frame, layout = self._panel("Vamos personalizar sua experiência",
                                     "Seu perfil fica salvo apenas neste computador. Você poderá mudar essas escolhas depois.")
-        glow = _AnimatedOrb("boreal")
-        glow.setFixedSize(180, 180)
-        layout.addWidget(glow, 0, Qt.AlignmentFlag.AlignHCenter)
-        note = QLabel("Uma bolha, uma voz e um nome que combinam com você.")
+        overview = QHBoxLayout()
+        overview.setSpacing(24)
+        copy = QVBoxLayout()
+        copy.setSpacing(10)
+        copy.addStretch(1)
+        label = QLabel("FEITO PARA VOCÊ")
+        label.setObjectName("eyebrow")
+        copy.addWidget(label)
+        note = QLabel("Escolha como a Aurora aparece, fala e responde ao seu nome. Tudo fica neste computador.")
         note.setObjectName("subtitle")
-        note.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(note)
+        note.setWordWrap(True)
+        copy.addWidget(note)
+        facts = QHBoxLayout()
+        facts.setSpacing(8)
+        for text in ("6 estilos redondos", "11 vozes locais", "3 pares sonoros"):
+            badge = QLabel(text)
+            badge.setObjectName("onboardingBadge")
+            facts.addWidget(badge)
+        facts.addStretch(1)
+        copy.addLayout(facts)
+        copy.addStretch(1)
+        overview.addLayout(copy, 1)
+        glow = _AnimatedOrb("boreal")
+        glow.setFixedSize(158, 158)
+        overview.addWidget(glow, 0, Qt.AlignmentFlag.AlignCenter)
+        layout.addLayout(overview, 1)
         self.stack.addWidget(frame)
 
     def _build_profile(self):
@@ -764,46 +789,185 @@ class PersonalizationWizard(QDialog):
         self._refresh_tts_choices()
         self.stack.addWidget(frame)
 
+    def _feedback_card(self, index):
+        choices = (("boreal", "Boreal", "Cristal aéreo", "∿   ✧   ∿"),
+                   ("pulse", "Pulse", "Batida eletrônica", "▂   ▅   ▇"),
+                   ("void", "Void", "Grave espacial", "◌   ·   ◌"))
+        key, title, detail, signature_text = choices[index % len(choices)]
+        card = QFrame(self.feedback_stage)
+        card.setObjectName("choiceCard")
+        card.setProperty("selected", False)
+        box = QVBoxLayout(card)
+        box.setContentsMargins(14, 10, 14, 10)
+        box.setSpacing(3)
+        signature = QLabel(signature_text)
+        signature.setObjectName("soundSignature")
+        signature.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        box.addWidget(signature)
+        heading = QLabel(title)
+        heading.setObjectName("cardTitle")
+        heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        box.addWidget(heading)
+        caption = QLabel(detail)
+        caption.setObjectName("cardDetail")
+        caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        box.addWidget(caption)
+        sequence = QLabel("ENTRADA   →   SAÍDA")
+        sequence.setObjectName("soundSequence")
+        sequence.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        box.addWidget(sequence)
+        effect = QGraphicsOpacityEffect(card)
+        card.setGraphicsEffect(effect)
+        card._feedback_key = key
+        return card
+
     def _build_feedback(self):
         frame, layout = self._panel(
-            "Escolha seus sons",
-            "Cada assinatura tem uma entrada e uma saída próprias. Ouça o par antes de salvar.",
+            "Assinatura sonora",
+            "Cada par tem uma entrada e uma saída diferentes. Percorra, ouça a sequência e escolha a que combina com a sua Aurora.",
         )
-        cards = QHBoxLayout(); cards.setSpacing(12)
-        self.feedback_group = QButtonGroup(self); self.feedback_group.setExclusive(True)
-        self.feedback_cards = {}
-        choices = (("boreal", "Boreal", "Cristalino · suave"),
-                   ("pulse", "Pulse", "Rítmico · energético"),
-                   ("void", "Void", "Profundo · futurista"))
-        for key, title, detail in choices:
-            card = QFrame(); card.setObjectName("choiceCard")
-            card.setMinimumHeight(190)
-            card.setProperty("selected", key == self._selected_feedback)
-            box = QVBoxLayout(card); box.setContentsMargins(12, 12, 12, 12); box.setSpacing(7)
-            heading = QLabel(title); heading.setObjectName("cardTitle"); heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            box.addWidget(heading)
-            caption = QLabel(detail); caption.setObjectName("cardDetail"); caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            box.addWidget(caption)
-            preview_row = QHBoxLayout(); preview_row.setSpacing(6)
-            entry_preview = QPushButton("↗  Entrada")
-            entry_preview.setObjectName("previewVoice")
-            entry_preview.clicked.connect(lambda _=False, value=key: self._preview_feedback(value, "entrada"))
-            exit_preview = QPushButton("↘  Saída")
-            exit_preview.setObjectName("previewVoice")
-            exit_preview.clicked.connect(lambda _=False, value=key: self._preview_feedback(value, "saida"))
-            preview_row.addWidget(entry_preview); preview_row.addWidget(exit_preview)
-            box.addLayout(preview_row)
-            radio = QRadioButton("Usar estes sons")
-            radio.setChecked(key == self._selected_feedback)
-            radio.toggled.connect(lambda checked, value=key: self._select_feedback(value, checked))
-            self.feedback_group.addButton(radio); box.addWidget(radio, 0, Qt.AlignmentFlag.AlignHCenter)
-            self.feedback_cards[key] = card
-            cards.addWidget(card, 1)
-        layout.addLayout(cards)
-        self.feedback_status = QLabel("Prévia: entrada … saída …")
-        self.feedback_status.setObjectName("cardDetail"); self.feedback_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._feedback_choices = (("boreal", "Boreal", "Cristal aéreo"),
+                                  ("pulse", "Pulse", "Batida eletrônica"),
+                                  ("void", "Void", "Grave espacial"))
+        self._feedback_index = next((i for i, item in enumerate(self._feedback_choices)
+                                     if item[0] == self._selected_feedback), 0)
+        self._feedback_step_pending = False
+        self._feedback_transition_group = None
+        self.feedback_stage = _OrbCarouselStage()
+        self.feedback_stage.setFixedHeight(166)
+        count = len(self._feedback_choices)
+        indexes = ((self._feedback_index - 1) % count,
+                   self._feedback_index,
+                   (self._feedback_index + 1) % count)
+        self.feedback_side_left, self.feedback_center, self.feedback_side_right = (
+            self._feedback_card(index) for index in indexes)
+        self.feedback_cards = {card._feedback_key: card for card in
+                               (self.feedback_side_left, self.feedback_center, self.feedback_side_right)}
+        self.feedback_stage.resized.connect(self._position_feedback_cards)
+        layout.addWidget(self.feedback_stage)
+
+        controls = QHBoxLayout()
+        controls.addStretch(1)
+        self.feedback_prev = QPushButton("‹")
+        self.feedback_prev.setObjectName("carouselArrow")
+        self.feedback_prev.setFixedSize(42, 42)
+        self.feedback_prev.clicked.connect(lambda: self._step_feedback(-1))
+        controls.addWidget(self.feedback_prev)
+        self.feedback_position = QLabel()
+        self.feedback_position.setObjectName("carouselPosition")
+        self.feedback_position.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.feedback_position.setMinimumWidth(72)
+        controls.addWidget(self.feedback_position)
+        self.feedback_next = QPushButton("›")
+        self.feedback_next.setObjectName("carouselArrow")
+        self.feedback_next.setFixedSize(42, 42)
+        self.feedback_next.clicked.connect(lambda: self._step_feedback(1))
+        controls.addWidget(self.feedback_next)
+        controls.addStretch(1)
+        layout.addLayout(controls)
+
+        self.feedback_preview_button = QPushButton("▶   Ouvir entrada  ·  saída")
+        self.feedback_preview_button.setObjectName("previewVoice")
+        self.feedback_preview_button.clicked.connect(lambda: self._preview_feedback(self._selected_feedback))
+        layout.addWidget(self.feedback_preview_button, 0, Qt.AlignmentFlag.AlignHCenter)
+        self.feedback_status = QLabel("Par selecionado · pronto para prévia")
+        self.feedback_status.setObjectName("cardDetail")
+        self.feedback_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.feedback_status)
+        self._refresh_feedback_carousel()
+        self._position_feedback_cards()
         self.stack.addWidget(frame)
+
+    def _feedback_geometries(self):
+        width, height = self.feedback_stage.width(), self.feedback_stage.height()
+        center_w, center_h = min(244, max(218, width // 3)), 144
+        side_w, side_h = min(184, max(158, width // 4)), 116
+        center_x = (width - center_w) // 2
+        gap = max(16, (width - center_w - side_w * 2) // 2)
+        side_y = (height - side_h) // 2
+        center_y = (height - center_h) // 2
+        return (QRectF(center_x - gap - side_w, side_y, side_w, side_h).toRect(),
+                QRectF(center_x, center_y, center_w, center_h).toRect(),
+                QRectF(center_x + center_w + gap, side_y, side_w, side_h).toRect())
+
+    def _position_feedback_cards(self):
+        if self._feedback_step_pending or not hasattr(self, "feedback_center"):
+            return
+        left, center, right = self._feedback_geometries()
+        for card, rect, opacity in ((self.feedback_side_left, left, .48),
+                                    (self.feedback_center, center, 1.0),
+                                    (self.feedback_side_right, right, .48)):
+            card.setGeometry(rect)
+            card.graphicsEffect().setOpacity(opacity)
+            card.show()
+
+    def _step_feedback(self, direction):
+        if self._feedback_step_pending or direction not in (-1, 1):
+            return
+        count = len(self._feedback_choices)
+        index = (self._feedback_index + direction) % count
+        self._feedback_step_pending = True
+        self.feedback_prev.setEnabled(False)
+        self.feedback_next.setEnabled(False)
+        self.feedback_preview_button.setEnabled(False)
+        old_left, old_center, old_right = self.feedback_side_left, self.feedback_center, self.feedback_side_right
+        left_rect, center_rect, right_rect = self._feedback_geometries()
+        if direction > 0:
+            incoming_index = (index + 1) % count
+            shifts = ((old_left, left_rect.translated(-100, 0), 0.0),
+                      (old_center, left_rect, .48), (old_right, center_rect, 1.0))
+            incoming_rect, incoming_end, outgoing = right_rect.translated(100, 0), right_rect, old_left
+        else:
+            incoming_index = (index - 1) % count
+            shifts = ((old_right, right_rect.translated(100, 0), 0.0),
+                      (old_center, right_rect, .48), (old_left, center_rect, 1.0))
+            incoming_rect, incoming_end, outgoing = left_rect.translated(-100, 0), left_rect, old_right
+        entering = self._feedback_card(incoming_index)
+        entering.setGeometry(incoming_rect)
+        entering.graphicsEffect().setOpacity(0.0)
+        entering.show()
+        group = QParallelAnimationGroup(self)
+        for card, destination, opacity in (*shifts, (entering, incoming_end, .48)):
+            move = QPropertyAnimation(card, b"geometry", group)
+            move.setDuration(390); move.setStartValue(card.geometry()); move.setEndValue(destination)
+            move.setEasingCurve(QEasingCurve.Type.OutCubic); group.addAnimation(move)
+            fade = QPropertyAnimation(card.graphicsEffect(), b"opacity", group)
+            fade.setDuration(320); fade.setStartValue(card.graphicsEffect().opacity()); fade.setEndValue(opacity)
+            fade.setEasingCurve(QEasingCurve.Type.OutCubic); group.addAnimation(fade)
+        self._feedback_transition_group = group
+        group.finished.connect(lambda: self._complete_feedback_step(index, direction, old_left,
+                                                                     old_center, old_right, entering, outgoing))
+        group.start()
+        self._play_sfx("select")
+
+    def _complete_feedback_step(self, index, direction, old_left, old_center, old_right, entering, outgoing):
+        if direction > 0:
+            self.feedback_side_left, self.feedback_center, self.feedback_side_right = old_center, old_right, entering
+        else:
+            self.feedback_side_left, self.feedback_center, self.feedback_side_right = entering, old_left, old_center
+        outgoing.deleteLater()
+        self._feedback_index = index
+        self._selected_feedback = self._feedback_choices[index][0]
+        self.feedback_cards = {card._feedback_key: card for card in
+                               (self.feedback_side_left, self.feedback_center, self.feedback_side_right)}
+        self._feedback_step_pending = False
+        self.feedback_prev.setEnabled(True); self.feedback_next.setEnabled(True)
+        self.feedback_preview_button.setEnabled(True)
+        self._refresh_feedback_carousel()
+        group, self._feedback_transition_group = self._feedback_transition_group, None
+        if group is not None: group.deleteLater()
+
+    def _refresh_feedback_carousel(self):
+        if not hasattr(self, "feedback_position"):
+            return
+        count = len(self._feedback_choices)
+        self._selected_feedback = self._feedback_choices[self._feedback_index][0]
+        self.feedback_position.setText(f"{self._feedback_index + 1:02d}  /  {count:02d}")
+        for card in (self.feedback_side_left, self.feedback_center, self.feedback_side_right):
+            selected = card is self.feedback_center
+            card.setProperty("selected", selected)
+            card.style().unpolish(card); card.style().polish(card)
+        self.feedback_status.setText(f"{self._feedback_choices[self._feedback_index][1]} · par selecionado")
 
     def _build_loading(self):
         frame, layout = self._panel("Vamos configurar tudo para você…", "Aguarde enquanto aplicamos suas escolhas à Aurora.")
@@ -1114,14 +1278,6 @@ class PersonalizationWizard(QDialog):
         else:
             self.voice_status.setText("Faber · Piper medium em português do Brasil. O modelo é instalado apenas quando você pede a prévia.")
 
-    def _select_feedback(self, theme, checked):
-        if not checked: return
-        self._selected_feedback = theme
-        for key, card in self.feedback_cards.items():
-            card.setProperty("selected", key == theme)
-            card.style().unpolish(card); card.style().polish(card)
-        self._play_sfx("select")
-
     def _preview_feedback(self, theme, direction=None):
         entry = self._feedback_sfx.get(f"{theme}:entrada")
         exit_ = self._feedback_sfx.get(f"{theme}:saida")
@@ -1130,19 +1286,20 @@ class PersonalizationWizard(QDialog):
             return
         for effect in self._feedback_sfx.values(): effect.stop()
         if direction == "entrada":
-            self.feedback_status.setText(f"Prévia {theme}: entrada")
+            self.feedback_status.setText("Entrada…")
             entry.play()
             return
         if direction == "saida":
-            self.feedback_status.setText(f"Prévia {theme}: saída")
+            self.feedback_status.setText("Saída…")
             exit_.play()
             return
-        self.feedback_status.setText("Prévia: entrada …")
+        self.feedback_status.setText("Entrada…")
         entry.play()
         def play_exit():
-            self.feedback_status.setText("Prévia: saída …")
+            self.feedback_status.setText("Saída…")
             exit_.play()
-        QTimer.singleShot(760, play_exit)
+        gap_ms = {"boreal": 980, "pulse": 800, "void": 1080}.get(theme, 900)
+        QTimer.singleShot(gap_ms, play_exit)
 
     def _preview_name(self):
         return "Aurora" if self.default_name.isChecked() else (self.assistant_name.text().strip() or "Aurora")
@@ -1258,13 +1415,17 @@ class PersonalizationWizard(QDialog):
                   if self._needs_training else
                   ("Boas-vindas · 1 de 5", "Seu perfil · 2 de 5", "", "Sua Bolha · 3 de 5", "Sua voz · 4 de 5", "Seus sons · 5 de 5", ""))
         self.step_label.setText(labels[page])
+        steps = 6 if self._needs_training else 5
+        progress_value = page if self._needs_training or page < 3 else page - 1
+        self.page_progress.setRange(0, steps)
+        self.page_progress.setValue(min(steps, progress_value))
         self.next_button.setVisible(page < 6)
         self.next_button.setText(("Começar", "Próximo", "Próximo", "Próximo", "Próximo", "Finalizar", "")[page])
         if animated:
             effect = self.stack.graphicsEffect()
             effect.setOpacity(0.0)
             fade = QPropertyAnimation(effect, b"opacity", self)
-            fade.setDuration(480)
+            fade.setDuration(360)
             fade.setStartValue(0.0)
             fade.setEndValue(1.0)
             fade.setEasingCurve(QEasingCurve.Type.OutCubic)
@@ -1273,10 +1434,10 @@ class PersonalizationWizard(QDialog):
             origin = self.stack.pos()
             direction = 1 if page >= previous else -1
             slide = QPropertyAnimation(self.stack, b"pos", self)
-            slide.setDuration(480)
+            slide.setDuration(360)
             slide.setStartValue(origin + QPoint(18 * direction, 0))
             slide.setEndValue(origin)
-            slide.setEasingCurve(QEasingCurve.Type.OutBack)
+            slide.setEasingCurve(QEasingCurve.Type.OutCubic)
             group = QParallelAnimationGroup(self)
             group.addAnimation(fade)
             group.addAnimation(slide)

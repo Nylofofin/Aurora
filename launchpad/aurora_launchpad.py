@@ -67,24 +67,31 @@ MANAGED_APP = Path.home() / ".local/share/aurora"
 OWNED_MODELS = Path.home() / ".local/share/aurora-launchpad/owned-models.txt"
 PRESERVED_MEMORY = Path.home() / ".local/share/aurora-launchpad/aurora-memory.json"
 CSS = """
-window.launchpad { background: #101016; color: #f5f2fa; }
-.hero { background: #1b1726; border-radius: 20px; padding: 18px; }
-.panel { background: #181820; border: 1px solid #302d3a; border-radius: 18px; padding: 15px; }
-.release-card { background: #1c1b24; border: 1px solid #35313f; border-radius: 16px; padding: 13px; }
-button.release-card:hover { background: #25222f; }
-button.release-card.selected { background: #2c2340; border: 2px solid #a98ade; }
-.subtle { color: #b8b2c2; }
-.caption { color: #b6acc8; font-size: 10px; letter-spacing: .08em; font-weight: 700; }
-.title-1 { font-size: 26px; font-weight: 700; letter-spacing: -.025em; }
-.title-2 { font-size: 17px; font-weight: 700; }
-.status-good { color: #7fe0bb; }
+window.launchpad { background: #0e0e14; color: #f6f3fb; }
+headerbar { background: #111117; border-bottom: 1px solid #282631; min-height: 48px; }
+.hero { background: linear-gradient(135deg, #211a2d, #17151d 74%); border: 1px solid #393143; border-radius: 22px; padding: 21px; }
+.panel { background: #17171f; border: 1px solid #302e39; border-radius: 20px; padding: 17px; }
+.release-card { background: #1a1922; border: 1px solid #35313f; border-radius: 18px; padding: 15px; transition: background 160ms ease, border-color 160ms ease; }
+button.release-card:hover { background: #24212e; border-color: #73608c; }
+button.release-card.selected { background: #2a2239; border: 2px solid #b79be8; }
+.subtle { color: #b9b3c3; }
+.caption { color: #b7a9ce; font-size: 10px; letter-spacing: .10em; font-weight: 700; }
+.brand-mark { color: #d6c1ff; background: #312741; border: 1px solid #514263; border-radius: 12px; min-width: 30px; min-height: 30px; font-size: 18px; font-weight: 800; }
+.brand-title { color: #f6f3fb; font-size: 14px; font-weight: 700; }
+.brand-subtitle { color: #aaa2b5; font-size: 10px; }
+.title-1 { font-size: 25px; font-weight: 750; letter-spacing: -.025em; }
+.title-2 { font-size: 16px; font-weight: 700; }
+.status-good { color: #8ce4c4; }
 .status-bad { color: #ff9b9b; }
-.status-warn { color: #f4cb72; }
+.status-warn { color: #f0cb81; }
 .step { color: #c5bfce; font-size: 12px; }
 .log { font-family: monospace; font-size: 10px; color: #c5bfce; }
 progressbar trough { min-height: 8px; border-radius: 99px; background: #302d3a; }
-progressbar progress { min-height: 8px; border-radius: 99px; background: #8b6bc2; }
+progressbar progress { min-height: 8px; border-radius: 99px; background: #a98ade; }
+button { color: #f2edf8; border-radius: 14px; min-height: 38px; padding: 7px 15px; }
+button:hover { background: #292630; }
 button.suggested-action { background: #8b6bc2; color: #ffffff; font-weight: 700; }
+button.suggested-action:hover { background: #a17bd8; }
 button.pill { border-radius: 999px; }
 checkbutton { color: #ddd7e6; }
 """
@@ -381,11 +388,23 @@ class Launchpad(Adw.Application):
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self.report = assess_environment(read_os_release(), dict(os.environ), memory_total_bytes(), disk_free_bytes(Path.home()))
         self.install_health = self._installation_health()
-        self.window = Adw.ApplicationWindow(application=self, title="Aurora Launchpad", default_width=860, default_height=660)
+        self.window = Adw.ApplicationWindow(application=self, title="Aurora Launchpad", default_width=820, default_height=660)
         self.window.add_css_class("launchpad")
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         header = Adw.HeaderBar()
-        header.set_title_widget(Gtk.Label(label="Aurora Launchpad"))
+        brand = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=9)
+        mark = Gtk.Label(label="✦")
+        mark.add_css_class("brand-mark")
+        brand.append(mark)
+        brand_text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        brand_title = Gtk.Label(label="Aurora", xalign=0)
+        brand_title.add_css_class("brand-title")
+        brand_subtitle = Gtk.Label(label="LAUNCHPAD", xalign=0)
+        brand_subtitle.add_css_class("brand-subtitle")
+        brand_text.append(brand_title)
+        brand_text.append(brand_subtitle)
+        brand.append(brand_text)
+        header.set_title_widget(brand)
         header.add_css_class("flat")
         outer.append(header)
         self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE, transition_duration=240)
@@ -433,7 +452,6 @@ class Launchpad(Adw.Application):
         self.model_status = self._label("Modelos presentes: consultando…", "subtle", True)
         status.append(self.model_status)
         status.append(self._label(f"Pasta gerenciada: {MANAGED_APP}", "subtle", True))
-        col.append(status)
 
         health = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         health.add_css_class("panel")
@@ -444,7 +462,12 @@ class Launchpad(Adw.Application):
             health.append(self._label(detail, "subtle", True))
         if self.install_health.repairable and self.install_health.state != "healthy":
             health.append(self._button("Parar e reparar", self._repair_install, suggested=True))
-        col.append(health)
+
+        overview = Gtk.Grid(column_spacing=12, row_spacing=12)
+        overview.set_column_homogeneous(True)
+        overview.attach(status, 0, 0, 1, 1)
+        overview.attach(health, 1, 0, 1, 1)
+        col.append(overview)
 
         personalization = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         personalization.add_css_class("panel")
@@ -453,7 +476,6 @@ class Launchpad(Adw.Application):
         self.personalization_status = self._label("As escolhas atuais só serão substituídas depois que você concluir o assistente.", "subtle", True)
         personalization.append(self.personalization_status)
         personalization.append(self._button("Abrir personalização", self._open_personalization, suggested=True))
-        col.append(personalization)
 
         self.update_panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         self.update_panel.add_css_class("panel")
@@ -463,7 +485,12 @@ class Launchpad(Adw.Application):
         self.update_button = self._button("Atualizar Launchpad", self._start_launchpad_update, suggested=True)
         self.update_button.set_visible(False)
         self.update_panel.append(self.update_button)
-        col.append(self.update_panel)
+
+        actions_grid = Gtk.Grid(column_spacing=12, row_spacing=12)
+        actions_grid.set_column_homogeneous(True)
+        actions_grid.attach(personalization, 0, 0, 1, 1)
+        actions_grid.attach(self.update_panel, 1, 0, 1, 1)
+        col.append(actions_grid)
 
         builds = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         builds.add_css_class("panel")
@@ -490,9 +517,9 @@ class Launchpad(Adw.Application):
         scroll.set_child(child)
         return scroll
 
-    def _column(self, spacing=18) -> Gtk.Box:
+    def _column(self, spacing=15) -> Gtk.Box:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=spacing)
-        box.set_margin_top(26); box.set_margin_bottom(24); box.set_margin_start(34); box.set_margin_end(34)
+        box.set_margin_top(22); box.set_margin_bottom(22); box.set_margin_start(24); box.set_margin_end(24)
         return box
 
     def _label(self, text: str, css: str | None = None, wrap=False) -> Gtk.Label:
@@ -539,7 +566,6 @@ class Launchpad(Adw.Application):
             status.append(self._label("Disponível somente no Fedora Workstation com GNOME em Wayland.", "status-bad", True))
         if not self.ollama and not Path(PKEXEC).is_file():
             status.append(self._label("Ollama não está instalado e pkexec não está disponível para instalá-lo.", "status-bad", True))
-        col.append(status)
 
         health = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         health.add_css_class("panel")
@@ -559,7 +585,6 @@ class Launchpad(Adw.Application):
             health.append(self.repair_button)
         elif self.install_health.state == "healthy":
             health.append(self._label("Nenhuma correção é necessária agora.", "subtle", True))
-        col.append(health)
 
         self.update_panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         self.update_panel.add_css_class("panel")
@@ -569,7 +594,13 @@ class Launchpad(Adw.Application):
         self.update_button = self._button("Atualizar Launchpad", self._start_launchpad_update, suggested=True)
         self.update_button.set_visible(False)
         self.update_panel.append(self.update_button)
-        col.append(self.update_panel)
+
+        overview = Gtk.Grid(column_spacing=12, row_spacing=12)
+        overview.set_column_homogeneous(True)
+        overview.attach(status, 0, 0, 1, 1)
+        overview.attach(health, 1, 0, 1, 1)
+        overview.attach(self.update_panel, 0, 1, 2, 1)
+        col.append(overview)
 
         section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         section.append(self._label("Versões recomendadas", "title-2"))

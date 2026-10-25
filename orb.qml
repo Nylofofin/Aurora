@@ -49,11 +49,9 @@ Item {
         weather: "#9DDCF0", preparing: "#C8B5F7", speaking: "#E2D2FF",
         approval: "#EBCB8B", controlling: "#A99AE8", error: "#EAA7BB", idle: "#A493D8"
     })
-    readonly property string orbPath: bubbleStyle === "emerald"
-        ? "M 57 1 C 79 1 93 7 105 20 C 116 32 115 46 115 57 C 115 79 109 94 96 105 C 84 116 69 115 57 115 C 35 115 21 109 9 96 C -2 84 -1 69 -1 57 C -1 35 5 21 18 9 C 30 -2 45 1 57 1 Z"
-        : bubbleStyle === "ocean"
-        ? "M 57 1 C 84 12 111 31 108 59 C 106 82 77 108 62 114 C 54 117 45 112 37 105 C 15 86 4 67 7 48 C 10 27 35 9 57 1 Z"
-        : "M 57 1 A 56 56 0 1 1 57 113 A 56 56 0 1 1 57 1 Z"
+    // Keep one stable, circular silhouette for every finish. Style identity
+    // comes from color, refraction and small surface details inside the glass.
+    readonly property string orbPath: "M 57 1 A 56 56 0 1 1 57 113 A 56 56 0 1 1 57 1 Z"
     readonly property color stateColor: statePalette[mode] || statePalette.idle
     readonly property color styleBase: bubbleStyle === "emerald" ? "#E9FFF7" : bubbleStyle === "crimson" ? "#FFF8E8" : bubbleStyle === "amethyst" ? "#F6F5FF" : bubbleStyle === "solaris" ? "#FFF4F6" : bubbleStyle === "ocean" ? "#EDFFFF" : "#EDF8FC"
     readonly property color styleMid: bubbleStyle === "emerald" ? "#BCEBDD" : bubbleStyle === "crimson" ? "#F2D49B" : bubbleStyle === "amethyst" ? "#D2D8F8" : bubbleStyle === "solaris" ? "#E7B8C6" : bubbleStyle === "ocean" ? "#A5E8E5" : "#BFEAF5"
@@ -218,26 +216,26 @@ Item {
     // Planet-specific accents remain small and attached to the glass body.
     Rectangle {
         visible: root.bubbleStyle === "emerald"
-        x: 27; y: 27; width: 82; height: 82
+        x: 34; y: 34; width: 68; height: 68
         rotation: -8 + sphere.sway * 0.8
-        radius: 30
+        radius: 24
         color: "transparent"
         border.color: "#FFFFFF72"
         border.width: 1.2
     }
     Shape {
         visible: root.bubbleStyle === "amethyst" || root.bubbleStyle === "solaris"
-        x: 3; y: 43 + sphere.sway; width: 130; height: 52
+        x: 23; y: 50 + sphere.sway; width: 90; height: 36
         rotation: (root.bubbleStyle === "amethyst" ? -19 : -31) + sphere.sway * 0.8
         ShapePath {
             strokeColor: root.bubbleStyle === "amethyst" ? "#DCD9FFB0" : "#F2D5E2B8"
             strokeWidth: 1.6; fillColor: "transparent"
-            PathAngleArc { centerX: 65; centerY: 26; radiusX: 62; radiusY: 23; startAngle: 0; sweepAngle: 360 }
+            PathAngleArc { centerX: 45; centerY: 18; radiusX: 42; radiusY: 15; startAngle: 0; sweepAngle: 360 }
         }
     }
     Shape {
         visible: root.bubbleStyle === "amethyst" || root.bubbleStyle === "solaris"
-        x: 99 + sphere.sway * 0.5; y: 30 - sphere.sway * 0.35; width: 14; height: 14
+        x: 93 + sphere.sway * 0.5; y: 35 - sphere.sway * 0.35; width: 12; height: 12
         ShapePath {
             strokeColor: "#FFFFFF90"; strokeWidth: 0.6
             fillGradient: RadialGradient {
@@ -245,7 +243,7 @@ Item {
                 GradientStop { position: 0; color: "#FFFFFF" }
                 GradientStop { position: 1; color: root.bubbleStyle === "amethyst" ? "#A9B4E8" : "#C78DAD" }
             }
-            PathAngleArc { centerX: 7; centerY: 7; radiusX: 6.5; radiusY: 6.5; startAngle: 0; sweepAngle: 360 }
+            PathAngleArc { centerX: 6; centerY: 6; radiusX: 5.5; radiusY: 5.5; startAngle: 0; sweepAngle: 360 }
         }
     }
     Shape {
