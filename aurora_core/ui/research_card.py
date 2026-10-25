@@ -9,11 +9,12 @@ from PySide6.QtWidgets import (
 )
 import re
 from urllib.parse import urlparse
+import time
 
 
 _STAGES = {
     "understanding": "Entendendo o pedido",
-    "planning": "Preparando pesquisa",
+    "planning": "Planejando etapas",
     "planning_complete": "Pesquisa preparada",
     "searching": "Pesquisando em paralelo",
     "executing": "Consultando ferramentas locais",
@@ -41,6 +42,11 @@ class ResearchCard(QWidget):
         self._tasks = []
         self._finished = set()
         self._live_sources = []
+        self._waiting_since = 0.0
+        self._waiting_caption = ""
+        self._stage_timer = QTimer(self)
+        self._stage_timer.setInterval(500)
+        self._stage_timer.timeout.connect(self._refresh_stage_elapsed)
         self._hide_timer = QTimer(self)
         self._hide_timer.setSingleShot(True)
         self._hide_timer.timeout.connect(self._dismiss)
@@ -135,6 +141,9 @@ class ResearchCard(QWidget):
         self._opacity.stop()
         self._position.stop()
         self.generation = generation
+        self._waiting_since = time.monotonic()
+        self._waiting_caption = ""
+        self._stage_timer.start()
         self.mode = mode
         self._anchor = anchor
         self.kind_label.setText("Local" if mode == "local" else "Pesquisa")
@@ -145,6 +154,7 @@ class ResearchCard(QWidget):
         self.answer.clear()
         self.answer.hide()
         initial_stage="understanding" if mode == "local" else "searching"
+        self._waiting_caption = "Entendendo o pedido" if mode == "local" else "Iniciando pesquisa"
         self._set_stage(initial_stage)
         self._set_workers(["Entendendo o pedido"] if mode == "local" else self._tasks, 1)
         self._clear_sources()
@@ -165,6 +175,14 @@ class ResearchCard(QWidget):
             self.source_area.setVisible(visible)
             self._show_near(self._anchor)
         stage = event.get("stage", "searching")
+        if stage not in {"planning", "searching", "executing"}:
+            self._waiting_caption = ""
+        elif stage == "planning":
+            self._waiting_caption = "Planejando etapas"
+        if stage in {"planning", "searching", "executing"}:
+            self.progress.setRange(0, 0)
+        elif stage != "complete":
+            self.progress.setRange(0, 100)
         tasks = event.get("tasks")
         if isinstance(tasks, list) and tasks:
             self._tasks = [str(task)[:120] for task in tasks[:3]]
@@ -186,6 +204,7 @@ class ResearchCard(QWidget):
         if stage == "planning":
             self.progress.setValue(max(self.progress.value(), 8))
         elif stage == "planning_complete":
+            self.progress.setRange(0, 100)
             timing = int(event.get("planning_ms", 0))
             self.stage_label.setText(f"Plano local pronto · {timing / 1000:.1f} s · {len(self._tasks)} etapas")
             self.progress.setValue(max(self.progress.value(), 9))
@@ -195,15 +214,18 @@ class ResearchCard(QWidget):
             duration = event.get("duration_ms")
             timing = f" · {duration / 1000:.1f} s" if duration is not None and event.get("finished_task") else ""
             self.stage_label.setText(f"Pesquisando em paralelo · {completed}/{total} etapas{timing}")
+            self._waiting_caption = f"Pesquisando em paralelo · {completed}/{total} etapas"
             self.progress.setValue(10 + int(55 * completed / total))
             self._paint_workers()
         elif stage == "executing":
             completed = int(event.get("completed", len(self._finished)))
             total = max(1, int(event.get("total", len(self._tasks))))
             self.stage_label.setText(f"Executando etapas · {completed}/{total}")
+            self._waiting_caption = f"Executando etapas · {completed}/{total}"
             self.progress.setValue(12 + int(76 * completed / total))
             self._paint_workers()
         elif stage == "validating":
+            self.progress.setRange(0, 100)
             counts = event.get("counts", {})
             rejected = event.get("rejected", {})
             if counts:
@@ -213,12 +235,23 @@ class ResearchCard(QWidget):
             self.progress.setValue(76)
             self._paint_workers(force_done=True)
         elif stage == "reading":
+            self.progress.setRange(0, 100)
             completed = int(event.get("completed", 0))
             total = max(1, int(event.get("total", 1)))
             self.stage_label.setText(f"Abrindo páginas verificadas · {completed}/{total}")
             self.progress.setValue(76 + int(11 * completed / total))
         elif stage == "synthesizing":
+            self.progress.setRange(0, 100)
             self.progress.setValue(88)
+
+        self._refresh_stage_elapsed()
+
+    def _refresh_stage_elapsed(self):
+        if not self._waiting_since or not self._waiting_caption:
+            return
+        elapsed = int(time.monotonic() - self._waiting_since)
+        suffix = f" · {elapsed}s" if elapsed else ""
+        self.stage_label.setText(self._waiting_caption + suffix)
 
     def set_sources(self, generation, items):
         if generation != self.generation:
@@ -266,6 +299,9 @@ class ResearchCard(QWidget):
             return
         self.answer.setText(self._summary_preview(answer))
         self.answer.setVisible(bool(self.answer.text()))
+        self._stage_timer.stop()
+        self._waiting_caption = ""
+        self.progress.setRange(0, 100)
         self._set_stage("complete")
         self.progress.setValue(100)
         self._hide_timer.start(15_000)

@@ -111,6 +111,10 @@ class Inference(QThread):
     def run(self):
         ep=self.cfg['endpoint'].rstrip('/')
         if not local_endpoint(ep): self.error.emit('O endpoint precisa ser localhost.'); return
+        if self.use_tools:
+            self.progress.emit({'mode':'local','stage':'planning','title':self.prompt,
+                                'tasks':['Interpretando o pedido'],'workers':1,
+                                'completed':0,'total':1})
         system=self.system_prompt or assistant_system_prompt(
             self.use_tools,self.response_language,self.cfg.get('assistant_name','Aurora'),
             self.cfg.get('user_name',''))
@@ -292,14 +296,23 @@ class Inference(QThread):
         local_result=execute_local_tool(name,args,self.cfg)
         if local_result is not None: return local_result
         if name=='read_web_page':
-            try: return read_public_page(str(args.get('url','')))
-            except Exception as exc: return f'Página não lida: {exc}'
+            self.progress.emit({'mode':'web','stage':'reading','tasks':['Abrindo página solicitada'],
+                                'workers':1,'completed':0,'total':1})
+            try: result=read_public_page(str(args.get('url','')))
+            except Exception as exc: result=f'Página não lida: {exc}'
+            self.progress.emit({'mode':'web','stage':'reading','tasks':['Abrindo página solicitada'],
+                                'workers':1,'completed':1,'total':1})
+            return result
         if name=='web_search':
             query=str(args.get('query','')).strip()
             self.search.emit(query,'')
             freshness=current_search_window(self.prompt) or current_search_window(query)
             if not freshness and _is_historical_query(self.prompt): freshness=False
-            try: output=search_public_web(query,freshness)
+            try:
+                output=search_public_web(
+                    query, freshness,
+                    progress=lambda event: self.progress.emit({'mode':'web', **event}),
+                )
             except Exception as exc: output=f'Busca não concluída: {exc}'
             self.search.emit(query,output)
             return output

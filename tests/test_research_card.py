@@ -22,6 +22,7 @@ def test_research_card_updates_stages_and_shows_source_results(monkeypatch):
     assert len(card._live_sources) == 1
     assert card._live_sources[0]["host"] == "publisher.example"
     assert card._live_sources[0]["published"] == "23/10/2026"
+    assert card.progress.minimum() == 0 and card.progress.maximum() == 0
     card.hide()
     app.processEvents()
 

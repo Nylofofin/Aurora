@@ -137,7 +137,7 @@ Para OBS, habilite **WebSocket Server** nas configurações do servidor WebSocke
 
 ### Diagnóstico de voz
 
-Para acompanhar o serviço e os detalhes de falha do microfone em tempo real, use `journalctl --user -fu aurora.service` ou `tail -f ~/.local/state/aurora/aurora-app.log`. Os eventos distinguem wake confirmada, captura do comando e transcrição enviada sem guardar o conteúdo falado. Um resultado Vosk com metadados JSON inválidos não derruba mais o worker: o texto é recuperado quando possível. Se o dispositivo de captura sofrer uma interrupção transitória, Aurora registra a exceção localmente e tenta reabrir o reconhecimento até três vezes; a contagem volta a zero quando o stream do microfone abre com sucesso.
+Para acompanhar o serviço e os detalhes de falha do microfone em tempo real, use `journalctl --user -fu aurora.service` ou `tail -f ~/.local/state/aurora/aurora-app.log`. Os eventos distinguem wake confirmada, captura do comando e transcrição enviada sem guardar o conteúdo falado. O cartão de pesquisa acompanha também buscas iniciadas pelo agente: mostra planejamento, provedores, fontes recebidas e leitura de páginas, com tempo decorrido enquanto uma etapa aguarda resposta. Um resultado Vosk com metadados JSON inválidos não derruba mais o worker: o texto é recuperado quando possível. Se o dispositivo de captura sofrer uma interrupção transitória, Aurora registra a exceção localmente e tenta reabrir o reconhecimento até três vezes; a contagem volta a zero quando o stream do microfone abre com sucesso.
 
 ## Adaptação local
 

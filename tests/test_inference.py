@@ -41,6 +41,25 @@ def test_short_spanish_and_english_voice_lines_are_detected():
     assert likely_english("Recording started.")
 
 
+def test_web_tool_forwards_pipeline_progress_to_research_card(monkeypatch):
+    cfg = {"endpoint": "http://localhost:11434", "model": "gemma4:test",
+           "keep_alive": "5m", "num_ctx": 1024, "agent_num_ctx": 1024,
+           "agent_num_predict": 96, "num_thread": 4, "num_gpu": 99}
+    worker = inference_module.Inference(cfg, "Pesquise uma documentação", use_tools=True)
+    pipeline_events = []
+    ui_events = []
+    monkeypatch.setattr(inference_module, "search_public_web", lambda _query, _freshness, progress: (
+        pipeline_events.append(progress), progress({"stage": "searching", "tasks": ["DuckDuckGo Lite"]}), "resultado"
+    )[-1])
+    worker.progress.connect(ui_events.append)
+
+    result = worker.execute_tool("web_search", {"query": "documentação"})
+
+    assert result == "resultado"
+    assert pipeline_events and ui_events[0]["mode"] == "web"
+    assert ui_events[0]["stage"] == "searching"
+
+
 def test_failed_translation_never_returns_the_foreign_original(monkeypatch):
     cfg = {"endpoint": "http://localhost:11434", "model": "gemma3:1b",
            "keep_alive": "5m", "num_ctx": 1024, "num_thread": 4, "num_gpu": 99}
