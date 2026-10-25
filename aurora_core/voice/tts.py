@@ -8,7 +8,11 @@ import importlib.util
 
 from .catalog import voice_files
 
-SUPERTONIC_QUALITY_STEPS = 8
+# Five is the quality/latency balance validated on the target desktop: three
+# steps produced audible artifacts, while eight added latency without being
+# necessary for everyday replies. Keep one setting across chunks to avoid
+# audible timbre changes inside a sentence.
+SUPERTONIC_QUALITY_STEPS = 5
 
 
 def local_piper_available():
@@ -157,8 +161,7 @@ class Speaker(QThread):
             total_synthesis_ms=0
             for chunk in self._speech_chunks(text):
                 synthesis_started=time.perf_counter()
-                # Use Supertonic's documented default: the earlier three-step
-                # shortcut caused severe artifacts across every voice style.
+                # Five denoising steps balance voice quality and response time.
                 wav, _duration = synthesizer.synthesize(
                     chunk, voice_style=style,
                     total_steps=SUPERTONIC_QUALITY_STEPS, lang='pt')

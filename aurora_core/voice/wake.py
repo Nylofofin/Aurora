@@ -121,6 +121,25 @@ class LocalVoice(QThread):
         name=re.sub(r'[^a-z0-9]+',' ',normalize_words(assistant_name or 'Aurora')).strip() or 'aurora'
         spoken=re.sub(r'[^a-z0-9]+',' ',normalize_words(text)).strip()
         return spoken in {name, 'ei '+name, 'ola '+name}
+    @classmethod
+    def is_confident_wake_result(cls,payload,finalized,assistant_name='Aurora',minimum_confidence=.68):
+        """Require the unrestricted recognizer to hear only a confident wake phrase."""
+        if not isinstance(payload,dict) or not cls.is_final_wake_phrase(
+                payload.get('text',''),finalized,assistant_name):
+            return False
+        words=str(payload.get('text','')).split()
+        metadata=payload.get('result')
+        if not isinstance(metadata,list) or len(metadata)<len(words):
+            return False
+        confidences=[]
+        for item in metadata[:len(words)]:
+            if not isinstance(item,dict) or not isinstance(item.get('conf'),(int,float)):
+                return False
+            confidence=float(item['conf'])
+            if not math.isfinite(confidence) or confidence<minimum_confidence:
+                return False
+            confidences.append(confidence)
+        return bool(confidences)
     @staticmethod
     def contains_wake_name(text,assistant_name='Aurora'):
         """Check that a local transcript starts with the configured wake name."""
@@ -207,7 +226,9 @@ class LocalVoice(QThread):
             # normal decoder.  The exact phrase gate below still prevents
             # arbitrary speech from waking Aurora.
             wake_fallback_rec = KaldiRecognizer(model,16000)
-            wake_fallback_rec.SetWords(False)
+            # Unlike the constrained wake grammar, this decoder must provide
+            # per-word confidence before it can authorize an activation.
+            wake_fallback_rec.SetWords(True)
             wake_profile = self.cfg.get('wake_profile') if normalize_words(assistant_name) != 'aurora' else None
             cancel_rec=KaldiRecognizer(model,16000,'["para", "pare", "parar", "cancele", "cancela", "cancelar", "interrompa", "interrompe", "interromper", "chega", "espera", "calma", "calma para", "pera", "pera aí", "deixa", "deixa pra lá", "para agora", "para com isso", "não", "não para", "não calma para", "não espera", "corta"]'); cancel_rec.SetWords(False)
             while self.running:
@@ -320,6 +341,7 @@ class LocalVoice(QThread):
                         fallback_finalized = bool(not active and wake_fallback_rec.AcceptWaveform(block))
                         wake_finalized = finalized or fallback_finalized
                         candidate_texts=[]
+                        fallback_payload={}
                         command_confidence=None
                         if finalized:
                             result_payload=parse_vosk_result(active_rec.Result(),'comando' if active else 'wake')
@@ -333,7 +355,8 @@ class LocalVoice(QThread):
                                 if confidences and len(confidences)>=len(str(result_payload.get('text','')).split()):
                                     command_confidence=sum(confidences)/len(confidences)
                         if fallback_finalized:
-                            candidate_texts.append(parse_vosk_result(wake_fallback_rec.Result(),'wake alternativo').get('text','').strip())
+                            fallback_payload=parse_vosk_result(wake_fallback_rec.Result(),'wake alternativo')
+                            candidate_texts.append(str(fallback_payload.get('text','')).strip())
                         if not finalized:
                             if fallback_finalized:
                                 text=candidate_texts[-1]
@@ -345,11 +368,12 @@ class LocalVoice(QThread):
                                 continue
                         else:
                             text=candidate_texts[0] if candidate_texts else ''
-                        if not active and wake_finalized:
-                            # Both recognizers received the same PCM. Reset both
-                            # at either endpoint so one decoder cannot carry a
-                            # partial fragment into the next utterance.
-                            self.reset_wake_recognizers(wake_rec, wake_fallback_rec)
+                        if not active:
+                            # Let each decoder finish its own endpoint. Resetting
+                            # both when either one finalized could discard the
+                            # unrestricted decoder's confidence result.
+                            if finalized: wake_rec.Reset()
+                            if fallback_finalized: wake_fallback_rec.Reset()
                         if active:
                             if text:
                                 self.audio_level.emit(0.0)
@@ -369,8 +393,8 @@ class LocalVoice(QThread):
                                 active=False; buffer=[]; wake_audio=[]; rec.Reset(); wake_rec.Reset(); self.end_request(); self.status.emit('hidden')
                         elif text or candidate_texts:
                             assistant_name=self.cfg.get('assistant_name','Aurora')
-                            exact_wake=any(self.is_final_wake_phrase(candidate,True,assistant_name)
-                                           for candidate in candidate_texts)
+                            exact_wake=self.is_confident_wake_result(
+                                fallback_payload,fallback_finalized,assistant_name)
                             if exact_wake:
                                 profile_candidate=False; profile_candidate_audio.clear()
                                 print('[voice] wake confirmada; captura do comando iniciada',file=sys.stderr,flush=True)

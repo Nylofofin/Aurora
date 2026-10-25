@@ -3,8 +3,8 @@ from __future__ import annotations
 
 """Release identity for the Aurora local desktop build."""
 
-__version__ = "2.1.2"
+__version__ = "3.0.0e"
 
-CODENAME = "RIGEL UPDATE INTEGRITY"
+CODENAME = "VEGA VOICE & WAKE"
 
-BUILD_ID = "aurora-desktop-2.1.2-rigel-update-integrity"
+BUILD_ID = "aurora-desktop-3.0.0e-vega-voice-wake"

@@ -194,7 +194,11 @@ def newer_aurora_releases(
         if not isinstance(release, dict) or release.get("draft"):
             continue
         tag = release.get("tag_name")
-        match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)(?:[-+][A-Za-z0-9.-]+)?", str(tag or ""))
+        # Keep the project's compact e-suffixed stable identity (for example
+        # v3.0.0e) installable alongside conventional prerelease suffixes.
+        match = re.fullmatch(
+            r"v?(\d+)\.(\d+)\.(\d+)(?:[-+]?[A-Za-z][A-Za-z0-9.-]*)?",
+            str(tag or ""), re.IGNORECASE)
         published = str(release.get("published_at") or "")
         prerelease = release.get("prerelease")
         if not match or not isinstance(prerelease, bool) or (stable_only and prerelease):
