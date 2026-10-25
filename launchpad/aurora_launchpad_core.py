@@ -159,8 +159,19 @@ def latest_launchpad_update(releases, current_version: str) -> dict | None:
             url = asset.get("browser_download_url")
             digest = asset.get("digest")
             size = asset.get("size")
-            if (version is None or version <= current or not isinstance(url, str)
-                    or not re.fullmatch(r"https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/releases/download/[A-Za-z0-9._+-]+/[^/]+", url)
+            parsed = urlsplit(str(url or ""))
+            path_parts = parsed.path.strip("/").split("/")
+            expected_repo = GITHUB_REPOSITORY.split("/")
+            tag = str(release.get("tag_name") or "")
+            url_matches_release = (
+                parsed.scheme == "https" and parsed.netloc.casefold() == "github.com"
+                and len(path_parts) == 6
+                and [part.casefold() for part in path_parts[:2]] == [part.casefold() for part in expected_repo]
+                and path_parts[2:4] == ["releases", "download"]
+                and path_parts[4] == tag
+                and path_parts[5] == name
+            )
+            if (version is None or version <= current or not isinstance(url, str) or not url_matches_release
                     or not isinstance(digest, str) or not re.fullmatch(r"sha256:[0-9a-fA-F]{64}", digest)
                     or not isinstance(size, int) or size <= 0 or size > MAX_LAUNCHPAD_RPM_BYTES):
                 continue

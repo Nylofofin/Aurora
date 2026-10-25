@@ -57,7 +57,7 @@ from aurora_launchpad_core import (
 
 
 APP_ID = "com.nylofofin.AuroraLaunchpad"
-INSTALLER_VERSION = "0.4.5"
+INSTALLER_VERSION = "0.4.6"
 PKEXEC = "/usr/bin/pkexec"
 SYSTEMCTL = "/usr/bin/systemctl"
 DNF = "/usr/bin/dnf"
@@ -372,7 +372,11 @@ class Launchpad(Adw.Application):
         self.new_aurora_releases = ()
         self.aurora_update_status = None
         self.aurora_update_button = None
+        self.refresh_releases_button = None
         self.done_detail = None
+        self._deployment_backup = None
+        self._deployment_workspace = None
+        self._update_runtime_state = None
 
     def _installation_health(self):
         unit = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home()/".config"))) / "systemd/user/aurora.service"
@@ -489,6 +493,9 @@ class Launchpad(Adw.Application):
         self.update_button = self._button("Atualizar Launchpad", self._start_launchpad_update, suggested=True)
         self.update_button.set_visible(False)
         self.update_panel.append(self.update_button)
+        self.refresh_releases_button = self._button("Tentar novamente", self._load_releases)
+        self.refresh_releases_button.set_visible(False)
+        self.update_panel.append(self.refresh_releases_button)
 
         actions_grid = Gtk.Grid(column_spacing=12, row_spacing=12)
         actions_grid.set_column_homogeneous(True)
@@ -597,6 +604,9 @@ class Launchpad(Adw.Application):
         self.update_button = self._button("Atualizar Launchpad", self._start_launchpad_update, suggested=True)
         self.update_button.set_visible(False)
         self.update_panel.append(self.update_button)
+        self.refresh_releases_button = self._button("Tentar novamente", self._load_releases)
+        self.refresh_releases_button.set_visible(False)
+        self.update_panel.append(self.refresh_releases_button)
 
         overview = Gtk.Grid(column_spacing=12, row_spacing=12)
         overview.set_column_homogeneous(True)
@@ -620,12 +630,19 @@ class Launchpad(Adw.Application):
         col.append(self._label("Clique em uma versão para revisar e confirmar a instalação. Pré-releases são experimentais e podem conter falhas.", "subtle", True))
         return self._page(col)
 
-    def _load_releases(self):
+    def _load_releases(self, *_):
         if self.loading_releases:
             return
         self.loading_releases = True
-        if getattr(self, "refresh_releases_button", None):
+        self.launchpad_update = None
+        self.new_aurora_releases = ()
+        if self.aurora_update_button:
+            self.aurora_update_button.set_sensitive(False)
+        if self.update_button:
+            self.update_button.set_visible(False)
+        if self.refresh_releases_button:
             self.refresh_releases_button.set_sensitive(False)
+            self.refresh_releases_button.set_visible(True)
         if self.release_status:
             self.release_status.set_text("Buscando versões no GitHub…")
         threading.Thread(target=self._load_releases_worker, daemon=True).start()
@@ -645,7 +662,7 @@ class Launchpad(Adw.Application):
 
     def _show_release_options(self, options, error, update=None, newer=()):
         self.loading_releases = False
-        if getattr(self, "refresh_releases_button", None):
+        if self.refresh_releases_button:
             self.refresh_releases_button.set_sensitive(True)
         self.release_options = options
         self.launchpad_update = update
@@ -658,8 +675,11 @@ class Launchpad(Adw.Application):
             if error:
                 self.update_status.set_text("Não consegui consultar as atualizações agora. Tente novamente.")
                 self.aurora_update_status.set_text(f"Falha ao consultar as versões: {str(error)[:180]}")
-                self.aurora_update_button.set_sensitive(True)
+                self.aurora_update_button.set_sensitive(False)
+                self.refresh_releases_button.set_label("Tentar novamente")
+                self.refresh_releases_button.set_visible(True)
                 return False
+            self.refresh_releases_button.set_visible(False)
             if update:
                 version = update["asset"]["name"].split("aurora-launchpad-", 1)[1].split("-", 1)[0]
                 self.update_status.set_text(
@@ -669,7 +689,7 @@ class Launchpad(Adw.Application):
                 self.aurora_update_status.set_text("Atualize o Launchpad antes de atualizar a Aurora.")
                 self.aurora_update_button.set_sensitive(False)
                 return False
-            self.aurora_update_button.set_sensitive(True)
+            self.aurora_update_button.set_sensitive(bool(self.new_aurora_releases))
             self.update_status.set_text(f"Launchpad {INSTALLER_VERSION} está atualizado.")
             if self.new_aurora_releases:
                 release = self.new_aurora_releases[0]
@@ -687,9 +707,10 @@ class Launchpad(Adw.Application):
             self.releases_box.remove(self.releases_box.get_first_child())
         if error:
             self.release_status.set_text("Não consegui consultar as versões agora. Confira a conexão e tente novamente.")
-            retry = self._button("Tentar novamente", lambda *_: self._load_releases())
-            self.releases_box.append(retry)
+            self.refresh_releases_button.set_label("Tentar novamente")
+            self.refresh_releases_button.set_visible(True)
             return False
+        self.refresh_releases_button.set_visible(False)
         if update:
             version = update["asset"]["name"].split("aurora-launchpad-", 1)[1].split("-", 1)[0]
             self.update_status.set_text(
@@ -776,6 +797,8 @@ class Launchpad(Adw.Application):
         self.install_acknowledged = True
         self.aurora_update_mode = True
         self.failed_operation = "update"
+        self.progress_title.set_text("Atualizando Aurora")
+        self.progress_subtitle.set_text(f"Preparando a versão estável {release['tag_name']}.")
         self.stack.set_visible_child_name("progress")
         self.lines.clear()
         self._append(f"Atualizando Aurora para {release['tag_name']}…")
@@ -938,9 +961,15 @@ class Launchpad(Adw.Application):
         col.append(self.reboot_status)
         buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12, halign=Gtk.Align.END)
         buttons.append(self._button("Abrir status do serviço", self._show_service_status))
-        buttons.append(self._button("Sair da sessão", self._request_logout))
-        buttons.append(self._button("Reiniciar depois", lambda *_: self.window.close()))
-        buttons.append(self._button("Reiniciar agora", self._request_reboot, suggested=True))
+        self.done_action_buttons = []
+        for label, callback, suggested in (
+            ("Sair da sessão", self._request_logout, False),
+            ("Reiniciar depois", lambda *_: self.window.close(), False),
+            ("Reiniciar agora", self._request_reboot, True),
+        ):
+            button = self._button(label, callback, suggested=suggested)
+            self.done_action_buttons.append(button)
+            buttons.append(button)
         col.append(buttons)
         return self._page(col)
 
@@ -997,39 +1026,56 @@ class Launchpad(Adw.Application):
                     f"Instalando {release['tag_name']} ({'pré-release' if release.get('prerelease') else 'release'}).",
                     .07,
                 )
+                self._update_runtime_state = self._capture_update_runtime_state(source)
+                self._set_stage("2/7 · Parando a Aurora", "Encerrando o serviço antes de substituir os arquivos.", .10)
+                stop_old = subprocess.run([SYSTEMCTL, "--user", "stop", "aurora.service"], capture_output=True, text=True, timeout=30)
+                if stop_old.returncode and subprocess.run([SYSTEMCTL, "--user", "is-active", "--quiet", "aurora.service"], timeout=15).returncode == 0:
+                    raise RuntimeError("Não consegui parar a Aurora; os arquivos atuais foram preservados.")
                 self._install_payload(source)
             self._migrate_existing_memory()
-            self._set_stage("2/7 · Preparando dependências", "Criando o ambiente Python e instalando os pacotes da Aurora.", .16)
-            run_process([str(MANAGED_APP / "run.sh"), "--setup-only"], self._stream_line, cwd=MANAGED_APP, timeout=1800)
-            self._set_stage("3/7 · Preparando a voz local", "Instalando Vosk para ativação e Whisper.cpp para transcrição em português.", .31)
-            run_process([str(MANAGED_APP / "setup-voice.sh")], self._stream_line, cwd=MANAGED_APP, timeout=1800)
-            self.ollama = shutil.which("ollama", path=SYSTEM_PATH)
-            if not self.ollama:
-                self._set_stage("4/7 · Instalando Ollama", "O instalador oficial solicitará autenticação do sistema.", .43)
-                self._install_ollama()
+            state = self._update_runtime_state or {}
+            # This is a fast import/dependency check; run.sh only invokes pip
+            # when an import is missing. It repairs an incomplete venv without
+            # re-downloading voice or Ollama models on every app update.
+            setup_python = True
+            setup_voice = (not self.aurora_update_mode or not state.get("venv_present")
+                           or state.get("voice_requirements_changed") or not state.get("voice_assets_present"))
+            if setup_python:
+                self._set_stage("3/7 · Preparando dependências", "Conferindo e instalando apenas os pacotes Python necessários.", .20)
+                run_process([str(MANAGED_APP / "run.sh"), "--setup-only"], self._stream_line, cwd=MANAGED_APP, timeout=1800)
+            if setup_voice:
+                self._set_stage("4/7 · Preparando a voz local", "Conferindo o runtime e baixando apenas modelos de voz ausentes.", .36)
+                run_process([str(MANAGED_APP / "setup-voice.sh")], self._stream_line, cwd=MANAGED_APP, timeout=1800)
+            if not self.aurora_update_mode:
                 self.ollama = shutil.which("ollama", path=SYSTEM_PATH)
-            if not self.ollama:
-                raise RuntimeError("O comando ollama não apareceu após a instalação.")
-            self._wait_for_ollama()
-            before = set(__import__("aurora_launchpad_core").parse_ollama_models(
-                run_process([self.ollama, "list"], self._stream_line, timeout=30)
-            ))
-            absent = [name for name in MODEL_NAMES if name not in before]
-            self._set_stage("5/7 · Conferindo modelos", f"{len(absent)} modelo(s) precisam ser baixados; o progresso aparece aqui.", .50)
-            for index, model in enumerate(absent):
-                fraction = .52 + (.37 * index / max(1, len(absent)))
-                self._set_stage(f"6/7 · Baixando {model}", "O tamanho e a duração dependem da rede; os dados ficam no armazenamento do Ollama.", fraction)
-                run_process([self.ollama, "pull", model], self._stream_line, timeout=7200)
-                if model not in before:
-                    OWNED_MODELS.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-                    OWNED_MODELS.parent.chmod(0o700)
-                    if OWNED_MODELS.is_symlink():
-                        raise RuntimeError("O manifesto de modelos Aurora é um link simbólico; não vou alterá-lo.")
-                    with OWNED_MODELS.open("a", encoding="utf-8") as manifest:
-                        manifest.write(model + "\n")
-                    OWNED_MODELS.chmod(0o600)
-            if not absent:
-                self._set_stage("Modelos encontrados", "Os dois modelos já estavam disponíveis; nenhum download foi repetido.", .89)
+                if not self.ollama:
+                    self._set_stage("5/7 · Instalando Ollama", "O instalador oficial solicitará autenticação do sistema.", .47)
+                    self._install_ollama()
+                    self.ollama = shutil.which("ollama", path=SYSTEM_PATH)
+                if not self.ollama:
+                    raise RuntimeError("O comando ollama não apareceu após a instalação.")
+                self._wait_for_ollama()
+                before = set(__import__("aurora_launchpad_core").parse_ollama_models(
+                    run_process([self.ollama, "list"], self._stream_line, timeout=30)
+                ))
+                absent = [name for name in MODEL_NAMES if name not in before]
+                self._set_stage("5/7 · Conferindo modelos", f"{len(absent)} modelo(s) precisam ser baixados; o progresso aparece aqui.", .50)
+                for index, model in enumerate(absent):
+                    fraction = .52 + (.37 * index / max(1, len(absent)))
+                    self._set_stage(f"6/7 · Baixando {model}", "O tamanho e a duração dependem da rede; os dados ficam no armazenamento do Ollama.", fraction)
+                    run_process([self.ollama, "pull", model], self._stream_line, timeout=7200)
+                    if model not in before:
+                        OWNED_MODELS.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                        OWNED_MODELS.parent.chmod(0o700)
+                        if OWNED_MODELS.is_symlink():
+                            raise RuntimeError("O manifesto de modelos Aurora é um link simbólico; não vou alterá-lo.")
+                        with OWNED_MODELS.open("a", encoding="utf-8") as manifest:
+                            manifest.write(model + "\n")
+                        OWNED_MODELS.chmod(0o600)
+                if not absent:
+                    self._set_stage("Modelos encontrados", "Os dois modelos já estavam disponíveis; nenhum download foi repetido.", .89)
+            else:
+                self._set_stage("5/7 · Preservando modelos", "A atualização não baixa novamente os modelos do Ollama.", .83)
             self._set_stage("7/7 · Ativando a Aurora", "Configurando o serviço da sessão e iniciando a bolha.", .94)
             if not self.existing_install:
                 config_root = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home()/".config")))
@@ -1040,45 +1086,143 @@ class Launchpad(Adw.Application):
                     raise RuntimeError("Não consegui identificar a sessão atual para agendar a personalização inicial.") from exc
                 prepare_first_boot_onboarding(config_root/"aurora"/"aurora-settings.json", boot_id,
                                               existing_install=False)
-            stop_old = subprocess.run([SYSTEMCTL, "--user", "stop", "aurora.service"], capture_output=True, text=True, timeout=30)
-            if stop_old.returncode and subprocess.run([SYSTEMCTL, "--user", "is-active", "--quiet", "aurora.service"], timeout=15).returncode == 0:
-                raise RuntimeError("Não consegui parar a instalação anterior da Aurora; não vou substituir seus arquivos enquanto o serviço estiver ativo.")
             run_process([str(MANAGED_APP / "install-desktop.sh")], self._stream_line, cwd=MANAGED_APP, timeout=180)
             active = subprocess.run([SYSTEMCTL, "--user", "is-active", "--quiet", "aurora.service"], timeout=15).returncode == 0
             if not active:
                 raise RuntimeError("O serviço foi configurado, mas não ficou ativo. Consulte journalctl --user -u aurora.service.")
             GLib.idle_add(self._finish_install)
         except Exception as exc:
+            if self.aurora_update_mode:
+                try:
+                    self._rollback_payload()
+                    subprocess.run([SYSTEMCTL, "--user", "start", "aurora.service"],
+                                   capture_output=True, text=True, timeout=30)
+                except Exception as rollback_error:
+                    print(f"[launchpad-update] rollback failed: {rollback_error}", flush=True)
             GLib.idle_add(self._install_failed, str(exc))
 
+    def _capture_update_runtime_state(self, source: Path) -> dict:
+        """Decide which costly setup steps an update actually needs."""
+        old_venv = MANAGED_APP / ".venv" / "bin" / "python"
+        new_voice = source / "requirements-voice.txt"
+        old_voice = MANAGED_APP / "requirements-voice.txt"
+        def same_file(left, right):
+            try:
+                return left.read_bytes() == right.read_bytes()
+            except OSError:
+                return False
+        data_root = Path(os.environ.get("XDG_DATA_HOME", str(Path.home()/".local/share"))) / "aurora"
+        return {
+            "venv_present": old_venv.is_file(),
+            "voice_requirements_changed": same_file(old_voice, new_voice) is False,
+            "voice_assets_present": (
+                all((MANAGED_APP / "assets/vosk-model" / name).is_file()
+                    for name in ("final.mdl", "Gr.fst", "HCLr.fst", "mfcc.conf"))
+                and (data_root / "models/ggml-base-q5_1.bin").is_file()
+            ),
+        }
+
     def _install_payload(self, source: Path):
-        ignored = {".git", ".venv", "__pycache__", ".pytest_cache", "android-client", "tests", "reports", ".github", "packaging", "launchpad"}
+        ignored = {".git", ".venv", "__pycache__", ".pytest_cache", "android-client", "tests", "reports", ".github", "packaging", "launchpad", "aurora-settings.json", "aurora-memory.json"}
         try:
             reject_symlinks_in_tree(source)
-            # A venv created by Python legitimately contains interpreter links
-            # (lib64 and python3). It is preserved across upgrades and never
-            # participates in the source merge; every other link is rejected.
             reject_symlinks_in_tree(MANAGED_APP, ignored_directories={".venv"})
         except ValueError as exc:
             raise RuntimeError(str(exc)) from exc
-        MANAGED_APP.mkdir(parents=True, exist_ok=True)
-        MANAGED_APP.chmod(0o700)
-        for entry in source.iterdir():
-            if entry.name in ignored or entry.name.endswith("-preview.png"):
-                continue
-            dest = MANAGED_APP / entry.name
-            if entry.is_symlink():
-                raise RuntimeError(f"O pacote contém um link simbólico inesperado: {entry.name}.")
-            if dest.exists() and dest.is_symlink():
-                raise RuntimeError(f"O destino já contém um link simbólico: {dest.name}. Ele não será sobrescrito.")
-            if entry.is_dir():
-                shutil.copytree(entry, dest, dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".venv", "vosk-model"))
+        MANAGED_APP.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        workspace = Path(tempfile.mkdtemp(prefix=".aurora-deploy-", dir=MANAGED_APP.parent))
+        staged = workspace / "payload"
+        staged.mkdir(mode=0o700)
+        backup = workspace / "previous"
+        moved_runtime = []
+
+        def restore_original_tree():
+            if backup.exists():
+                # Restore preserved runtime data inside the backup tree first;
+                # recreating MANAGED_APP here would block the directory swap.
+                for old, new in reversed(moved_runtime):
+                    if new.exists():
+                        target = backup / old.relative_to(MANAGED_APP)
+                        target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                        os.replace(new, target)
+                if MANAGED_APP.exists():
+                    shutil.rmtree(MANAGED_APP, ignore_errors=True)
+                os.replace(backup, MANAGED_APP)
             else:
-                shutil.copy2(entry, dest)
+                for old, new in reversed(moved_runtime):
+                    if new.exists() and not old.exists():
+                        old.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                        os.replace(new, old)
+
+        try:
+            for entry in source.iterdir():
+                if entry.name in ignored or entry.name.endswith("-preview.png"):
+                    continue
+                if entry.is_symlink():
+                    raise RuntimeError(f"O pacote contém um link simbólico inesperado: {entry.name}.")
+                dest = staged / entry.name
+                if entry.is_dir():
+                    shutil.copytree(entry, dest, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".venv", "vosk-model"))
+                else:
+                    shutil.copy2(entry, dest)
+
+            # Settings and user logs have lived beside the old code in some
+            # installations. Keep them out of the downloaded source and carry
+            # them forward explicitly, along with costly local runtimes.
+            preserve = (".venv", "reports", "aurora-settings.json", "aurora-memory.json", "assets/vosk-model")
+            for relative in preserve:
+                old = MANAGED_APP / relative
+                if not old.exists() or old.is_symlink():
+                    continue
+                if relative == ".venv" and not old.is_dir():
+                    continue
+                new = staged / relative
+                new.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                if new.exists():
+                    if new.is_dir(): shutil.rmtree(new)
+                    else: new.unlink()
+                os.replace(old, new)
+                moved_runtime.append((old, new))
+
+            if MANAGED_APP.exists():
+                os.replace(MANAGED_APP, backup)
+            try:
+                os.replace(staged, MANAGED_APP)
+            except Exception:
+                restore_original_tree()
+                raise
+            MANAGED_APP.chmod(0o700)
+            self._deployment_backup = backup if backup.exists() else None
+            self._deployment_workspace = workspace
+        except Exception:
+            restore_original_tree()
+            shutil.rmtree(workspace, ignore_errors=True)
+            raise
         for script in ("run.sh", "start-alpha.sh", "install-desktop.sh", "install-service.sh", "setup-voice.sh", "uninstall-service.sh"):
             path = MANAGED_APP / script
             if path.is_file():
                 path.chmod(path.stat().st_mode | 0o111)
+
+    def _rollback_payload(self):
+        backup = self._deployment_backup
+        if not backup or not backup.exists():
+            return
+        failed = backup.parent / "failed-payload"
+        if failed.exists():
+            shutil.rmtree(failed, ignore_errors=True)
+        for relative in (".venv", "reports", "aurora-settings.json", "aurora-memory.json", "assets/vosk-model"):
+            active = MANAGED_APP / relative
+            previous = backup / relative
+            if active.exists() and not previous.exists():
+                previous.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                os.replace(active, previous)
+        if MANAGED_APP.exists():
+            os.replace(MANAGED_APP, failed)
+        os.replace(backup, MANAGED_APP)
+        shutil.rmtree(failed, ignore_errors=True)
+        shutil.rmtree(backup.parent, ignore_errors=True)
+        self._deployment_backup = None
+        self._deployment_workspace = None
 
     def _migrate_existing_memory(self):
         copy_existing_memory(PRESERVED_MEMORY.parent, MANAGED_APP)
@@ -1153,6 +1297,15 @@ class Launchpad(Adw.Application):
                     f"Aurora atualizada para {self.installed_aurora_version}. Seu perfil, nome, voz, aparência, "
                     "preferências, memória local e modelos foram preservados. O serviço já foi iniciado novamente."
                 )
+            if self.reboot_status:
+                self.reboot_status.set_text("A atualização foi aplicada e o serviço já reiniciou; não é necessário sair da sessão.")
+            for button in getattr(self, "done_action_buttons", ()):
+                if button.get_label() != "Abrir status do serviço":
+                    button.set_visible(False)
+        if self._deployment_workspace:
+            shutil.rmtree(self._deployment_workspace, ignore_errors=True)
+        self._deployment_backup = None
+        self._deployment_workspace = None
         self.progress_bar.set_fraction(1.0); self.progress_bar.set_text("100%")
         self.stack.set_visible_child_name("done")
         return False

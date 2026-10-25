@@ -14,6 +14,8 @@ The wizard checks Fedora Workstation, GNOME/Wayland, available RAM and disk spac
 
 The installer prepares a private Python environment, downloads the Portuguese Vosk model, installs Ollama if needed, creates /usr/share/ollama for the ollama service account when missing, downloads the configured Gemma models, migrates existing local memory without deleting its source, then configures and starts aurora.service. The privileged Ollama script is accepted only when its SHA-256 matches the reviewed version pinned in the wizard.
 
+An existing installation opens a maintenance dashboard. **Atualizar Aurora** selects the newest published stable desktop release; it does not offer stale builds or download pre-releases. The Launchpad stages a clean payload, stops `aurora.service` before switching files, and retains the old application tree until the updated service is confirmed active. If activation fails, it restores the previous application and attempts to restart it. User settings, legacy in-tree settings and memory, the Python environment, Vosk data, voice models, and Ollama models are kept. Dependency checks run after the switch; already-installed speech and Ollama models are not downloaded again. If the GitHub check fails, the update action stays disabled and the dashboard exposes a retry button.
+
 ## Removal
 
 Launchpad can remove its managed Aurora files and service. Removing preferences, memory, logs, newly downloaded models, or the RPM itself are separate options. Existing Ollama models and the system-wide Ollama installation are preserved.
