@@ -42,6 +42,9 @@ DEFAULTS = {
     'companion_enabled':False,
     'companion_port':8765,
     'system_routine_enabled':True,
+    'conversation_mode_enabled':True,
+    'conversation_idle_seconds':18,
+    'conversation_max_turns':8,
 }
 
 def current_boot_id():

@@ -19,6 +19,7 @@ from .llm.warmup import ModelWarmup
 from .llm.prompts import _verified_fx_answer, ensure_current_source_attribution, ground_search_answer, search_answer_prompts
 from .memory import user_memory_update
 from .routing import route_request
+from .conversation import is_conversation_closing
 from .system.apps import close_application, launch_application
 from .system.actions import execute_action as dispatch_action
 from .system.audit import audit_action
@@ -176,6 +177,7 @@ class AuroraService(QObject):
         self._last_error_notification=None
         self.critical_error_requested.connect(self._present_critical_error,Qt.ConnectionType.QueuedConnection)
         self.response_summary=''; self.response_finished=False; self.response_language='Português brasileiro'; self.activity_generation=0; self.request_generation=0; self.last_wake=0.0; self.background_requests=[]; self.context_history=[]; self.current_prompt=''; self.active_search_context=''
+        self.continuous_mode=False; self.conversation_turns=0; self.conversation_token=0; self.current_turn_kind='action'
         self.pending_clarification=None; self.clarification_listening=False
         self.system_routine_check=None; self.system_update_worker=None; self.system_routine_pending=None
         self.system_routine_after_speech=None; self.system_routine_generation=0
@@ -491,6 +493,8 @@ class AuroraService(QObject):
         if getattr(self,'companion_request',None): return
         if self._mobile_audio_owned(): return
         self.pending_clarification=None; self.clarification_listening=False
+        self.continuous_mode=bool(getattr(self,'cfg',{}).get('conversation_mode_enabled',True))
+        self.conversation_turns=0; self.conversation_token=getattr(self,'conversation_token',0)+1; self.current_turn_kind='conversation'
         self.last_wake=time.monotonic()
         # A language requested for a playful turn must not leak into the next
         # activation or into confirmations for a later desktop action.
@@ -710,6 +714,7 @@ class AuroraService(QObject):
         self.activity_generation+=1; self.request_generation+=1
         self.system_routine_generation+=1; self.system_routine_pending=None; self.system_routine_after_speech=None
         self.action_cancel_event.set()
+        self.continuous_mode=False; self.conversation_token=getattr(self,'conversation_token',0)+1; self.conversation_turns=0; self.current_turn_kind='action'
         self.pending_clarification=None; self.clarification_listening=False
         self.voice.end_request()
         self.voice.disable_control_cancel()
@@ -753,6 +758,12 @@ class AuroraService(QObject):
         self.speak_in_selected_language('Não consegui iniciar o reconhecimento de voz')
     def ask(self,prompt):
         if self._handle_system_routine_confirmation(prompt): return
+        if getattr(self,'continuous_mode',False) and is_conversation_closing(prompt):
+            self.continuous_mode=False; self.conversation_token=getattr(self,'conversation_token',0)+1; self.voice.end_request()
+            self.context_history.clear()
+            self.response_finished=True; self.response_summary='Tudo bem. Até a próxima.'
+            self.speak_in_selected_language(self.response_summary)
+            return
         # Keep the short local interrupt recognizer available while the
         # clarification answer is routed or its selected action is performed.
         self.voice.interrupt_active.set()
@@ -839,6 +850,7 @@ class AuroraService(QObject):
             self.context_history.extend(({'role':'user','content':user_text},{'role':'assistant','content':assistant_text}))
             self.context_history=self.context_history[-6:]
     def complete_direct_action(self,result):
+        self.continuous_mode=False; self.conversation_token=getattr(self,'conversation_token',0)+1; self.current_turn_kind='action'
         self.response_summary=' '.join(str(result).split()); self.response_finished=True
         AuroraService._arm_action_clarification(self,self.current_prompt,self.response_summary)
         self.remember_exchange(self.current_prompt,self.response_summary)
@@ -935,6 +947,7 @@ class AuroraService(QObject):
             self.quick_search_error(self.current_prompt,'no verified quote',generation)
     def quick_summary_done(self,summary,generation=None,context_extra=''):
         if generation is not None and generation!=self.request_generation: return
+        self.continuous_mode=False; self.conversation_token=getattr(self,'conversation_token',0)+1; self.current_turn_kind='action'
         self.response_summary=' '.join(str(summary).split()); self.response_finished=True
         AuroraService._arm_action_clarification(self,self.current_prompt,self.response_summary)
         card_generation=self.request_generation if generation is None else generation
@@ -962,6 +975,7 @@ class AuroraService(QObject):
         if generation is not None and generation!=self.request_generation: return
         research_card=getattr(self,'research_card',None)
         if generation is not None and research_card: research_card.finish(generation,text)
+        self.continuous_mode=False; self.conversation_token=getattr(self,'conversation_token',0)+1; self.current_turn_kind='research'
         self.response_summary=text; self.response_finished=True; self.remember_exchange(self.current_prompt,text); self.speak_in_selected_language(text,generation)
         if getattr(self,'companion_request',None):
             self.voice.speaking=False
@@ -971,6 +985,7 @@ class AuroraService(QObject):
         message='Não consegui consultar as condições atuais do tempo.'
         research_card=getattr(self,'research_card',None)
         if generation is not None and research_card: research_card.finish(generation,message)
+        self.continuous_mode=False; self.conversation_token=getattr(self,'conversation_token',0)+1; self.current_turn_kind='research'
         self.response_summary=message; self.response_finished=True; self.remember_exchange(self.current_prompt,message); self.orb.set_mode('error'); self.speak_in_selected_language(message,generation)
         if getattr(self,'companion_request',None):
             self.voice.speaking=False
@@ -978,6 +993,7 @@ class AuroraService(QObject):
     def answer_error(self,msg,generation=None):
         if generation is not None and generation!=self.request_generation: return
         self.critical_error_requested.emit('falha no modelo local','InferenceError',str(msg),[])
+        self.continuous_mode=False; self.conversation_token=getattr(self,'conversation_token',0)+1; self.current_turn_kind='action'
         self.response_summary=' '.join(str(msg).split()); self.response_finished=True; self.remember_exchange(self.current_prompt,self.response_summary); self.orb.set_mode('error'); self.speak_in_selected_language(self.response_summary,generation)
         research_card=getattr(self,'research_card',None)
         if generation is not None and research_card: research_card.finish(generation,self.response_summary)
@@ -1007,6 +1023,8 @@ class AuroraService(QObject):
     def answer_done(self,text,generation=None):
         if generation is not None and generation!=self.request_generation: return
         self.response_summary=Speaker.clean(' '.join(str(text).split())); self.response_finished=True
+        if getattr(self,'current_turn_kind','action') != 'conversation':
+            self.continuous_mode=False; self.conversation_token=getattr(self,'conversation_token',0)+1
         AuroraService._arm_action_clarification(self,self.current_prompt,self.response_summary)
         research_card=getattr(self,'research_card',None)
         if generation is not None and research_card and research_card.generation==generation:
@@ -1045,13 +1063,37 @@ class AuroraService(QObject):
                         self.orb.set_mode('listening')
                         self.voice.request_once()
                     return
-                if getattr(self,'continuous_mode',False) and not self._mobile_audio_owned():
-                    # No modo contínuo: após responder a pergunta, continua ouvindo o próximo comando
-                    self.voice.end_request()
-                    self.listen_once()
+                if (getattr(self,'continuous_mode',False)
+                        and getattr(self,'current_turn_kind','action') == 'conversation'
+                        and not self._mobile_audio_owned()):
+                    self._continue_conversation()
                 else:
                     self.voice.end_request(); self.orb.dismiss()
         QTimer.singleShot(delay,finish)
+
+    def _continue_conversation(self):
+        """Arm one follow-up turn without replaying the wake feedback sound."""
+        if not self.continuous_mode or self._mobile_audio_owned(): return
+        limit=max(1,int(getattr(self,'cfg',{}).get('conversation_max_turns',8) or 8))
+        self.conversation_turns+=1
+        if self.conversation_turns>=limit:
+            self.continuous_mode=False; self.conversation_token=getattr(self,'conversation_token',0)+1
+            self.voice.end_request(); self.orb.dismiss(); return
+        self.voice.end_request(); self.voice.begin_request(); self.voice.request_once()
+        self.orb.reveal('listening')
+        token=self.conversation_token
+        timeout=max(5000,min(60000,int(getattr(self,'cfg',{}).get('conversation_idle_seconds',18) or 18)*1000))
+        QTimer.singleShot(timeout,lambda t=token:self._conversation_timeout(t))
+
+    def _conversation_timeout(self,token):
+        if token!=self.conversation_token or not self.continuous_mode: return
+        # The follow-up recorder is intentionally active while idle; it must
+        # not prevent its own inactivity timeout from ending the session.
+        if (getattr(self.voice,'speaking',False) or self.speaker.active
+                or not self.speaker.q.empty() or (self.inf and self.inf.isRunning())
+                or self.background_requests): return
+        self.continuous_mode=False; self.conversation_token=getattr(self,'conversation_token',0)+1; self.voice.end_request()
+        self.context_history.clear(); self.orb.dismiss()
     def inference_finished(self):
         inference=self.sender()
         if inference is not None:

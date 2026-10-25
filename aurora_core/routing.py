@@ -63,6 +63,7 @@ def _local_context_intent(normalized_prompt):
 def route_request(self,prompt):
     if not self.voice.request_active.is_set() and not getattr(self,'companion_request',None): return
     prompt=prompt.strip()
+    self.current_turn_kind='action'
     if not prompt:
         self.voice.speaking=False; self.orb.set_mode('listening'); return
     if self.inf and self.inf.isRunning() and not self.inf.cancelled: return
@@ -130,6 +131,7 @@ def route_request(self,prompt):
     if not query and not agent_intent and ((freshness and not needs_context_search) or ((factual_web_intent(prompt) or research_request_intent(prompt)) and not is_followup)):
         query=LocalVoice.strip_wake_word(prompt,self.cfg.get('assistant_name','Aurora')).strip(' \t,.:;!?')
     if query:
+        self.current_turn_kind='research'
         generation=self.request_generation
         request=SearchRequest(query,freshness,news_search_intent(prompt))
         self.quick_search=request
@@ -147,6 +149,7 @@ def route_request(self,prompt):
             card.begin(generation,prompt,self.orb.frameGeometry(),mode='local')
             card.update_progress(generation,{'stage':'understanding','tasks':['Entendendo o pedido'],
                                              'workers':1,'completed':0,'total':1})
+    self.current_turn_kind='action' if agent_intent else 'conversation'
     model=self.cfg.get('agent_model','gemma4:e2b-it-q4_K_M') if agent_intent else self.cfg['model']
     inference=Inference(self.cfg,prompt,model=model,use_tools=agent_intent,history=self.context_history[-6:],response_language=self.response_language)
     generation=self.request_generation
