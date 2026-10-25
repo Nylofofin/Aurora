@@ -5,7 +5,7 @@
 - Reduz a latência inicial da síntese local com blocos de áudio menores e menos etapas de denoising no Supertonic.
 - Refina o onboarding e o Launchpad com etapas mais compactas, transições mais claras e carrossel de SFX com prévias separadas.
 - Cria três pares de sons de entrada e saída com assinaturas sonoras próprias e mantém a seleção visível durante a personalização.
-- Corrige a checagem de builds novas no Aurora Launchpad 0.4.3-1: uma ação consulta o GitHub e mostra imediatamente as versões encontradas.
+- Corrige a exibição das builds novas no Aurora Launchpad 0.4.4-1: os cartões aparecem assim que a consulta termina, inclusive ao abrir o painel; o botão atualiza a lista.
 
 ## Aurora Desktop 2.1.0 — Proxima Local Voice, 2026-10-25 (release estável)
 
