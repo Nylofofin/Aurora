@@ -1,5 +1,12 @@
 # Histórico de versões
 
+## Aurora Desktop 2.0.1 — Interface Fix, 2026-10-25 (patch estável)
+
+- Corrige o espaçamento vertical excessivo no onboarding.
+- Evita sobreposição entre previews das skins, legendas e botões.
+- Reorganiza campos e cartões para telas horizontais.
+- Separa os previews de SFX em controles individuais de entrada e saída.
+
 ## Aurora Desktop 2.0.0a — Kepler-452b, 2026-10-25 (release estável)
 
 - Reorganiza o onboarding em uma composição horizontal, com campos e cartões que não se sobrepõem.

@@ -3,8 +3,8 @@ from __future__ import annotations
 
 """Release identity for the Aurora local desktop build."""
 
-__version__ = "2.0.0a"
+__version__ = "2.0.1"
 
-CODENAME = "KEPLER-452B"
+CODENAME = "INTERFACE FIX"
 
-BUILD_ID = "aurora-desktop-2.0.0a-kepler-452b"
+BUILD_ID = "aurora-desktop-2.0.1-interface-fix"
