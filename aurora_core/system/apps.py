@@ -11,9 +11,20 @@ def _flatpak_app_id(app):
     if not app:
         return None
     path = Path(app['file'])
-    if '/flatpak/exports/share/applications/' not in str(path):
-        return None
-    app_id = path.stem
+    app_id = path.stem if '/flatpak/exports/share/applications/' in str(path) else ''
+    if not app_id:
+        # Some launchers are copied to a local applications directory while
+        # retaining the Flatpak command in Exec. Resolve that ID generically.
+        try:
+            parts = shlex.split(str(app.get('exec', '')))
+            for index, part in enumerate(parts):
+                if part == 'run' and index + 1 < len(parts):
+                    candidate = parts[index + 1]
+                    if re.fullmatch(r'[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)+', candidate):
+                        app_id = candidate
+                        break
+        except ValueError:
+            return None
     return app_id if re.fullmatch(r'[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)+', app_id) else None
 
 def _close_flatpak_app(app):
@@ -27,7 +38,8 @@ def _close_flatpak_app(app):
             listing = subprocess.run([flatpak, 'ps', '--json'], capture_output=True,
                                      text=True, timeout=3, check=True)
             return {str(item.get('instance', '')) for item in json.loads(listing.stdout)
-                    if item.get('application') == app_id and item.get('instance')}
+                    if str(item.get('application', '')).casefold() == app_id.casefold()
+                    and item.get('instance')}
 
         instances=active_instances()
         if not instances: return False
@@ -157,6 +169,11 @@ def close_application(name):
     query=' '.join(str(name or '').split()).strip()
     if not query: return 'Diga qual aplicativo deseja fechar.'
     windows=shutil.which('wmctrl')
+    # Flatpak processes do not reliably expose a Wayland window to wmctrl.
+    # Resolve and close their sandbox instance before attempting X11 windows.
+    app = find_desktop_app(query)
+    if _close_flatpak_app(app):
+        return f'Fechei {app["name"]} pelo Flatpak.'
     if windows:
         try:
             rows=subprocess.run([windows,'-l','-x'],capture_output=True,text=True,timeout=3,check=True).stdout.splitlines()
@@ -173,10 +190,8 @@ def close_application(name):
                     except (OSError,subprocess.SubprocessError): pass
                 if sent: return f'Enviei o comando de fechar {query}.'
         except Exception: pass
-    app = find_desktop_app(query)
-    if _close_flatpak_app(app):
-        return f'Fechei {app["name"]} pelo Flatpak.'
     app,names=process_names_for_app(query)
+    normalized_names = {value.casefold() for value in names}
     matched=[]
     for proc in Path('/proc').glob('[0-9]*'):
         try:
@@ -184,7 +199,7 @@ def close_application(name):
             if pid in (os.getpid(),os.getppid()): continue
             comm=(proc/'comm').read_text().strip()
             exe=Path(os.readlink(proc/'exe')).name
-            if comm in names or exe in names: matched.append(pid)
+            if comm.casefold() in normalized_names or exe.casefold() in normalized_names: matched.append(pid)
         except (OSError,ValueError): continue
     if not matched: return f'Não encontrei uma janela ou processo ativo de {app["name"] if app else query}.'
     label=app['name'] if app else query

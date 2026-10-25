@@ -79,6 +79,29 @@ def prepare_first_boot_onboarding(config_path: Path, boot_id: str, *, existing_i
     return True
 
 
+def schedule_personalization(config_path: Path, session_id: str = "") -> bool:
+    """Request the profile wizard again without touching existing choices."""
+    path = Path(config_path)
+    try:
+        settings = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError("Não consegui ler as configurações da Aurora.") from exc
+    if not isinstance(settings, dict):
+        raise ValueError("O arquivo de configurações não contém um objeto JSON.")
+    settings["onboarding_pending"] = True
+    settings["onboarding_session_id"] = "reopen:" + str(session_id or "launchpad")
+    fd, temporary_name = tempfile.mkstemp(prefix=".aurora-settings-", suffix=".tmp", dir=path.parent)
+    temporary = Path(temporary_name)
+    with os.fdopen(fd, "w", encoding="utf-8") as stream:
+        json.dump(settings, stream, ensure_ascii=False, indent=2)
+        stream.write("\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, path)
+    path.chmod(0o600)
+    return True
+
+
 @dataclass(frozen=True)
 class EnvironmentReport:
     supported: bool

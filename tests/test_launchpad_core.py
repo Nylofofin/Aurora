@@ -22,6 +22,7 @@ from launchpad.aurora_launchpad_core import (
     ollama_storage_creation_command,
     parse_ollama_models,
     prepare_first_boot_onboarding,
+    schedule_personalization,
     reject_symlinks_in_tree,
     recommend_releases,
     remove_owned_models,
@@ -50,6 +51,17 @@ def test_updating_existing_install_does_not_reschedule_first_run_wizard(tmp_path
     config.write_text('{"keep":true}')
     assert not prepare_first_boot_onboarding(config, "boot-1", existing_install=True)
     assert __import__("json").loads(config.read_text()) == {"keep": True}
+
+
+def test_schedule_personalization_preserves_existing_choices(tmp_path):
+    config = tmp_path / "settings.json"
+    config.write_text('{"assistant_name":"Luna","bubble_style":"emerald"}')
+    assert schedule_personalization(config, "session-6")
+    saved = __import__("json").loads(config.read_text())
+    assert saved["assistant_name"] == "Luna"
+    assert saved["bubble_style"] == "emerald"
+    assert saved["onboarding_pending"] is True
+    assert saved["onboarding_session_id"] == "reopen:session-6"
 
 
 def test_installation_health_detects_stopped_service_as_repairable(tmp_path: Path):

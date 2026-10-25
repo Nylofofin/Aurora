@@ -52,6 +52,7 @@ from aurora_launchpad_core import (
     MAX_LAUNCHPAD_RPM_BYTES,
     parse_ollama_models,
     prepare_first_boot_onboarding,
+    schedule_personalization,
 )
 
 
@@ -444,6 +445,15 @@ class Launchpad(Adw.Application):
             health.append(self._button("Parar e reparar", self._repair_install, suggested=True))
         col.append(health)
 
+        personalization = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        personalization.add_css_class("panel")
+        personalization.append(self._label("PERSONALIZAÇÃO", "caption"))
+        personalization.append(self._label("Reescolha o nome, a voz e o estilo da bolha sem reinstalar a Aurora.", "subtle", True))
+        self.personalization_status = self._label("As escolhas atuais só serão substituídas depois que você concluir o assistente.", "subtle", True)
+        personalization.append(self.personalization_status)
+        personalization.append(self._button("Abrir personalização", self._open_personalization, suggested=True))
+        col.append(personalization)
+
         self.update_panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         self.update_panel.add_css_class("panel")
         self.update_panel.append(self._label("ATUALIZAÇÃO DO LAUNCHPAD", "caption"))
@@ -703,6 +713,18 @@ class Launchpad(Adw.Application):
         self.maintenance_status.set_text(
             "Serviço ativo e instalação íntegra." if active else "Serviço ou instalação precisam de atenção."
         )
+
+    def _open_personalization(self, *_):
+        try:
+            config_root = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home()/".config")))
+            config_path = config_root / "aurora" / "aurora-settings.json"
+            schedule_personalization(config_path, os.environ.get("XDG_SESSION_ID", ""))
+            self.personalization_status.set_text("Personalização agendada. Reiniciando a Aurora…")
+            subprocess.Popen([SYSTEMCTL, "--user", "restart", "aurora.service"],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as exc:
+            self.personalization_status.set_text(f"Não consegui abrir a personalização: {type(exc).__name__}.")
+        return False
 
     def _start_launchpad_update(self, *_):
         if self.update_in_progress or not self.launchpad_update:

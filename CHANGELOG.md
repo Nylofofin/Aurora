@@ -1,5 +1,12 @@
 # Histórico de versões
 
+## Aurora Desktop 1.8.6 — Sirius Control Panel, 2026-10-24 (release estável)
+
+- Adiciona ao Launchpad uma seção para reabrir a personalização de nome, voz e estilo.
+- Preserva escolhas existentes até o usuário concluir o novo onboarding.
+- Fecha aplicativos Flatpak pelo ID da instância antes de depender de janelas X11, funcionando melhor em Wayland.
+- Torna a comparação de processos independente de maiúsculas e minúsculas.
+
 ## Aurora Desktop 1.8.5 — Sirius Onboarding Migration, 2026-10-24 (release estável)
 
 - Migra automaticamente marcadores antigos de primeira instalação.
