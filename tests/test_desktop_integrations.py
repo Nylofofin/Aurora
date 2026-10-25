@@ -280,6 +280,8 @@ def test_roblox_app_request_resolves_to_installed_sober_flatpak(monkeypatch, tmp
            "class": "org.vinegarhq.Sober"}
     monkeypatch.setattr(apps_module, "desktop_app_entries", lambda: iter([app]))
     monkeypatch.setattr(apps_module.shutil, "which", lambda name: "/usr/bin/flatpak" if name == "flatpak" else None)
+    monkeypatch.setattr(apps_module, "FLATPAK_LAUNCH_CONFIRM_TIMEOUT", 0)
+    monkeypatch.setattr(apps_module.subprocess, "run", lambda *args, **kwargs: __import__("subprocess").CompletedProcess(args[0], 0, stdout="[]", stderr=""))
     calls = []
     monkeypatch.setattr(apps_module.subprocess, "Popen", lambda command, **_kwargs: calls.append(command))
 
@@ -291,6 +293,20 @@ def test_roblox_app_request_resolves_to_installed_sober_flatpak(monkeypatch, tmp
         "Iniciei o processo Flatpak de Sober; ainda não confirmei se a janela apareceu."
     )
     assert calls == [["/usr/bin/flatpak", "run", "org.vinegarhq.Sober"]]
+
+
+def test_flatpak_launch_confirms_active_sober_instance(monkeypatch, tmp_path):
+    desktop_file = tmp_path / "flatpak/exports/share/applications/org.vinegarhq.Sober.desktop"
+    app = {"file": desktop_file, "name": "Sober", "exec": "flatpak run org.vinegarhq.Sober",
+           "class": "org.vinegarhq.Sober"}
+    class RunningProcess:
+        def poll(self): return None
+    monkeypatch.setattr(apps_module, "find_desktop_app", lambda _name: app)
+    monkeypatch.setattr(apps_module.shutil, "which", lambda name: "/usr/bin/flatpak" if name == "flatpak" else None)
+    monkeypatch.setattr(apps_module.subprocess, "Popen", lambda *_args, **_kwargs: RunningProcess())
+    monkeypatch.setattr(apps_module.subprocess, "run", lambda *args, **kwargs: __import__("subprocess").CompletedProcess(
+        args[0], 0, stdout='[{"application":"org.vinegarhq.Sober","instance":"42"}]', stderr=""))
+    assert apps_module.launch_application("Roblox") == "Abri Sober; o processo Flatpak está ativo."
 
 
 def test_polite_app_commands_are_routed_without_llm_fallback(monkeypatch):
@@ -341,6 +357,7 @@ def test_flatpak_successful_short_process_does_not_claim_a_visible_window(monkey
         def poll(self): return 0
     monkeypatch.setattr(apps_module, "find_desktop_app", lambda _name: app)
     monkeypatch.setattr(apps_module.shutil, "which", lambda name: "/usr/bin/flatpak" if name == "flatpak" else None)
+    monkeypatch.setattr(apps_module, "FLATPAK_LAUNCH_CONFIRM_TIMEOUT", 0)
     monkeypatch.setattr(apps_module.subprocess, "Popen", lambda *_args, **_kwargs: AcceptedProcess())
 
     result = apps_module.launch_application("OBS Studio")

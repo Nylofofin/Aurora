@@ -6,6 +6,21 @@ import configparser, json, os, re, shlex, shutil, signal, subprocess, time
 from .files import normalize_words
 
 FLATPAK_CLOSE_CONFIRM_TIMEOUT=2.0
+FLATPAK_LAUNCH_CONFIRM_TIMEOUT=2.0
+
+def _flatpak_instance_active(app_id, flatpak=None):
+    """Confirm that a Flatpak instance exists, without guessing its window."""
+    flatpak = flatpak or shutil.which('flatpak')
+    if not app_id or not flatpak:
+        return False
+    try:
+        listing = subprocess.run([flatpak, 'ps', '--json'], capture_output=True,
+                                 text=True, timeout=.6, check=True)
+        rows = json.loads(listing.stdout or '[]')
+        return any(str(item.get('application', '')).casefold() == app_id.casefold()
+                   and item.get('instance') for item in rows if isinstance(item, dict))
+    except (OSError, subprocess.SubprocessError, ValueError, TypeError):
+        return False
 
 def _flatpak_app_id(app):
     if not app:
@@ -123,6 +138,11 @@ def launch_application(name, *, background=False):
         except Exception: returncode=None
         if returncode not in (None,0):
             return f'O Flatpak encerrou com erro ao tentar iniciar {app["name"]} (código {returncode}).'
+        deadline=time.monotonic()+FLATPAK_LAUNCH_CONFIRM_TIMEOUT
+        while time.monotonic() < deadline:
+            if _flatpak_instance_active(app_id, flatpak):
+                return f'Abri {app["name"]}; o processo Flatpak está ativo.'
+            time.sleep(.12)
         if returncode==0:
             return f'O Flatpak aceitou abrir {app["name"]}, mas não confirmei se a janela apareceu.'
         return f'Iniciei o processo Flatpak de {app["name"]}; ainda não confirmei se a janela apareceu.'
