@@ -283,7 +283,7 @@ def test_roblox_app_request_resolves_to_installed_sober_flatpak(monkeypatch, tmp
     monkeypatch.setattr(apps_module, "FLATPAK_LAUNCH_CONFIRM_TIMEOUT", 0)
     monkeypatch.setattr(apps_module.subprocess, "run", lambda *args, **kwargs: __import__("subprocess").CompletedProcess(args[0], 0, stdout="[]", stderr=""))
     calls = []
-    monkeypatch.setattr(apps_module.subprocess, "Popen", lambda command, **_kwargs: calls.append(command))
+    monkeypatch.setattr(apps_module.subprocess, "Popen", lambda command, **kwargs: calls.append((command, kwargs)))
 
     assert aurora.parse_local_command("abre Roblox") == (
         "open_application", {"command": "roblox"}
@@ -292,7 +292,8 @@ def test_roblox_app_request_resolves_to_installed_sober_flatpak(monkeypatch, tmp
     assert apps_module.launch_application("Roblox") == (
         "Iniciei o processo Flatpak de Sober; ainda não confirmei se a janela apareceu."
     )
-    assert calls == [["/usr/bin/flatpak", "run", "org.vinegarhq.Sober"]]
+    assert calls[0][0] == ["/usr/bin/flatpak", "run", "org.vinegarhq.Sober"]
+    assert "QT_QPA_PLATFORM" not in calls[0][1]["env"]
 
 
 def test_flatpak_launch_confirms_active_sober_instance(monkeypatch, tmp_path):

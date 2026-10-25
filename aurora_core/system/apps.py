@@ -122,11 +122,10 @@ def launch_application(name, *, background=False):
         # visible window appeared, so keep the spoken result explicit.
         try:
             env = os.environ.copy()
-            # Aurora pins Qt to X11 for its own overlay. OBS's Qt platform
-            # plugin aborts during startup when that override is inherited
-            # through Flatpak; let OBS select the session's native backend.
-            if app_id == 'com.obsproject.Studio':
-                env.pop('QT_QPA_PLATFORM', None)
+            # Aurora pins Qt to X11 for its own overlay. External Flatpaks
+            # must select the user's native Wayland/X11 backend themselves;
+            # inheriting this override can break Sober and OBS startup.
+            env.pop('QT_QPA_PLATFORM', None)
             arguments = ['--minimize-to-tray'] if background and app_id == 'com.obsproject.Studio' else []
             process=subprocess.Popen([flatpak,'run',app_id,*arguments],start_new_session=True,
                                      stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,
