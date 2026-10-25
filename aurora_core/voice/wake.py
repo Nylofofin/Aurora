@@ -139,8 +139,13 @@ class LocalVoice(QThread):
             # small model's grammar graph is stale or under-pronounces it.
             # For custom names only, keep an unconstrained recognizer as a
             # fallback and still require an exact final phrase below.
-            wake_fallback_rec = None if normalize_words(assistant_name) == 'aurora' else KaldiRecognizer(model,16000)
-            if wake_fallback_rec is not None: wake_fallback_rec.SetWords(False)
+            # Keep an unconstrained recognizer alongside the short grammar.
+            # Some Vosk builds fail to finalize a one-word grammar after a
+            # reconfiguration even though the same audio is recognized by the
+            # normal decoder.  The exact phrase gate below still prevents
+            # arbitrary speech from waking Aurora.
+            wake_fallback_rec = KaldiRecognizer(model,16000)
+            wake_fallback_rec.SetWords(False)
             wake_profile = self.cfg.get('wake_profile') if normalize_words(assistant_name) != 'aurora' else None
             cancel_rec=KaldiRecognizer(model,16000,'["para", "pare", "parar", "cancele", "cancela", "cancelar", "interrompa", "interrompe", "interromper", "chega", "espera", "calma", "calma para", "pera", "pera aí", "deixa", "deixa pra lá", "para agora", "para com isso", "não", "não para", "não calma para", "não espera", "corta"]'); cancel_rec.SetWords(False)
             self.recognizer=sr.Recognizer(); self.recognizer.operation_timeout=2.0
@@ -209,12 +214,16 @@ class LocalVoice(QThread):
                             self.audio_level.emit(self.normalized_audio_level(block))
                         active_rec=rec if active else wake_rec
                         finalized=active_rec.AcceptWaveform(block)
-                        fallback_finalized = bool(wake_fallback_rec is not None and not active and wake_fallback_rec.AcceptWaveform(block))
+                        fallback_finalized = bool(not active and wake_fallback_rec.AcceptWaveform(block))
                         wake_finalized = finalized or fallback_finalized
+                        candidate_texts=[]
+                        if finalized:
+                            candidate_texts.append(json.loads(active_rec.Result()).get('text','').strip())
+                        if fallback_finalized:
+                            candidate_texts.append(json.loads(wake_fallback_rec.Result()).get('text','').strip())
                         if not finalized:
                             if fallback_finalized:
-                                text=json.loads(wake_fallback_rec.Result()).get('text','').strip()
-                                wake_fallback_rec.Reset()
+                                text=candidate_texts[-1]
                             else:
                                 text=''
                             if active and time.monotonic()-started>22:
@@ -222,9 +231,7 @@ class LocalVoice(QThread):
                             if not text:
                                 continue
                         else:
-                            text=json.loads(active_rec.Result()).get('text','').strip()
-                            if not text and fallback_finalized:
-                                text=json.loads(wake_fallback_rec.Result()).get('text','').strip()
+                            text=candidate_texts[0] if candidate_texts else ''
                         if not active and wake_fallback_rec is not None:
                             wake_fallback_rec.Reset()
                         if active:
@@ -238,8 +245,9 @@ class LocalVoice(QThread):
                                     if active: self.status.emit('listening')
                             elif time.monotonic()-started>22:
                                 active=False; buffer=[]; wake_audio=[]; rec.Reset(); wake_rec.Reset(); self.end_request(); self.status.emit('hidden')
-                        elif text:
-                            if self.is_final_wake_phrase(text,wake_finalized,self.cfg.get('assistant_name','Aurora')):
+                        elif text or candidate_texts:
+                            if any(self.is_final_wake_phrase(candidate,True,self.cfg.get('assistant_name','Aurora'))
+                                   for candidate in candidate_texts):
                                 self.begin_request()
                                 self.wake.emit(); self.status.emit('listening')
                                 active=True; buffer=list(wake_audio); wake_audio=[]; started=time.monotonic(); rec.Reset(); wake_rec.Reset()
