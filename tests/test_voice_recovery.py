@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-only
 from aurora_core.service import AuroraService
+from aurora_core.voice.wake import parse_vosk_result
 
 
 def test_voice_error_logs_cause_speaks_once_and_schedules_bounded_retry(monkeypatch, capsys):
@@ -45,3 +46,17 @@ def test_voice_recovery_counter_resets_after_capture_device_is_ready():
     AuroraService.voice_state(service, "ready")
     assert service._voice_recovery_attempts == 0
     assert service._voice_error_announced is False
+
+
+def test_vosk_malformed_metadata_recovers_transcript_without_logging_it(capsys):
+    payload = '{"text": "abrir calculadora",\n result: []}'
+    result = parse_vosk_result(payload, "comando")
+    assert result == {"text": "abrir calculadora", "result": []}
+    output = capsys.readouterr().err
+    assert "texto recuperado" in output
+    assert "abrir calculadora" not in output
+
+
+def test_vosk_invalid_result_without_text_is_nonfatal(capsys):
+    assert parse_vosk_result('{not-json}', "wake") == {"text": "", "result": []}
+    assert "sem texto recuperável" in capsys.readouterr().err

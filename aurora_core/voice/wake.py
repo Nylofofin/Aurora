@@ -14,6 +14,28 @@ from .profile import matches as profile_matches
 SAMPLE_RATE=16000
 MIC_BLOCK_FRAMES=1600  # 100 ms: lower orb feedback latency while preserving audio windows.
 
+def parse_vosk_result(raw,stage='recognition'):
+    """Parse Vosk JSON, recovering its transcript if optional metadata is invalid.
+
+    A malformed confidence/word-metadata section must never terminate the mic
+    thread after the wake word or command has already been recognized.
+    Transcript contents are intentionally never written to logs.
+    """
+    try:
+        payload=json.loads(raw)
+        return payload if isinstance(payload,dict) else {'text':'','result':[]}
+    except (json.JSONDecodeError,TypeError) as exc:
+        text_match=re.search(r'"text"\s*:\s*("(?:\\.|[^"\\])*")',str(raw))
+        if text_match:
+            try: text=json.loads(text_match.group(1))
+            except (json.JSONDecodeError,TypeError): text=''
+            print(f'[voice] JSON Vosk inválido em {stage}; texto recuperado sem metadados ({type(exc).__name__})',
+                  file=sys.stderr,flush=True)
+            return {'text':text if isinstance(text,str) else '','result':[]}
+        print(f'[voice] JSON Vosk inválido em {stage}; sem texto recuperável ({type(exc).__name__})',
+              file=sys.stderr,flush=True)
+        return {'text':'','result':[]}
+
 def wake_name_words(name):
     value=' '.join(str(name or '').split())
     if not re.fullmatch(r"[^\W\d_]+(?:\s+[^\W\d_]+){0,3}",value,flags=re.UNICODE):
@@ -143,7 +165,7 @@ class LocalVoice(QThread):
                 finalized=wake_rec.AcceptWaveform(block)
                 detected=False
                 if finalized:
-                    text=json.loads(wake_rec.Result()).get('text','').strip()
+                    text=parse_vosk_result(wake_rec.Result(),'wake mobile').get('text','').strip()
                     wake_rec.Reset()
                     detected=self.is_final_wake_phrase(text,True,self.cfg.get('assistant_name','Aurora'))
                 result.set_result(detected)
@@ -225,7 +247,7 @@ class LocalVoice(QThread):
                         if self.interrupt_active.is_set() or self.cancel_control_active.is_set():
                             finalized_cancel=cancel_rec.AcceptWaveform(block)
                             if finalized_cancel:
-                                cancel_text=json.loads(cancel_rec.Result()).get('text','').strip()
+                                cancel_text=parse_vosk_result(cancel_rec.Result(),'cancelamento').get('text','').strip()
                                 cancel_rec.Reset()
                                 if self.is_final_cancel_phrase(cancel_text,True):
                                     self.cancel_control_active.clear(); self.interrupt_active.clear(); self.cancel_control.emit()
@@ -289,14 +311,14 @@ class LocalVoice(QThread):
                         candidate_texts=[]
                         command_confidence=None
                         if finalized:
-                            result_payload=json.loads(active_rec.Result())
+                            result_payload=parse_vosk_result(active_rec.Result(),'comando' if active else 'wake')
                             candidate_texts.append(result_payload.get('text','').strip())
                             if active and isinstance(result_payload.get('result'),list):
                                 confidences=[float(word.get('conf')) for word in result_payload['result']
                                              if isinstance(word,dict) and isinstance(word.get('conf'),(int,float))]
                                 if confidences: command_confidence=sum(confidences)/len(confidences)
                         if fallback_finalized:
-                            candidate_texts.append(json.loads(wake_fallback_rec.Result()).get('text','').strip())
+                            candidate_texts.append(parse_vosk_result(wake_fallback_rec.Result(),'wake alternativo').get('text','').strip())
                         if not finalized:
                             if fallback_finalized:
                                 text=candidate_texts[-1]
@@ -318,8 +340,11 @@ class LocalVoice(QThread):
                                 self.audio_level.emit(0.0)
                                 pcm=b''.join(buffer[-80:]); active=False; buffer=[]; wake_audio=[]; started=time.monotonic(); self.speaking=True; self.status.emit('thinking')
                                 command=self.local_transcribe(pcm,text,command_confidence)
-                                if command and self.request_active.is_set(): self.transcript.emit(command)
+                                if command and self.request_active.is_set():
+                                    print(f'[voice] comando transcrito e enviado; chars={len(command)}',file=sys.stderr,flush=True)
+                                    self.transcript.emit(command)
                                 else:
+                                    print('[voice] captura terminou sem comando utilizável',file=sys.stderr,flush=True)
                                     active=self.request_active.is_set(); started=time.monotonic(); rec.Reset(); wake_rec.Reset(); self.speaking=False
                                     if active: self.status.emit('listening')
                             elif time.monotonic()-started>22:
@@ -330,6 +355,7 @@ class LocalVoice(QThread):
                                            for candidate in candidate_texts)
                             if exact_wake:
                                 profile_candidate=False; profile_candidate_audio.clear()
+                                print('[voice] wake confirmada; captura do comando iniciada',file=sys.stderr,flush=True)
                                 self.begin_request()
                                 self.wake.emit(); self.status.emit('listening')
                                 active=True; buffer=list(wake_audio); wake_audio=[]; started=time.monotonic(); rec.Reset(); wake_rec.Reset()
