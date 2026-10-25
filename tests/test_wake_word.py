@@ -339,7 +339,7 @@ def test_orb_is_only_a_clean_animated_sphere():
     orb = (root / "aurora_core" / "ui" / "orb.py").read_text()
     assert "PathAngleArc { centerX: 48; centerY: 34; radiusX: 39; radiusY: 28" in source
     assert "property real sheenTravel" in source and "entranceActive" not in source and "exitActive" not in source
-    assert "PathCubic" not in source and "morphPhase" not in source
+    assert source.count("PathCubic {") >= 2 and "morphPhase" not in source
     assert "RadialGradient" in source and "LinearGradient" in source
     assert "inputLevel" in source and "voiceEnergy" in source
     assert "SmoothedAnimation" in source and "activeEnergy" in source
