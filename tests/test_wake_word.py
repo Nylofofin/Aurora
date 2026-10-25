@@ -59,6 +59,22 @@ def test_wake_decoders_reset_together_at_an_utterance_boundary():
     assert fallback.resets == 1
 
 
+def test_confident_vosk_transcript_skips_slow_whisper_decode(monkeypatch):
+    import aurora_core.voice.stt as stt
+
+    monkeypatch.setattr(stt, "transcribe_pcm", lambda *_args: pytest.fail("Whisper should not run"))
+    voice = LocalVoice({"assistant_name": "Luna"})
+    assert voice.local_transcribe(b"", "Ei, Luna, abra o terminal", 0.9) == "abra o terminal"
+
+
+def test_uncertain_vosk_transcript_uses_whisper_and_keeps_vosk_fallback(monkeypatch):
+    import aurora_core.voice.stt as stt
+
+    monkeypatch.setattr(stt, "transcribe_pcm", lambda *_args: "Ei Luna, abra o navegador")
+    voice = LocalVoice({"assistant_name": "Luna"})
+    assert voice.local_transcribe(b"pcm", "luna", 0.4) == "abra o navegador"
+
+
 def test_custom_wake_name_grammar_checks_model_vocabulary():
     from aurora_core.voice.wake import wake_grammar_phrases, wake_name_supported, wake_name_words
 
@@ -71,7 +87,8 @@ def test_custom_wake_name_grammar_checks_model_vocabulary():
     assert not wake_name_supported("Nebrya", Model())
     assert not wake_name_supported("Name 123", Model())
     assert not wake_name_words("Luna, Nova")
-    assert wake_grammar_phrases("Luna") == ["Luna", "ei Luna", "olá Luna"]
+    assert wake_grammar_phrases("Luna") == ["luna", "ei luna", "olá luna"]
+    assert wake_grammar_phrases("Nova Aurora") == ["nova aurora", "ei nova aurora", "olá nova aurora"]
 
 
 def test_custom_wake_name_treats_vosk_minus_one_as_missing():

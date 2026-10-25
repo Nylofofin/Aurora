@@ -43,7 +43,10 @@ def wake_name_supported(name,model):
         return False
 
 def wake_grammar_phrases(name):
-    value=' '.join(str(name or 'Aurora').split()) or 'Aurora'
+    # Vosk's vocabulary and grammar tokens are lowercase. The configured name
+    # is a display string (often "Luna"), so preserve its pronunciation while
+    # normalizing token case before constructing the constrained grammar.
+    value=' '.join(str(name or 'Aurora').split()).casefold() or 'aurora'
     return [value,f'ei {value}',f'olá {value}']
 
 class LocalVoice(QThread):
@@ -99,18 +102,25 @@ class LocalVoice(QThread):
             'nao para','nao calma para','nao espera','pera ai','deixa pra la',
             'para agora','para com isso','corta'
         }
-    def local_transcribe(self,pcm,fallback):
+    def local_transcribe(self,pcm,fallback,confidence=None):
         from .telemetry import elapsed_ms, log_voice_timing
-        started=time.perf_counter(); outcome='whisper_cpp'
-        try:
-            from .stt import transcribe_pcm
-            command=transcribe_pcm(pcm,SAMPLE_RATE)
-            if not command:
+        started=time.perf_counter(); outcome='whisper_cpp'; command=''
+        # Vosk already produced a final transcript while listening. Use it
+        # immediately when its per-word confidence is solid; reserve Whisper
+        # for uncertain utterances instead of imposing a ~3 s decode on every
+        # simple command.
+        if fallback and confidence is not None and confidence >= 0.62:
+            command=fallback; outcome='vosk_fast'
+        else:
+            try:
+                from .stt import transcribe_pcm
+                command=transcribe_pcm(pcm,SAMPLE_RATE)
+                if not command:
+                    command=fallback; outcome='vosk_fallback'
+            except Exception:
+                # Preserve command usability if the larger local decoder fails;
+                # this fallback is still Vosk on-device and never sends audio out.
                 command=fallback; outcome='vosk_fallback'
-        except Exception:
-            # Preserve command usability if the larger local decoder fails;
-            # this fallback is still Vosk on-device and never sends audio out.
-            command=fallback; outcome='vosk_fallback'
         log_voice_timing('stt',elapsed_ms(started),outcome)
         command=self.strip_wake_word(command,self.cfg.get('assistant_name','Aurora'))
         if not command: command=self.strip_wake_word(fallback,self.cfg.get('assistant_name','Aurora'))
@@ -150,7 +160,7 @@ class LocalVoice(QThread):
             import sounddevice as sd
             from vosk import Model, KaldiRecognizer
             if not VOSK_PATH.exists(): raise RuntimeError(f'Modelo Vosk local não encontrado em {VOSK_PATH}')
-            model=Model(str(VOSK_PATH)); rec=KaldiRecognizer(model,16000); rec.SetWords(False)
+            model=Model(str(VOSK_PATH)); rec=KaldiRecognizer(model,16000); rec.SetWords(True)
             assistant_name=' '.join(str(self.cfg.get('assistant_name','Aurora') or 'Aurora').split()) or 'Aurora'
             wake_phrases=wake_grammar_phrases(assistant_name)
             wake_rec=KaldiRecognizer(model,16000,json.dumps(wake_phrases,ensure_ascii=False)); wake_rec.SetWords(False)
@@ -273,8 +283,14 @@ class LocalVoice(QThread):
                         fallback_finalized = bool(not active and wake_fallback_rec.AcceptWaveform(block))
                         wake_finalized = finalized or fallback_finalized
                         candidate_texts=[]
+                        command_confidence=None
                         if finalized:
-                            candidate_texts.append(json.loads(active_rec.Result()).get('text','').strip())
+                            result_payload=json.loads(active_rec.Result())
+                            candidate_texts.append(result_payload.get('text','').strip())
+                            if active and isinstance(result_payload.get('result'),list):
+                                confidences=[float(word.get('conf')) for word in result_payload['result']
+                                             if isinstance(word,dict) and isinstance(word.get('conf'),(int,float))]
+                                if confidences: command_confidence=sum(confidences)/len(confidences)
                         if fallback_finalized:
                             candidate_texts.append(json.loads(wake_fallback_rec.Result()).get('text','').strip())
                         if not finalized:
@@ -297,7 +313,7 @@ class LocalVoice(QThread):
                             if text:
                                 self.audio_level.emit(0.0)
                                 pcm=b''.join(buffer[-80:]); active=False; buffer=[]; wake_audio=[]; started=time.monotonic(); self.speaking=True; self.status.emit('thinking')
-                                command=self.local_transcribe(pcm,text)
+                                command=self.local_transcribe(pcm,text,command_confidence)
                                 if command and self.request_active.is_set(): self.transcript.emit(command)
                                 else:
                                     active=self.request_active.is_set(); started=time.monotonic(); rec.Reset(); wake_rec.Reset(); self.speaking=False

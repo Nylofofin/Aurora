@@ -155,7 +155,9 @@ class Speaker(QThread):
             total_synthesis_ms=0
             for chunk in self._speech_chunks(text):
                 synthesis_started=time.perf_counter()
-                wav, _duration = synthesizer.synthesize(chunk, voice_style=style, total_steps=5, lang='pt')
+                # Four denoising steps keep the selected local voice natural
+                # while cutting CPU work versus the previous five-step path.
+                wav, _duration = synthesizer.synthesize(chunk, voice_style=style, total_steps=4, lang='pt')
                 total_synthesis_ms+=elapsed_ms(synthesis_started)
                 if generation != self.cancel_generation: raise RuntimeError('speech interrupted')
                 pcm = np.asarray(wav, dtype=np.float32).reshape(-1)
