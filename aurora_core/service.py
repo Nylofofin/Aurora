@@ -213,6 +213,7 @@ class AuroraService(QObject):
         self.voice.unavailable.connect(self.voice_error,Qt.ConnectionType.QueuedConnection)
         self.voice.wake.connect(self.wake,Qt.ConnectionType.QueuedConnection)
         self.voice.cancel_control.connect(self.stop_conversation,Qt.ConnectionType.QueuedConnection)
+        self.voice.barge_in.connect(self.interrupt_speech,Qt.ConnectionType.QueuedConnection)
         if not self.onboarding_waiting_reboot and not self.onboarding_due:
             self.voice.start()
         self.companion_message_requested.connect(self._handle_companion_message,Qt.ConnectionType.QueuedConnection)
@@ -773,6 +774,17 @@ class AuroraService(QObject):
         # After command transcription completes, keep a tiny local cancel
         # recognizer active during the request and its spoken response.
         route_request(self,prompt)
+    @Slot()
+    def interrupt_speech(self):
+        """Stop current TTS immediately and capture the user's interruption."""
+        if not self.voice.request_active.is_set() or self._mobile_audio_owned(): return
+        self.speaker.interrupt()
+        for inference in tuple(self.inferences):
+            if inference.isRunning(): inference.cancel()
+        self.request_generation+=1; self.activity_generation+=1
+        self.voice.speaking=False; self.voice.interrupt_active.clear(); self.voice.cancel_control_active.clear()
+        self.response_finished=False
+        self.orb.reveal('listening'); self.voice.request_once()
     def _arm_action_clarification(self,prompt,answer):
         if getattr(self,'companion_request',None): return
         normalized=normalize_words(prompt)

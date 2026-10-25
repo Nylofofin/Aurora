@@ -165,6 +165,12 @@ def test_control_cancel_detection_can_be_enabled_and_disabled():
     assert not voice.cancel_control_active.is_set()
 
 
+def test_voice_exposes_barge_in_signal_for_speech_interruption():
+    voice = LocalVoice({})
+    assert hasattr(voice, "barge_in")
+    assert voice.barge_in is not None
+
+
 def test_recognized_command_does_not_auto_rearm_continuous_listening():
     from pathlib import Path
     from aurora_core.voice.wake import MIC_BLOCK_FRAMES

@@ -47,7 +47,7 @@ def wake_grammar_phrases(name):
     return [value,f'ei {value}',f'olá {value}']
 
 class LocalVoice(QThread):
-    transcript=Signal(str); status=Signal(str); unavailable=Signal(str); wake=Signal(); cancel_control=Signal(); audio_level=Signal(float)
+    transcript=Signal(str); status=Signal(str); unavailable=Signal(str); wake=Signal(); cancel_control=Signal(); barge_in=Signal(); audio_level=Signal(float)
     def __init__(self,cfg):
         super().__init__(); self.cfg=cfg; self.running=True; self.one_shot=threading.Event(); self.request_active=threading.Event(); self.interrupt_active=threading.Event(); self.cancel_control_active=threading.Event(); self.mobile_owned=threading.Event(); self.speaking=False; self.recognizer=None; self.mobile_audio_queue=queue.Queue(maxsize=12)
     def request_once(self): self.one_shot.set()
@@ -164,7 +164,7 @@ class LocalVoice(QThread):
                         except (queue.Empty,queue.Full): pass
                 with sd.RawInputStream(samplerate=SAMPLE_RATE,blocksize=MIC_BLOCK_FRAMES,dtype='int16',channels=1,callback=callback):
                     self.status.emit('hidden')
-                    active=False; started=0.0; buffer=[]; wake_audio=[]; profile_checked_at=0.0
+                    active=False; started=0.0; buffer=[]; wake_audio=[]; profile_checked_at=0.0; barge_frames=0
                     while self.running and not self.mobile_owned.is_set():
                         try: block=q.get(timeout=.25)
                         except queue.Empty: continue
@@ -174,6 +174,21 @@ class LocalVoice(QThread):
                             continue
                         if not self.request_active.is_set() and active:
                             active=False; buffer=[]; wake_audio=[]; rec.Reset(); wake_rec.Reset(); self.status.emit('hidden')
+                        if self.speaking:
+                            # Barge-in: two consecutive energetic 100 ms blocks
+                            # interrupt Edge playback and arm a fresh command.
+                            # The exact wake word is not required while the
+                            # current response is being interrupted.
+                            if self.normalized_audio_level(block) >= .24:
+                                barge_frames += 1
+                            else:
+                                barge_frames = 0
+                            if barge_frames >= 2:
+                                barge_frames = 0; self.speaking=False
+                                self.one_shot.set(); self.barge_in.emit(); self.status.emit('listening')
+                            if self.speaking: continue
+                        else:
+                            barge_frames = 0
                         if self.interrupt_active.is_set() or self.cancel_control_active.is_set():
                             finalized_cancel=cancel_rec.AcceptWaveform(block)
                             if finalized_cancel:

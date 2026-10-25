@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from urllib.parse import urlencode
+from datetime import datetime
 import json, queue, re, threading, time, urllib.error, urllib.request
 from ..config import settings_save
 from .security import PUBLIC_OPENER, public_http_url
@@ -31,6 +32,12 @@ def _weather_place_from_prompt(prompt):
     # intentionally ordered by specificity.
     return candidates[0] if candidates else ''
 
+def _weather_target(prompt, now=None):
+    """Return the requested forecast day (0=today, 1=tomorrow)."""
+    plain=' '.join(str(prompt or '').casefold().split())
+    if re.search(r'\b(?:amanh[ãa]|tomorrow)\b',plain): return 1, 'Amanhã'
+    return 0, 'Hoje'
+
 def _get_json(url,timeout=4):
     req=urllib.request.Request(url,headers={'User-Agent':'Aurora-Local/0.4','Accept':'application/json','Cache-Control':'no-cache, no-store, max-age=0','Pragma':'no-cache'})
     result=queue.Queue(maxsize=1)
@@ -53,6 +60,7 @@ def _get_json(url,timeout=4):
 def weather_now(cfg,prompt):
     """Fast, direct weather path: cached city/IP geolocation then Open-Meteo; no LLM round trip."""
     place=_weather_place_from_prompt(prompt)
+    target_index,target_label=_weather_target(prompt)
     cached=cfg.get('weather_location')
     now=time.time()
     if place:
@@ -69,9 +77,21 @@ def weather_now(cfg,prompt):
         loc={'city':geo['city'],'region':geo.get('region',''),'country':geo.get('country',''),'latitude':geo['latitude'],'longitude':geo['longitude'],'updated':now}
     cfg['weather_location']=loc
     settings_save(cfg)
-    query={'latitude':loc['latitude'],'longitude':loc['longitude'],'current':'temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,wind_speed_10m','daily':'temperature_2m_max,temperature_2m_min,precipitation_probability_max','timezone':'auto','forecast_days':1}
+    query={'latitude':loc['latitude'],'longitude':loc['longitude'],'current':'temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,wind_speed_10m','daily':'temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code','timezone':'auto','forecast_days':max(2,target_index+1)}
     data=_get_json('https://api.open-meteo.com/v1/forecast?'+urlencode(query),4); weather=data.get('current',{}); daily=data.get('daily',{})
     place_name=', '.join(x for x in (loc.get('city'),loc.get('region')) if x)
+    if target_index:
+        mins=daily.get('temperature_2m_min') or []
+        maxs=daily.get('temperature_2m_max') or []
+        chances=daily.get('precipitation_probability_max') or []
+        codes=daily.get('weather_code') or []
+        if len(mins)<=target_index or len(maxs)<=target_index:
+            return f'Não consegui confirmar a previsão para {target_label.lower()} em {place_name}.'
+        condition=WMO_WEATHER.get(int(codes[target_index]),'condição variável') if len(codes)>target_index else 'condição variável'
+        result=f'{target_label} em {place_name}: mínima de {round(float(mins[target_index]))} e máxima de {round(float(maxs[target_index]))} graus, {condition}'
+        if len(chances)>target_index and chances[target_index] is not None:
+            result+=f', chance de chuva até {int(chances[target_index])} por cento'
+        return result+'.'
     condition=WMO_WEATHER.get(int(weather.get('weather_code',-1)),'condição variável')
     temp=round(float(weather['temperature_2m']))
     feels=round(float(weather.get('apparent_temperature',temp)))

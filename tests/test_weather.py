@@ -63,3 +63,23 @@ def test_explicit_city_after_forecast_day_takes_precedence():
 
 def test_weather_place_supports_explicit_city_wording():
     assert weather._weather_place_from_prompt("clima na cidade de Recife") == "Recife"
+
+
+def test_weather_target_distinguishes_tomorrow_from_today():
+    assert weather._weather_target("previsão para amanhã") == (1, "Amanhã")
+    assert weather._weather_target("clima hoje") == (0, "Hoje")
+
+
+def test_weather_tomorrow_uses_daily_index_one(monkeypatch):
+    monkeypatch.setattr(weather, "settings_save", lambda _cfg: None)
+    monkeypatch.setattr(weather, "_get_json", lambda _url, _timeout=4: {
+        "current": {"temperature_2m": 21, "apparent_temperature": 21,
+                     "relative_humidity_2m": 60, "precipitation": 0,
+                     "weather_code": 0, "wind_speed_10m": 4},
+        "daily": {"temperature_2m_min": [18, 16], "temperature_2m_max": [26, 24],
+                   "precipitation_probability_max": [10, 70], "weather_code": [0, 61]},
+    })
+    answer = weather.weather_now({"weather_location": {"city": "Recife", "region": "", "latitude": 1, "longitude": 2, "updated": 10**12}}, "previsão para amanhã")
+    assert answer.startswith("Amanhã em Recife")
+    assert "mínima de 16" in answer and "máxima de 24" in answer
+    assert "Agora em" not in answer
