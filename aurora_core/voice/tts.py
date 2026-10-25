@@ -8,6 +8,8 @@ import importlib.util
 
 from .catalog import voice_files
 
+SUPERTONIC_QUALITY_STEPS = 8
+
 
 def local_piper_available():
     """Whether Piper's runtime is installed (individual voices are separate)."""
@@ -155,9 +157,11 @@ class Speaker(QThread):
             total_synthesis_ms=0
             for chunk in self._speech_chunks(text):
                 synthesis_started=time.perf_counter()
-                # Three denoising steps keep speech intelligible while letting
-                # the first short clause start quickly on modest CPUs.
-                wav, _duration = synthesizer.synthesize(chunk, voice_style=style, total_steps=3, lang='pt')
+                # Use Supertonic's documented default: the earlier three-step
+                # shortcut caused severe artifacts across every voice style.
+                wav, _duration = synthesizer.synthesize(
+                    chunk, voice_style=style,
+                    total_steps=SUPERTONIC_QUALITY_STEPS, lang='pt')
                 total_synthesis_ms+=elapsed_ms(synthesis_started)
                 if generation != self.cancel_generation: raise RuntimeError('speech interrupted')
                 pcm = np.asarray(wav, dtype=np.float32).reshape(-1)
