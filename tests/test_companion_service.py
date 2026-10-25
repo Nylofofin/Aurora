@@ -313,6 +313,27 @@ def test_streaming_reply_is_not_played_on_pc_while_mobile_owns_audio():
     assert feedback.played == 0
 
 
+def test_streaming_sentence_is_not_spoken_before_final_response():
+    class Speaker:
+        def __init__(self): self.spoken = []
+        def say(self, text): self.spoken.append(text)
+
+    class Voice:
+        request_active = threading.Event()
+
+    Voice.request_active.set()
+    class Service:
+        companion_request = None
+        request_generation = 3
+        voice = Voice()
+        speaker = Speaker()
+        def _mobile_audio_owned(self): return False
+
+    service = Service()
+    AuroraService.queue_sentence(service, "trecho parcial", 3)
+    assert service.speaker.spoken == []
+
+
 def test_mobile_wake_status_does_not_show_desktop_orb():
     calls = []
     class Orb:

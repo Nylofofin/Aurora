@@ -810,9 +810,11 @@ class AuroraService(QObject):
         self.clarification_listening=False
         return False
     def queue_sentence(self,text,generation):
-        if (not getattr(self,'companion_request',None) and not self._mobile_audio_owned()
-                and generation==self.request_generation and self.voice.request_active.is_set()):
-            self.speaker.say(text)
+        # Streaming sentences are useful for progress/UI, but speaking each
+        # chunk makes the desktop repeat the answer when ``answer_done``
+        # emits the complete response.  Keep audio single-shot: the final
+        # grounded response is the only text sent to TTS.
+        return
     def run_local_action(self,name,args):
         self.orb.set_mode('thinking')
         if requires_user_approval(name,args,explicit_user_request=True):
