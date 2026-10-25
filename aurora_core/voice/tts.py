@@ -45,7 +45,7 @@ class Speaker(QThread):
         letters=sum(char.isalnum() for char in str(text))
         return min(.88,.28+min(letters,12)*.045) if letters else .18
     @staticmethod
-    def _speech_chunks(text,limit=88):
+    def _speech_chunks(text,limit=48):
         """Keep TTS chunks near sentence boundaries for low-latency playback."""
         clauses=re.split(r'(?<=[.!?])\s+',str(text).strip())
         chunks=[]; current=''
@@ -155,9 +155,9 @@ class Speaker(QThread):
             total_synthesis_ms=0
             for chunk in self._speech_chunks(text):
                 synthesis_started=time.perf_counter()
-                # Four denoising steps keep the selected local voice natural
-                # while cutting CPU work versus the previous five-step path.
-                wav, _duration = synthesizer.synthesize(chunk, voice_style=style, total_steps=4, lang='pt')
+                # Three denoising steps keep speech intelligible while letting
+                # the first short clause start quickly on modest CPUs.
+                wav, _duration = synthesizer.synthesize(chunk, voice_style=style, total_steps=3, lang='pt')
                 total_synthesis_ms+=elapsed_ms(synthesis_started)
                 if generation != self.cancel_generation: raise RuntimeError('speech interrupted')
                 pcm = np.asarray(wav, dtype=np.float32).reshape(-1)
