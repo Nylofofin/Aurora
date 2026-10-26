@@ -129,8 +129,12 @@ class LocalVoice(QThread):
         spoken=re.sub(r'[^a-z0-9]+',' ',normalize_words(text)).strip()
         return spoken in {name, 'ei '+name, 'ola '+name}
     @classmethod
-    def is_confident_wake_result(cls,payload,finalized,assistant_name='Aurora',minimum_confidence=.68):
-        """Require the unrestricted recognizer to hear only a confident wake phrase."""
+    def is_confident_wake_result(cls,payload,finalized,assistant_name='Aurora',minimum_confidence=.75):
+        """Require the unrestricted recognizer to hear only a confident wake phrase.
+
+        0.75 is high enough to reject room noise and TV/radio false-positives
+        while still activating on a clear but slightly casual pronunciation.
+        """
         if not isinstance(payload,dict) or not cls.is_final_wake_phrase(
                 payload.get('text',''),finalized,assistant_name):
             return False
@@ -319,7 +323,10 @@ class LocalVoice(QThread):
                         if not active and self.defer_wake_detection(): continue
                         if not active:
                             wake_audio.append(block)
-                            if len(wake_audio)>176: wake_audio=wake_audio[-176:]
+                            # Keep 4 seconds of pre-roll (40 frames × 100 ms).
+                            # 176 frames was 17.6 s — far more than needed and
+                            # made the Whisper context window unnecessarily large.
+                            if len(wake_audio)>40: wake_audio=wake_audio[-40:]
                             if profile_candidate:
                                 profile_candidate_audio.extend(block)
                                 # Bound confirmation latency and private audio
@@ -363,6 +370,36 @@ class LocalVoice(QThread):
                             buffer.append(block)
                             if len(buffer)>240: buffer=buffer[-240:]
                             self.audio_level.emit(self.normalized_audio_level(block))
+                            # --- Voice-activity-based early endpoint ---
+                            # If the user has stopped talking for 1.2 s after at
+                            # least 0.8 s of real speech, force Vosk to finalize
+                            # immediately rather than waiting for its own silence
+                            # detector (which can lag 0.5–1.5 s on quiet rooms).
+                            # This is the main source of "feels slow" latency.
+                            if len(buffer) >= 8:
+                                recent_level = self.normalized_audio_level(block)
+                                if not hasattr(self, '_last_speech_at'):
+                                    self._last_speech_at = time.monotonic()
+                                if recent_level > 0.04:
+                                    self._last_speech_at = time.monotonic()
+                                elif (time.monotonic() - self._last_speech_at > 1.2
+                                        and len(buffer) >= 16
+                                        and time.monotonic() - started > 0.8):
+                                    # Force endpoint: flush Vosk result now
+                                    rec.Reset()
+                                    pcm = b''.join(buffer[-200:])
+                                    active = False; buffer = []; wake_audio = []
+                                    started = time.monotonic(); self.status.emit('thinking')
+                                    self.audio_level.emit(0.0)
+                                    command = self.local_transcribe(pcm, '', command_confidence)
+                                    if command and self.request_active.is_set():
+                                        print(f'[voice] endpoint antecipado por silêncio; chars={len(command)}', file=sys.stderr, flush=True)
+                                        self.transcript.emit(command)
+                                    else:
+                                        active = self.request_active.is_set(); started = time.monotonic()
+                                        rec.Reset(); wake_rec.Reset(); self.speaking = False
+                                        if active: self.status.emit('listening')
+                                    continue
                         active_rec=rec if active else wake_rec
                         finalized=active_rec.AcceptWaveform(block)
                         fallback_finalized = bool(not active and wake_fallback_rec.AcceptWaveform(block))

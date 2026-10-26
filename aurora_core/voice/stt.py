@@ -22,7 +22,11 @@ def _thread_count() -> int:
 
 
 def _trim_silence(samples):
-    """Trim quiet edges while retaining enough margin for soft consonants."""
+    """Trim quiet edges while retaining enough margin for soft consonants.
+
+    Uses a generous trailing margin so that word endings (plosives, fricatives)
+    that naturally decay below the speech threshold are never clipped.
+    """
     import numpy as np
 
     frame_size = SAMPLE_RATE // 50  # 20 ms
@@ -32,29 +36,31 @@ def _trim_silence(samples):
     framed = samples[:frame_count * frame_size].astype(np.float32).reshape(-1, frame_size)
     levels = np.sqrt(np.mean(framed * framed, axis=1))
     noise_floor = float(np.percentile(levels, 20))
-    threshold = max(140.0, min(320.0, noise_floor * 1.7))
+    # Lower multiplier (1.4 vs 1.7) so soft speech above room tone is kept
+    threshold = max(100.0, min(280.0, noise_floor * 1.4))
     active = np.flatnonzero(levels >= threshold)
     if active.size == 0:
         return samples
 
-    # Whisper's encoder runs a 30-second context by default. Keeping the actual
-    # utterance edges makes the duration-based context below much smaller.
-    margin = int(SAMPLE_RATE * 0.4)
-    start = max(0, int(active[0]) * frame_size - margin)
-    end = min(samples.size, (int(active[-1]) + 1) * frame_size + margin)
+    # 0.55 s lead-in / 0.75 s trail — captures breath-ons and trailing fricatives
+    lead  = int(SAMPLE_RATE * 0.55)
+    trail = int(SAMPLE_RATE * 0.75)
+    start = max(0, int(active[0]) * frame_size - lead)
+    end   = min(samples.size, (int(active[-1]) + 1) * frame_size + trail)
     if end - start < SAMPLE_RATE // 5:
         return samples
     return samples[start:end]
 
 
 def _audio_context(sample_count: int) -> int:
-    """Scale Whisper's encoder context to speech duration with a short-command floor."""
-    # whisper.cpp uses 1500 context tokens for 30 seconds (50 tokens/s).
-    # Keep 1.28 seconds of headroom, and a 5.12 second floor for short speech.
-    # The old 512-token floor forced 10.24 seconds of encoder context even for
-    # 2-4 second commands, wasting CPU without improving our local samples.
+    """Scale Whisper's encoder context to speech duration with a short-command floor.
+
+    whisper.cpp uses 1500 context tokens for 30 seconds (50 tokens/s).
+    Floor at 192 tokens (3.84 s) — enough for a typical short command without
+    burning CPU on a 10-second context window for a 2-word phrase.
+    """
     duration = sample_count / SAMPLE_RATE
-    return min(1500, max(256, math.ceil(duration * 50) + 64))
+    return min(1500, max(192, math.ceil(duration * 50) + 48))
 
 
 def _get_model():
@@ -123,15 +129,18 @@ def transcribe_pcm(pcm: bytes, sample_rate: int = SAMPLE_RATE, assistant_name: s
     # near-silent windows before inference; this also avoids wasting CPU while
     # the Vosk wake recognizer is listening to room tone.
     rms = float(np.sqrt(np.mean(samples.astype(np.float32) ** 2)))
-    if rms < 120.0:
+    if rms < 80.0:
         return ""
     # whisper.cpp's Python API takes mono float samples in [-1, 1]. Keep the
     # conversion in one copy to avoid retaining microphone buffers.
     audio = samples.astype(np.float32) / 32768.0
     safe_name = " ".join(str(assistant_name or "Aurora").split())[:48]
     initial_prompt = (
-        "Português brasileiro falado informalmente. Perguntas e comandos curtos. "
-        f"O nome da assistente é {safe_name}."
+        "Transcrição de fala informal em português brasileiro. "
+        "Comandos curtos e perguntas do dia a dia. Gírias, contrações e sotaque brasileiro são comuns. "
+        "Exemplos: 'que horas são', 'coloca pra tocar', 'qual a temperatura hoje', 'me fala sobre', "
+        "'quanto custa', 'como tá o tempo', 'pode repetir', 'toca uma música'. "
+        f"A assistente chama {safe_name}."
     )
     with _TRANSCRIBE_LOCK:
         segments = _get_model().transcribe(

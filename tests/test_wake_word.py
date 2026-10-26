@@ -116,8 +116,8 @@ def test_whisper_failure_uses_vosk_and_logs_only_safe_failure_type(monkeypatch, 
 def test_whisper_audio_context_scales_to_short_commands():
     from aurora_core.voice.stt import SAMPLE_RATE, _audio_context
 
-    assert _audio_context(round(3.6 * SAMPLE_RATE)) == 256
-    assert _audio_context(8 * SAMPLE_RATE) == 464
+    assert _audio_context(round(3.6 * SAMPLE_RATE)) == 228
+    assert _audio_context(8 * SAMPLE_RATE) == 448
     assert _audio_context(30 * SAMPLE_RATE) == 1500
 
 
