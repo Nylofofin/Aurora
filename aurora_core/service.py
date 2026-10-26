@@ -37,7 +37,7 @@ from .system.volume import control_volume
 from .system.windows import manage_window
 from .ui.orb import AuroraOrb
 from .ui.research_card import ResearchCard
-from .ui.onboarding import FEEDBACK_THEME_KEYS, PersonalizationWizard
+from .ui.onboarding import BUBBLE_STYLE_KEYS, FEEDBACK_THEME_KEYS, PersonalizationWizard
 from .voice.tts import Speaker
 from .voice.wake import LocalVoice
 from .web.freshness import _independent_recent_source_count
@@ -160,6 +160,9 @@ class AuroraService(QObject):
         # the feedback sound played, while the orb window was never mapped.
         super().__init__(app)
         self.app=app; self.cfg=settings_load()
+        if self.cfg.get('bubble_style') not in BUBBLE_STYLE_KEYS:
+            self.cfg['bubble_style']='boreal'
+            settings_save(self.cfg)
         # Migrate an older fresh-install marker while preserving its original
         # semantics: seed the current login as the waiting session, then show
         # the wizard only after the next logout/login or reboot.

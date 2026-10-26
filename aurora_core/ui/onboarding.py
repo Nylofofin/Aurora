@@ -29,7 +29,6 @@ BUBBLE_STYLES = (
     ("solaris", "Eclipse Rosé", "Corona luminosa · sombra móvel · arco de refração"),
     ("ocean", "Falha Prismática", "Placas ciano · fratura ramificada · faces de gelo"),
     ("titan", "Névoa Violeta", "Véus lilás · profundidade escura · luz difusa"),
-    ("io", "Crosta Incandescente", "Basalto escuro · rios de magma · focos vulcânicos"),
     ("triton", "Calota Glacial", "Gelo azul profundo · pluma polar · estrias gravadas"),
 )
 BUBBLE_STYLE_KEYS = {key for key, _title, _detail in BUBBLE_STYLES}
@@ -153,7 +152,6 @@ class _AnimatedOrb(QWidget):
             "solaris": ("#fff0f0", "#d77f98", "#552f62"),
             "ocean": ("#eaffff", "#58cfc6", "#1d678e"),
             "titan": ("#f4efff", "#76658f", "#30233f"),
-            "io": ("#ffe8a1", "#ec633c", "#702d3c"),
             "triton": ("#eaf0ff", "#3c65b0", "#101d4b"),
         }
         return tuple(QColor(color) for color in palette.get(style, palette["boreal"]))
@@ -174,7 +172,7 @@ class _AnimatedOrb(QWidget):
         self.update()
 
     def paintEvent(self, _event):
-        # Leave room for Europa's fixed 8° rotation and the 1.2% CSS scale-up.
+        # Leave room for Gelo Fraturado's fixed 8° tilt and the subtle scale-up.
         size = min(self.width(), self.height()) - 26
         rect_x = (self.width() - size) / 2
         rect_y = (self.height() - size) / 2
@@ -188,8 +186,8 @@ class _AnimatedOrb(QWidget):
         scale = 1.0 + .012 * breath + accent
         painter.translate(self.width() / 2, self.height() / 2)
         if self.style == "emerald":
-            # Europa's reference CSS has a fixed eight-degree tilt. The other
-            # skins do not inherit a generic wobble or a synthetic distortion.
+            # Gelo Fraturado keeps its fixed eight-degree tilt. Other finishes
+            # do not inherit a generic wobble or synthetic distortion.
             painter.rotate(-8.0)
         painter.scale(self._display_scale * scale, self._display_scale * scale)
         painter.translate(-self.width() / 2, -self.height() / 2)
@@ -252,11 +250,6 @@ class _AnimatedOrb(QWidget):
             for stop, color in ((0.0, "#f4efff"), (.22, "#c7b9e4"),
                                 (.48, "#76658f"), (.74, "#504062"), (1.0, "#30233f")):
                 gradient.setColorAt(stop, QColor(color))
-        elif self.style == "io":
-            gradient = QLinearGradient(size*.14, 0, size*.82, size)
-            for stop, color in ((0.0, "#ffe8a1"), (.22, "#f8c04e"),
-                                (.48, "#ec633c"), (.72, "#b43f3d"), (1.0, "#702d3c")):
-                gradient.setColorAt(stop, QColor(color))
         elif self.style == "triton":
             gradient = QLinearGradient(0, size*.08, size, size*.96)
             for stop, color in ((0.0, "#eaf0ff"), (.25, "#a6b9ee"),
@@ -277,7 +270,6 @@ class _AnimatedOrb(QWidget):
             "ocean": ((.70, .76), "#154d80", 138, .74),
             "crimson": ((.32, .20), "#ffffff", 78, .62),
             "titan": ((.72, .72), "#c7a6f5", 104, .82),
-            "io": ((.70, .70), "#ff492f", 142, .68),
             "triton": ((.30, .74), "#d8ffff", 118, .82),
         }
         if self.style in radial_fields:
@@ -463,7 +455,7 @@ class _AnimatedOrb(QWidget):
             stroke(hairline,QColor(255,255,255,105),.005)
             glint(size*.41,size*.36,size*.014,int(100+pulse*85),(242,255,255))
         elif self.style == "titan":
-            # Titan is a deep amber haze, not a second ringed planet: several
+            # Titan is a deep violet haze, not a second ringed planet: several
             # soft, offset cloud decks drift at different speeds.
             painter.setBrush(Qt.BrushStyle.NoBrush)
             for index,(yy,alpha,width,drift) in enumerate(((.28,130,.045,1),(.40,116,.030,-1),(.58,92,.023,1),(.70,74,.015,-1))):
@@ -474,23 +466,6 @@ class _AnimatedOrb(QWidget):
             haze.setColorAt(0,QColor(239,226,255,int(115+pulse*60))); haze.setColorAt(1,QColor(190,160,238,0))
             painter.setPen(Qt.PenStyle.NoPen); painter.setBrush(haze); painter.drawEllipse(QRectF(size*.50,size*.08,size*.45,size*.45))
             glint(size*.77,size*.29,size*.009,int(65+pulse*65),(245,235,255))
-        elif self.style == "io":
-            # Dark basalt plates hold multiple branching molten seams. Three
-            # vents flare separately so this is not a single decorative crack.
-            for x,y,w,h in ((.17,.24,.24,.17),(.60,.19,.23,.19),(.27,.64,.28,.16),(.63,.60,.20,.20)):
-                painter.setPen(QPen(QColor(90,38,42,92),max(1.0,size*.006))); painter.setBrush(QColor(69,42,49,44))
-                painter.drawEllipse(QRectF(size*x,size*y,size*w,size*h))
-            fissure=QPainterPath(); shift=(flow-.5)*size*.035
-            fissure.moveTo(size*.62+shift,size*.18); fissure.cubicTo(size*.44,size*.31,size*.71,size*.41,size*.48+shift,size*.52)
-            fissure.cubicTo(size*.29,size*.61,size*.55,size*.72,size*.38,size*.84)
-            fissure.moveTo(size*.49+shift,size*.52); fissure.cubicTo(size*.67,size*.53,size*.72,size*.61,size*.80,size*.68)
-            fissure.moveTo(size*.46,size*.60); fissure.cubicTo(size*.37,size*.55,size*.30,size*.48,size*.22,size*.44)
-            stroke(fissure,QColor(100,38,43,int(150+pulse*55)),.040)
-            stroke(fissure,QColor(255,218,113,int(180+pulse*72)),.012)
-            for x,y,r in ((.63,.21,.105),(.24,.43,.072),(.79,.69,.082)):
-                vent=QRadialGradient(QPointF(size*x,size*y),size*r)
-                vent.setColorAt(0,QColor(255,255,204,int(225+pulse*25))); vent.setColorAt(.35,QColor(255,191,79,178)); vent.setColorAt(1,QColor(255,97,52,0))
-                painter.setPen(Qt.PenStyle.NoPen); painter.setBrush(vent); painter.drawEllipse(QRectF(size*(x-r),size*(y-r),size*r*2,size*r*2))
         elif self.style == "triton":
             # A blue polar cap, etched glacial seams and one rising cryogenic
             # plume distinguish this from Boreal's soft ribbon-like curtains.

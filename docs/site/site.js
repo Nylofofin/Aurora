@@ -7,7 +7,6 @@
     {key:'solaris', name:'Eclipse Rosé', detail:'Corona luminosa · sombra móvel', motion:'A sombra avança sobre o disco rosado e revela uma borda quente de luz, com um arco fino de refração.', color:'#d77f98'},
     {key:'ocean', name:'Falha Prismática', detail:'Placas ciano · fratura ramificada', motion:'Uma falha principal se divide em veios menores e separa planos de gelo com reflexos azulados.', color:'#43b8bd'},
     {key:'titan', name:'Névoa Violeta', detail:'Véus lilás · profundidade escura', motion:'Camadas de névoa violeta deslizam em profundidades diferentes; a luz difusa aparece e desaparece sob o vidro.', color:'#8a70ae'},
-    {key:'io', name:'Crosta Incandescente', detail:'Basalto escuro · rios de magma', motion:'Trincas quentes pulsam sob uma crosta escura e três focos vulcânicos acendem em sequência.', color:'#e76843'},
     {key:'triton', name:'Calota Glacial', detail:'Gelo azul profundo · pluma polar', motion:'Uma calota clara contrasta com o azul profundo; uma pluma sobe entre estrias gravadas no gelo.', color:'#4b8cc5'},
   ];
   let current = 0;
@@ -47,7 +46,7 @@
     document.querySelector('#skinName').textContent = skin.name;
     document.querySelector('#skinDesc').textContent = skin.detail;
     document.querySelector('#skinMotion').textContent = skin.motion;
-    document.querySelector('#skinCount').textContent = String(current + 1).padStart(2,'0') + ' — 09';
+    document.querySelector('#skinCount').textContent = String(current + 1).padStart(2,'0') + ' — ' + String(skins.length).padStart(2,'0');
     document.querySelector('.stage-glow').style.background = 'radial-gradient(circle,' + skin.color + '42,transparent 68%)';
     const previous = skins[(current + skins.length - 1) % skins.length];
     const next = skins[(current + 1) % skins.length];
@@ -95,10 +94,11 @@
   menuButton.addEventListener('click', () => {
     const open = menuButton.getAttribute('aria-expanded') !== 'true';
     menuButton.setAttribute('aria-expanded', String(open));
+    menuButton.setAttribute('aria-label', open ? 'Fechar navegação' : 'Abrir navegação');
     document.querySelector('.main-nav').classList.toggle('open', open);
   });
   document.querySelectorAll('.main-nav a').forEach((link) => link.addEventListener('click', () => {
-    document.querySelector('.main-nav').classList.remove('open'); menuButton.setAttribute('aria-expanded','false');
+    document.querySelector('.main-nav').classList.remove('open'); menuButton.setAttribute('aria-expanded','false'); menuButton.setAttribute('aria-label','Abrir navegação');
   }));
 
   if ('IntersectionObserver' in window) {

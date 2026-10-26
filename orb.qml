@@ -48,10 +48,6 @@ Item {
         listening: "#E8D9FF", thinking: "#C7AFE9", searching: "#9B7FC1",
         weather: "#DCCBFA", preparing: "#B49AD9", speaking: "#F5EDFF",
         approval: "#F4D888", controlling: "#735A8F", error: "#E59B9E", idle: "#674D87"
-    }) : bubbleStyle === "io" ? ({
-        listening: "#FFF0A6", thinking: "#FFC35E", searching: "#F47A50",
-        weather: "#FFE18A", preparing: "#F39343", speaking: "#FFF4C7",
-        approval: "#FFF0A6", controlling: "#BD5039", error: "#E76558", idle: "#A9423D"
     }) : bubbleStyle === "triton" ? ({
         listening: "#D6E3FF", thinking: "#9DB6F2", searching: "#5E80D8",
         weather: "#C3D6FF", preparing: "#86A1E5", speaking: "#EDF3FF",
@@ -65,11 +61,11 @@ Item {
     // comes from color, refraction and small surface details inside the glass.
     readonly property string orbPath: "M 57 1 A 56 56 0 1 1 57 113 A 56 56 0 1 1 57 1 Z"
     readonly property color stateColor: statePalette[mode] || statePalette.idle
-    readonly property color styleBase: bubbleStyle === "emerald" ? "#EDFFF7" : bubbleStyle === "crimson" ? "#FFF4DF" : bubbleStyle === "amethyst" ? "#F4F2FF" : bubbleStyle === "solaris" ? "#FFF0F0" : bubbleStyle === "ocean" ? "#EAFFFF" : bubbleStyle === "titan" ? "#F4EFFF" : bubbleStyle === "io" ? "#FFE8A1" : bubbleStyle === "triton" ? "#EAF0FF" : "#EFFAFF"
-    readonly property color styleMid: bubbleStyle === "emerald" ? "#B7EBDD" : bubbleStyle === "crimson" ? "#F2D398" : bubbleStyle === "amethyst" ? "#D0D5F4" : bubbleStyle === "solaris" ? "#EDB0BD" : bubbleStyle === "ocean" ? "#B3F0E4" : bubbleStyle === "titan" ? "#C7B9E4" : bubbleStyle === "io" ? "#F8C04E" : bubbleStyle === "triton" ? "#A6B9EE" : "#BFEAF5"
-    readonly property color styleLow: bubbleStyle === "emerald" ? "#70D2AE" : bubbleStyle === "crimson" ? "#D78F57" : bubbleStyle === "amethyst" ? "#9CAEE7" : bubbleStyle === "solaris" ? "#D77F98" : bubbleStyle === "ocean" ? "#58CFC6" : bubbleStyle === "titan" ? "#76658F" : bubbleStyle === "io" ? "#EC633C" : bubbleStyle === "triton" ? "#3C65B0" : "#6CA9EC"
-    readonly property color styleDeep: bubbleStyle === "emerald" ? "#247D70" : bubbleStyle === "crimson" ? "#B9654B" : bubbleStyle === "amethyst" ? "#47598F" : bubbleStyle === "solaris" ? "#A94F72" : bubbleStyle === "ocean" ? "#1D678E" : bubbleStyle === "titan" ? "#504062" : bubbleStyle === "io" ? "#B43F3D" : bubbleStyle === "triton" ? "#243E82" : "#6961C7"
-    readonly property color styleBottom: bubbleStyle === "emerald" ? "#165A56" : bubbleStyle === "crimson" ? "#92513F" : bubbleStyle === "amethyst" ? "#2D3F70" : bubbleStyle === "solaris" ? "#552F62" : bubbleStyle === "ocean" ? "#124567" : bubbleStyle === "titan" ? "#30233F" : bubbleStyle === "io" ? "#702D3C" : bubbleStyle === "triton" ? "#101D4B" : "#4B479E"
+    readonly property color styleBase: bubbleStyle === "emerald" ? "#EDFFF7" : bubbleStyle === "crimson" ? "#FFF4DF" : bubbleStyle === "amethyst" ? "#F4F2FF" : bubbleStyle === "solaris" ? "#FFF0F0" : bubbleStyle === "ocean" ? "#EAFFFF" : bubbleStyle === "titan" ? "#F4EFFF" : bubbleStyle === "triton" ? "#EAF0FF" : "#EFFAFF"
+    readonly property color styleMid: bubbleStyle === "emerald" ? "#B7EBDD" : bubbleStyle === "crimson" ? "#F2D398" : bubbleStyle === "amethyst" ? "#D0D5F4" : bubbleStyle === "solaris" ? "#EDB0BD" : bubbleStyle === "ocean" ? "#B3F0E4" : bubbleStyle === "titan" ? "#C7B9E4" : bubbleStyle === "triton" ? "#A6B9EE" : "#BFEAF5"
+    readonly property color styleLow: bubbleStyle === "emerald" ? "#70D2AE" : bubbleStyle === "crimson" ? "#D78F57" : bubbleStyle === "amethyst" ? "#9CAEE7" : bubbleStyle === "solaris" ? "#D77F98" : bubbleStyle === "ocean" ? "#58CFC6" : bubbleStyle === "titan" ? "#76658F" : bubbleStyle === "triton" ? "#3C65B0" : "#6CA9EC"
+    readonly property color styleDeep: bubbleStyle === "emerald" ? "#247D70" : bubbleStyle === "crimson" ? "#B9654B" : bubbleStyle === "amethyst" ? "#47598F" : bubbleStyle === "solaris" ? "#A94F72" : bubbleStyle === "ocean" ? "#1D678E" : bubbleStyle === "titan" ? "#504062" : bubbleStyle === "triton" ? "#243E82" : "#6961C7"
+    readonly property color styleBottom: bubbleStyle === "emerald" ? "#165A56" : bubbleStyle === "crimson" ? "#92513F" : bubbleStyle === "amethyst" ? "#2D3F70" : bubbleStyle === "solaris" ? "#552F62" : bubbleStyle === "ocean" ? "#124567" : bubbleStyle === "titan" ? "#30233F" : bubbleStyle === "triton" ? "#101D4B" : "#4B479E"
     property color animatedStateColor: stateColor
     property real tintStrength: mode === "listening" ? 0.34
         : mode === "speaking" ? 0.34
@@ -404,26 +400,6 @@ Item {
             strokeColor: "#55FFEABF"; strokeWidth: 1.1; fillColor: "transparent"
             PathMove { x: 6; y: 55 }
             PathCubic { control1X: 32; control1Y: 42; control2X: 75; control2Y: 69; x: 96; y: 51 }
-        }
-    }
-    Shape {
-        visible: root.bubbleStyle === "io"
-        x: 64 + sphere.surfaceFlow * 2; y: 30; width: 34; height: 76
-        ShapePath {
-            strokeColor: "#C25F252D"; strokeWidth: 4.0; fillColor: "transparent"
-            PathMove { x: 23; y: 2 }
-            PathCubic { control1X: 4; control1Y: 19; control2X: 28; control2Y: 29; x: 13; y: 44 }
-            PathCubic { control1X: 3; control1Y: 55; control2X: 24; control2Y: 62; x: 8; y: 74 }
-        }
-        ShapePath {
-            strokeColor: sphere.breathing > 0.5 ? "#8AFFE28A" : "#CCFFE28A"; strokeWidth: 1.4; fillColor: "transparent"
-            PathMove { x: 23; y: 2 }
-            PathCubic { control1X: 4; control1Y: 19; control2X: 28; control2Y: 29; x: 13; y: 44 }
-            PathCubic { control1X: 3; control1Y: 55; control2X: 24; control2Y: 62; x: 8; y: 74 }
-            PathMove { x: 14; y: 44 }
-            PathCubic { control1X: 25; control1Y: 45; control2X: 27; control2Y: 52; x: 32; y: 57 }
-            PathMove { x: 19; y: 34 }
-            PathCubic { control1X: 10; control1Y: 30; control2X: 7; control2Y: 25; x: 2; y: 22 }
         }
     }
     Shape {

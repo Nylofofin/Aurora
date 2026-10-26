@@ -31,7 +31,11 @@ class Speaker(QThread):
             self.q.put(("",time.perf_counter(),None,None,False,True))
     def say(self,text):
         text=self.clean(text)
-        if text: self.q.put((text[:1800],time.perf_counter(),None,None))
+        # Keep the complete spoken answer. Piper streams synthesized audio and
+        # Supertonic splits long replies into sentence-sized chunks below; the
+        # old silent 1,800-character slice made the UI show words the voice
+        # could never finish.
+        if text: self.q.put((text,time.perf_counter(),None,None))
     def say_with_voice(self,text,voice,engine='piper'):
         """Queue a short preview without changing the saved voice or engine."""
         text=self.clean(text); voice=str(voice or '').strip()
@@ -51,8 +55,14 @@ class Speaker(QThread):
         letters=sum(char.isalnum() for char in str(text))
         return min(.88,.28+min(letters,12)*.045) if letters else .18
     @staticmethod
-    def _speech_chunks(text,limit=48):
-        """Keep TTS chunks near sentence boundaries for low-latency playback."""
+    def _speech_chunks(text,limit=280):
+        """Split near sentence boundaries using Supertonic's native chunk scale.
+
+        The model supports chunks up to 300 characters. The previous 48-char
+        limit multiplied inference calls (and denoising overhead) for ordinary
+        answers without making audio start sooner: playback starts after the
+        first complete chunk either way.
+        """
         clauses=re.split(r'(?<=[.!?])\s+',str(text).strip())
         chunks=[]; current=''
         for clause in clauses:

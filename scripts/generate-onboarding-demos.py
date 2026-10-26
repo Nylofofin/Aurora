@@ -135,14 +135,17 @@ def make_skin_contact_sheet(app: QApplication) -> None:
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     painter.setPen(QColor("#f4f0fa"))
     painter.setFont(QFontSafe(25, True))
-    painter.drawText(margin, 39, "Nove acabamentos · uma bolha, nove identidades")
+    painter.drawText(margin, 39, f"{len(BUBBLE_STYLES)} acabamentos · uma bolha, identidades próprias")
     painter.setFont(QFontSafe(12))
     painter.setPen(QColor("#b5afbd"))
     painter.drawText(margin, 62, "Prévias renderizadas pelos mesmos componentes usados no onboarding da Aurora.")
 
     for index, (key, title, detail) in enumerate(BUBBLE_STYLES):
         row, col = divmod(index, 3)
-        x, y = margin + col * (cell_w + gap), 82 + row * (cell_h + gap)
+        row_start = row * 3
+        row_count = min(3, len(BUBBLE_STYLES) - row_start)
+        row_offset = ((3 - row_count) * (cell_w + gap)) // 2 if row_count < 3 else 0
+        x, y = margin + row_offset + col * (cell_w + gap), 82 + row * (cell_h + gap)
         painter.setPen(QColor("#393441"))
         painter.setBrush(QColor("#1b1a22"))
         painter.drawRoundedRect(x, y, cell_w, cell_h, 18, 18)

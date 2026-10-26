@@ -16,3 +16,4 @@
 
 @media(prefers-reduced-motion:no-preference){.js-reveal .reveal{opacity:0;transform:translateY(20px)}.js-reveal .reveal.visible{opacity:1;transform:translateY(0)}}
 @media(prefers-reduced-motion:reduce){.js-reveal .reveal{opacity:1;transform:none}}
+@media(max-width:650px){.hero-meta span{display:block}.hero-meta{line-height:1.8}}

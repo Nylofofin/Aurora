@@ -33,6 +33,24 @@ def test_local_voice_preview_is_queued_without_changing_saved_engine():
     assert speaker.cfg["tts_engine"] == "edge"
 
 
+def test_speaker_does_not_silently_truncate_long_answers():
+    speaker = tts.Speaker({"tts_engine": "piper"})
+    answer = "Esta frase completa precisa chegar ao sintetizador. " * 60
+    speaker.say(answer)
+
+    queued_text, _queued_at, _voice, _engine = speaker.q.get_nowait()
+    assert queued_text == answer.strip()
+
+
+def test_supertonic_uses_fewer_sentence_aware_chunks_without_losing_words():
+    answer = "Esta frase de teste contém várias palavras e deve permanecer inteira. " * 45
+    chunks = tts.Speaker._speech_chunks(answer)
+
+    assert len(chunks) <= 12
+    assert all(len(chunk) <= 280 for chunk in chunks)
+    assert " ".join(" ".join(chunks).split()) == " ".join(answer.split())
+
+
 def test_speaker_routes_saved_local_engine_to_piper(monkeypatch):
     speaker = tts.Speaker({"tts_engine": "piper"})
     speaker.engine = "/usr/bin/ffplay"
