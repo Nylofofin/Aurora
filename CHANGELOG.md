@@ -1,18 +1,24 @@
 # Histórico de versões
 
+## Aurora Desktop 3.1.1 — Eris Skin Cleanup, 2026-10-25 (patch estável)
+
+- Remove Crosta Incandescente de todos os catálogos ativos, normaliza preferências antigas para uma skin válida e mantém as oito aparências atuais.
+- Regenera os WebPs oficiais, a prancha e os GIFs do carrossel e das transições com o catálogo atualizado.
+- Corrige o corte silencioso de respostas longas no TTS e reduz chamadas do Supertonic usando blocos maiores, sem descartar texto.
+- Torna falhas do Whisper visíveis nos logs sem guardar áudio, transcrição ou caminhos privados.
+- Atualiza o site e a identificação da build para a 3.1.1.
+
 ## Aurora Desktop 3.1.0 — Eris Skin Studio, 2026-10-25 (release estável)
 
-- Amplia de seis para nove aparências circulares, com identidades visuais próprias para Titã, Ío e Tritão.
-- Mantém as mesmas cores e detalhes entre o carrossel do onboarding e a bolha flutuante ativa.
+- Renova as aparências circulares e o renderer do onboarding, mantendo cores e detalhes consistentes com a bolha ativa.
 - Refina o onboarding: prévia inicial acompanha a aparência escolhida, progresso numerado e dimensões mais compactas.
 - Atualiza a prancha e as demonstrações animadas com capturas dos widgets reais; adiciona script reproduzível para gerar as mídias.
 - Mantém o Aurora Launchpad 0.4.8 disponível como RPM nos assets da release.
 
-## Não lançado
+## Correções incluídas na 3.1.1
 
-- Recompõe as nove aparências com nomes ligados às formas e aos materiais desenhados, e com detalhes animados próprios: veios, estratos, filamentos, fissuras, corona, pluma glacial e haze.
-- Mantém uma única aparência orbital: Órbita Índigo. O satélite percorre o anel inclinado; Bruma de Titã recebe camadas de névoa âmbar sem um segundo anel genérico.
-- Corrige a inicialização do site e o carrossel, que estavam quebrados por uma variável inexistente; as aparências voltam a carregar e usam os WebPs animados oficiais.
+- A coleção atual tem oito estilos; a release estável mantém o renderer original que cada nome representa.
+- Corrige a inicialização do site e o carrossel, que estavam quebrados por uma variável inexistente; as aparências usam os WebPs animados oficiais.
 - Corrige a confirmação do wake: uma frase exata emitida pela gramática local e restrita não depende mais de o segundo reconhecedor finalizar o mesmo bloco de áudio; o fallback livre continua exigindo confiança.
 
 ## Aurora Desktop 3.0.0e — Vega Voice & Wake, 2026-10-25 (release estável)

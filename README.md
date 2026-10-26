@@ -1,6 +1,6 @@
 # Aurora Desktop
 
-**Versão:** `3.1.0` · **Canal:** Stable · **Codinome:** `Eris Skin Studio` · **Build:** `aurora-desktop-3.1.0-eris-skin-studio`
+**Versão:** `3.1.1` · **Canal:** Stable · **Codinome:** `Eris Skin Cleanup` · **Build:** `aurora-desktop-3.1.1-eris-skin-cleanup`
 
 **Uma assistente de voz para Linux, com uma presença pequena na tela e o processamento principal no próprio computador.** A Aurora desperta por voz, entende pedidos cotidianos, conversa em uma sessão contínua e pode pesquisar na web ou executar ações locais.
 
