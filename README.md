@@ -9,6 +9,10 @@
   <img src="docs/media/bubble-exit.gif" width="360" alt="A Aurora falando e recolhendo a bolha ao concluir">
 </p>
 
+## Site oficial
+
+Explore a Aurora em uma apresentação interativa, com carrossel de aparências, demonstrações animadas e informações do projeto: [nylofofin.github.io/Aurora](https://nylofofin.github.io/Aurora/).
+
 ## Veja a Aurora
 
 A esfera mantém o formato circular e muda de cor, luz, refração e detalhes conforme o estilo escolhido. São nove acabamentos, cada um com identidade própria; o onboarding e a bolha ativa compartilham as mesmas prévias.
