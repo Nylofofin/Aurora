@@ -35,6 +35,14 @@ def test_custom_wake_name_is_used_for_exact_detection_and_stripping():
     assert strip_wake_word("Olá Nova Aurora: abra o terminal", "Nova Aurora") == "abra o terminal"
 
 
+def test_closed_wake_grammar_does_not_wait_for_unrelated_decoder_confidence():
+    confirm = LocalVoice.is_wake_confirmation
+    assert confirm({"text": "olá aurora"}, True, {}, False, "Aurora")
+    assert confirm({}, False, {"text": "aurora", "result": [{"conf": .82}]}, True, "Aurora")
+    assert not confirm({"text": "aurora talvez"}, True, {}, False, "Aurora")
+    assert not confirm({}, False, {"text": "aurora", "result": [{"conf": .31}]}, True, "Aurora")
+
+
 def test_custom_wake_name_accepts_punctuation_but_requires_a_word_boundary():
     from aurora_core.system.text import strip_wake_word
 

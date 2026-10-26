@@ -158,8 +158,8 @@ def make_skin_contact_sheet(app: QApplication) -> None:
         painter.drawText(x + 14, y + 184, cell_w - 28, 24,
                          int(Qt.AlignmentFlag.AlignHCenter), title)
         painter.setPen(QColor("#b5afbd"))
-        painter.setFont(QFontSafe(11))
-        painter.drawText(x + 14, y + 209, cell_w - 28, 28,
+        painter.setFont(QFontSafe(10))
+        painter.drawText(x + 14, y + 204, cell_w - 28, 38,
                          int(Qt.AlignmentFlag.AlignHCenter | Qt.TextFlag.TextWordWrap), detail)
         orb.close()
         orb.deleteLater()

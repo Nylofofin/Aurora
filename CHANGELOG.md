@@ -10,10 +10,10 @@
 
 ## Não lançado
 
-- Refina as nove aparências: cortinas boreais, placas de gelo Europa, tempestade joviana, eclipse de Dione e falhas cristalinas de Miranda; torna os detalhes menos parecidos entre si.
-- Reia recebe um anel duplo inclinado com lua em órbita; Titã usa um halo atmosférico largo e quase horizontal, com um satélite em ciclo próprio.
-- Anima correntes, fissuras vulcânicas, nuvens e coroas com ciclos contínuos na bolha e na prévia do onboarding.
-- Amplia o site com arte PNG/WebP transparente exportada pelo renderer oficial da Aurora e uma galeria animada com transições laterais.
+- Recompõe as nove aparências com nomes ligados às formas e aos materiais desenhados, e com detalhes animados próprios: veios, estratos, filamentos, fissuras, corona, pluma glacial e haze.
+- Mantém uma única aparência orbital: Órbita Índigo. O satélite percorre o anel inclinado; Bruma de Titã recebe camadas de névoa âmbar sem um segundo anel genérico.
+- Corrige a inicialização do site e o carrossel, que estavam quebrados por uma variável inexistente; as aparências voltam a carregar e usam os WebPs animados oficiais.
+- Corrige a confirmação do wake: uma frase exata emitida pela gramática local e restrita não depende mais de o segundo reconhecedor finalizar o mesmo bloco de áudio; o fallback livre continua exigindo confiança.
 
 ## Aurora Desktop 3.0.0e — Vega Voice & Wake, 2026-10-25 (release estável)
 

@@ -13,6 +13,15 @@ from .profile import matches as profile_matches
 
 SAMPLE_RATE=16000
 MIC_BLOCK_FRAMES=1600  # 100 ms: lower orb feedback latency while preserving audio windows.
+_LAST_MALFORMED_RESULT_LOG = {}
+
+def _log_malformed_vosk(stage, detail):
+    """Keep a malformed decoder from filling the persistent log on every frame."""
+    now=time.monotonic()
+    if now-_LAST_MALFORMED_RESULT_LOG.get(stage,0.0) < 60.0:
+        return
+    _LAST_MALFORMED_RESULT_LOG[stage]=now
+    print(f'[voice] JSON Vosk inválido em {stage}; {detail}',file=sys.stderr,flush=True)
 
 def parse_vosk_result(raw,stage='recognition'):
     """Parse Vosk JSON, recovering its transcript if optional metadata is invalid.
@@ -29,8 +38,7 @@ def parse_vosk_result(raw,stage='recognition'):
         if text_match:
             try: text=json.loads(text_match.group(1))
             except (json.JSONDecodeError,TypeError): text=''
-            print(f'[voice] JSON Vosk inválido em {stage}; texto recuperado sem metadados ({type(exc).__name__})',
-                  file=sys.stderr,flush=True)
+            _log_malformed_vosk(stage,f'texto recuperado sem metadados ({type(exc).__name__})')
             # Vosk's transcript may remain intact while its optional metadata
             # contains a malformed token. Recover only numeric word confidence
             # values; this lets the caller use the fast path when every word is
@@ -44,8 +52,7 @@ def parse_vosk_result(raw,stage='recognition'):
                     if math.isfinite(confidence) and 0.0 <= confidence <= 1.0:
                         confidences.append({'conf':confidence})
             return {'text':text if isinstance(text,str) else '','result':confidences}
-        print(f'[voice] JSON Vosk inválido em {stage}; sem texto recuperável ({type(exc).__name__})',
-              file=sys.stderr,flush=True)
+        _log_malformed_vosk(stage,f'sem texto recuperável ({type(exc).__name__})')
         return {'text':'','result':[]}
 
 def wake_name_words(name):
@@ -140,6 +147,21 @@ class LocalVoice(QThread):
                 return False
             confidences.append(confidence)
         return bool(confidences)
+    @classmethod
+    def is_wake_confirmation(cls,grammar_payload,grammar_finalized,fallback_payload,
+                             fallback_finalized,assistant_name='Aurora'):
+        """Accept the exact closed-grammar phrase or a confident free-form match.
+
+        The grammar recognizer can only emit the configured wake name (or its
+        two short greetings). Requiring confidence metadata from the separate
+        unconstrained decoder made a valid grammar result wait for a second
+        decoder that often did not finalize the same 100 ms boundary.
+        """
+        grammar_text = grammar_payload.get('text','') if isinstance(grammar_payload,dict) else ''
+        if cls.is_final_wake_phrase(grammar_text,grammar_finalized,assistant_name):
+            return True
+        return cls.is_confident_wake_result(
+            fallback_payload,fallback_finalized,assistant_name)
     @staticmethod
     def contains_wake_name(text,assistant_name='Aurora'):
         """Check that a local transcript starts with the configured wake name."""
@@ -343,6 +365,7 @@ class LocalVoice(QThread):
                         candidate_texts=[]
                         fallback_payload={}
                         command_confidence=None
+                        result_payload={}
                         if finalized:
                             result_payload=parse_vosk_result(active_rec.Result(),'comando' if active else 'wake')
                             candidate_texts.append(result_payload.get('text','').strip())
@@ -393,7 +416,8 @@ class LocalVoice(QThread):
                                 active=False; buffer=[]; wake_audio=[]; rec.Reset(); wake_rec.Reset(); self.end_request(); self.status.emit('hidden')
                         elif text or candidate_texts:
                             assistant_name=self.cfg.get('assistant_name','Aurora')
-                            exact_wake=self.is_confident_wake_result(
+                            exact_wake=self.is_wake_confirmation(
+                                result_payload if finalized else {},finalized,
                                 fallback_payload,fallback_finalized,assistant_name)
                             if exact_wake:
                                 profile_candidate=False; profile_candidate_audio.clear()

@@ -45,17 +45,17 @@ Item {
         weather: "#8DE7F0", preparing: "#49C9DD", speaking: "#C9FAFF",
         approval: "#F4D888", controlling: "#218EBD", error: "#F18E9C", idle: "#258FC2"
     }) : bubbleStyle === "titan" ? ({
-        listening: "#E7E4FF", thinking: "#B6B9E8", searching: "#9298D4",
-        weather: "#D7D9F6", preparing: "#AEB3DF", speaking: "#F3F0FF",
-        approval: "#F4D888", controlling: "#68709F", error: "#E59B9E", idle: "#626B9B"
+        listening: "#E8D9FF", thinking: "#C7AFE9", searching: "#9B7FC1",
+        weather: "#DCCBFA", preparing: "#B49AD9", speaking: "#F5EDFF",
+        approval: "#F4D888", controlling: "#735A8F", error: "#E59B9E", idle: "#674D87"
     }) : bubbleStyle === "io" ? ({
-        listening: "#FFF0A6", thinking: "#FFC35E", searching: "#FF8750",
-        weather: "#FFE18A", preparing: "#F6A84E", speaking: "#FFF4C7",
-        approval: "#FFF0A6", controlling: "#D96939", error: "#E76558", idle: "#C75A3C"
+        listening: "#FFF0A6", thinking: "#FFC35E", searching: "#F47A50",
+        weather: "#FFE18A", preparing: "#F39343", speaking: "#FFF4C7",
+        approval: "#FFF0A6", controlling: "#BD5039", error: "#E76558", idle: "#A9423D"
     }) : bubbleStyle === "triton" ? ({
-        listening: "#C7F8FF", thinking: "#8CD9F1", searching: "#4DB9E0",
-        weather: "#B6F0FA", preparing: "#72CDE9", speaking: "#E4FCFF",
-        approval: "#F4D888", controlling: "#397EBC", error: "#ED9EA8", idle: "#376FA9"
+        listening: "#D6E3FF", thinking: "#9DB6F2", searching: "#5E80D8",
+        weather: "#C3D6FF", preparing: "#86A1E5", speaking: "#EDF3FF",
+        approval: "#F4D888", controlling: "#3157A2", error: "#ED9EA8", idle: "#203C7B"
     }) : ({
         listening: "#91E4F8", thinking: "#B7A4F2", searching: "#7ECDF5",
         weather: "#9DDCF0", preparing: "#C8B5F7", speaking: "#E2D2FF",
@@ -65,11 +65,11 @@ Item {
     // comes from color, refraction and small surface details inside the glass.
     readonly property string orbPath: "M 57 1 A 56 56 0 1 1 57 113 A 56 56 0 1 1 57 1 Z"
     readonly property color stateColor: statePalette[mode] || statePalette.idle
-    readonly property color styleBase: bubbleStyle === "emerald" ? "#EDFFF7" : bubbleStyle === "crimson" ? "#FFF4DF" : bubbleStyle === "amethyst" ? "#F4F2FF" : bubbleStyle === "solaris" ? "#FFF0F0" : bubbleStyle === "ocean" ? "#EAFFFF" : bubbleStyle === "titan" ? "#EFEFFB" : bubbleStyle === "io" ? "#FFF2C7" : bubbleStyle === "triton" ? "#EFFCFF" : "#EFFAFF"
-    readonly property color styleMid: bubbleStyle === "emerald" ? "#B7EBDD" : bubbleStyle === "crimson" ? "#F2D398" : bubbleStyle === "amethyst" ? "#D0D5F4" : bubbleStyle === "solaris" ? "#EDB0BD" : bubbleStyle === "ocean" ? "#B3F0E4" : bubbleStyle === "titan" ? "#B4B8D9" : bubbleStyle === "io" ? "#FFD775" : bubbleStyle === "triton" ? "#C6F3F4" : "#BFEAF5"
-    readonly property color styleLow: bubbleStyle === "emerald" ? "#70D2AE" : bubbleStyle === "crimson" ? "#D78F57" : bubbleStyle === "amethyst" ? "#9CAEE7" : bubbleStyle === "solaris" ? "#D77F98" : bubbleStyle === "ocean" ? "#58CFC6" : bubbleStyle === "titan" ? "#777EAE" : bubbleStyle === "io" ? "#F18C39" : bubbleStyle === "triton" ? "#80D2E8" : "#6CA9EC"
-    readonly property color styleDeep: bubbleStyle === "emerald" ? "#247D70" : bubbleStyle === "crimson" ? "#B9654B" : bubbleStyle === "amethyst" ? "#47598F" : bubbleStyle === "solaris" ? "#A94F72" : bubbleStyle === "ocean" ? "#1D678E" : bubbleStyle === "titan" ? "#4B527E" : bubbleStyle === "io" ? "#E96F37" : bubbleStyle === "triton" ? "#4D91BD" : "#6961C7"
-    readonly property color styleBottom: bubbleStyle === "emerald" ? "#165A56" : bubbleStyle === "crimson" ? "#92513F" : bubbleStyle === "amethyst" ? "#2D3F70" : bubbleStyle === "solaris" ? "#552F62" : bubbleStyle === "ocean" ? "#124567" : bubbleStyle === "titan" ? "#252A47" : bubbleStyle === "io" ? "#913544" : bubbleStyle === "triton" ? "#2E5D98" : "#4B479E"
+    readonly property color styleBase: bubbleStyle === "emerald" ? "#EDFFF7" : bubbleStyle === "crimson" ? "#FFF4DF" : bubbleStyle === "amethyst" ? "#F4F2FF" : bubbleStyle === "solaris" ? "#FFF0F0" : bubbleStyle === "ocean" ? "#EAFFFF" : bubbleStyle === "titan" ? "#F4EFFF" : bubbleStyle === "io" ? "#FFE8A1" : bubbleStyle === "triton" ? "#EAF0FF" : "#EFFAFF"
+    readonly property color styleMid: bubbleStyle === "emerald" ? "#B7EBDD" : bubbleStyle === "crimson" ? "#F2D398" : bubbleStyle === "amethyst" ? "#D0D5F4" : bubbleStyle === "solaris" ? "#EDB0BD" : bubbleStyle === "ocean" ? "#B3F0E4" : bubbleStyle === "titan" ? "#C7B9E4" : bubbleStyle === "io" ? "#F8C04E" : bubbleStyle === "triton" ? "#A6B9EE" : "#BFEAF5"
+    readonly property color styleLow: bubbleStyle === "emerald" ? "#70D2AE" : bubbleStyle === "crimson" ? "#D78F57" : bubbleStyle === "amethyst" ? "#9CAEE7" : bubbleStyle === "solaris" ? "#D77F98" : bubbleStyle === "ocean" ? "#58CFC6" : bubbleStyle === "titan" ? "#76658F" : bubbleStyle === "io" ? "#EC633C" : bubbleStyle === "triton" ? "#3C65B0" : "#6CA9EC"
+    readonly property color styleDeep: bubbleStyle === "emerald" ? "#247D70" : bubbleStyle === "crimson" ? "#B9654B" : bubbleStyle === "amethyst" ? "#47598F" : bubbleStyle === "solaris" ? "#A94F72" : bubbleStyle === "ocean" ? "#1D678E" : bubbleStyle === "titan" ? "#504062" : bubbleStyle === "io" ? "#B43F3D" : bubbleStyle === "triton" ? "#243E82" : "#6961C7"
+    readonly property color styleBottom: bubbleStyle === "emerald" ? "#165A56" : bubbleStyle === "crimson" ? "#92513F" : bubbleStyle === "amethyst" ? "#2D3F70" : bubbleStyle === "solaris" ? "#552F62" : bubbleStyle === "ocean" ? "#124567" : bubbleStyle === "titan" ? "#30233F" : bubbleStyle === "io" ? "#702D3C" : bubbleStyle === "triton" ? "#101D4B" : "#4B479E"
     property color animatedStateColor: stateColor
     property real tintStrength: mode === "listening" ? 0.34
         : mode === "speaking" ? 0.34
@@ -94,8 +94,8 @@ Item {
     Behavior on completionPulse { NumberAnimation { duration: 105; easing.type: Easing.OutCubic } }
     Behavior on hoverEnergy { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
 
-    // Motion stays on the glass surface: a slow breath plus a moving internal
-    // light field. No detached rings, particles or changing silhouette.
+    // Motion stays on the glass surface: a slow breath, moving refraction and
+    // style-specific details. The silhouette remains circular for every skin.
     Item {
         id: sphere
         x: 10; y: 10; width: 116; height: 116
@@ -164,8 +164,8 @@ Item {
             NumberAnimation { from: 1; to: -1; duration: root.mode === "speaking" ? 2100 : 4300; easing.type: Easing.InOutSine }
         }
         NumberAnimation on orbitPhase {
-            running: root.motionEnabled && (root.bubbleStyle === "amethyst" || root.bubbleStyle === "titan")
-            from: 0; to: 360; duration: root.bubbleStyle === "amethyst" ? 11900 : 8065
+            running: root.motionEnabled && root.bubbleStyle === "amethyst"
+            from: 0; to: 360; duration: 11900
             loops: Animation.Infinite; easing.type: Easing.Linear
         }
 
@@ -231,8 +231,8 @@ Item {
         }
     }
 
-    // Each finish gets its own restrained surface signature. Rings have a
-    // real satellite moving along the orbital plane instead of a static dot.
+    // Each finish gets its own surface signature. Only the orbital finish
+    // carries a satellite; other skins use their own material details.
     Shape {
         visible: root.bubbleStyle === "boreal"
         x: 20 + sphere.surfaceFlow * 3; y: 39; width: 96; height: 61
@@ -245,6 +245,11 @@ Item {
             strokeColor: "#8AD6C8FF"; strokeWidth: 1.8; fillColor: "transparent"
             PathMove { x: 3; y: 55 }
             PathCubic { control1X: 26; control1Y: 19; control2X: 61; control2Y: 60; x: 92; y: 31 }
+        }
+        ShapePath {
+            strokeColor: "#C7B9FFB0"; strokeWidth: 1.0; fillColor: "transparent"
+            PathMove { x: 9; y: 29 }
+            PathCubic { control1X: 30; control1Y: 5; control2X: 57; control2Y: 38; x: 88; y: 20 }
         }
     }
     Shape {
@@ -259,6 +264,10 @@ Item {
             PathCubic { control1X: 42; control1Y: 51; control2X: 29; control2Y: 58; x: 18; y: 68 }
             PathMove { x: 46; y: 38 }
             PathCubic { control1X: 54; control1Y: 51; control2X: 62; control2Y: 65; x: 79; y: 68 }
+            PathMove { x: 18; y: 68 }
+            PathCubic { control1X: 24; control1Y: 61; control2X: 28; control2Y: 54; x: 31; y: 47 }
+            PathMove { x: 80; y: 31 }
+            PathCubic { control1X: 74; control1Y: 38; control2X: 72; control2Y: 42; x: 69; y: 47 }
         }
     }
     Shape {
@@ -279,6 +288,13 @@ Item {
             PathMove { x: 1; y: 45 }
             PathCubic { control1X: 29; control1Y: 35; control2X: 68; control2Y: 55; x: 97; y: 42 }
         }
+        ShapePath {
+            strokeColor: "#5CFFF8E0"; strokeWidth: 0.8; fillColor: "transparent"
+            PathMove { x: 6; y: 17 }
+            PathCubic { control1X: 29; control1Y: 7; control2X: 62; control2Y: 24; x: 92; y: 11 }
+            PathMove { x: 9; y: 52 }
+            PathCubic { control1X: 31; control1Y: 42; control2X: 68; control2Y: 60; x: 90; y: 47 }
+        }
     }
     Shape {
         visible: root.bubbleStyle === "crimson"
@@ -292,6 +308,12 @@ Item {
                 GradientStop { position: 1; color: "#007F3835" }
             }
             PathAngleArc { centerX: 12; centerY: 8; radiusX: 12; radiusY: 8; startAngle: 0; sweepAngle: 360 }
+        }
+        ShapePath {
+            strokeColor: "#98FFE6B8"; strokeWidth: 0.75; fillColor: "transparent"
+            PathMove { x: 2; y: 9 }
+            PathCubic { control1X: 9; control1Y: 2; control2X: 18; control2Y: 2; x: 23; y: 8 }
+            PathCubic { control1X: 17; control1Y: 14; control2X: 7; control2Y: 14; x: 2; y: 9 }
         }
     }
     Shape {
@@ -352,28 +374,36 @@ Item {
             PathMove { x: 12; y: 6 }
             PathLine { x: 69; y: 69 }
         }
+        ShapePath {
+            strokeColor: "#BFFFFFFF"; strokeWidth: 1.1; fillColor: "transparent"
+            PathMove { x: 30; y: 25 }
+            PathLine { x: 17; y: 37 }
+            PathLine { x: 11; y: 50 }
+            PathMove { x: 48; y: 48 }
+            PathLine { x: 61; y: 37 }
+            PathLine { x: 74; y: 35 }
+            PathMove { x: 43; y: 57 }
+            PathLine { x: 58; y: 63 }
+            PathLine { x: 72; y: 62 }
+        }
     }
     Shape {
         visible: root.bubbleStyle === "titan"
-        x: 14; y: 49; width: 108; height: 38
-        rotation: 5
+        x: 18 + sphere.surfaceFlow * 2.2; y: 27; width: 102; height: 77
         ShapePath {
-            strokeColor: "#96E7CBA2"; strokeWidth: 2.4; fillColor: "transparent"
-            PathAngleArc { centerX: 54; centerY: 19; radiusX: 52; radiusY: 16; startAngle: 0; sweepAngle: 360 }
+            strokeColor: "#B8FFE4B5"; strokeWidth: 3.2; fillColor: "transparent"
+            PathMove { x: 1; y: 24 }
+            PathCubic { control1X: 27; control1Y: 6; control2X: 69; control2Y: 33; x: 101; y: 17 }
         }
         ShapePath {
-            strokeColor: "#5ECAC6E2"; strokeWidth: 0.9; fillColor: "transparent"
-            PathAngleArc { centerX: 54; centerY: 19; radiusX: 45; radiusY: 12; startAngle: 0; sweepAngle: 360 }
+            strokeColor: "#84FFF0C7"; strokeWidth: 2.0; fillColor: "transparent"
+            PathMove { x: 0; y: 39 }
+            PathCubic { control1X: 23; control1Y: 25; control2X: 66; control2Y: 52; x: 100; y: 33 }
         }
-    }
-    Shape {
-        visible: root.bubbleStyle === "titan"
-        x: 68 + Math.cos(-sphere.orbitPhase * 0.62 * Math.PI / 180) * 48 * Math.cos(14 * Math.PI / 180) - Math.sin(-sphere.orbitPhase * 0.62 * Math.PI / 180) * 20 * Math.sin(14 * Math.PI / 180) - 4
-        y: 68 + Math.cos(-sphere.orbitPhase * 0.62 * Math.PI / 180) * 48 * Math.sin(14 * Math.PI / 180) + Math.sin(-sphere.orbitPhase * 0.62 * Math.PI / 180) * 20 * Math.cos(14 * Math.PI / 180) - 4
-        width: 8; height: 8
         ShapePath {
-            strokeColor: "#D0FFF1D5"; strokeWidth: 0.6; fillColor: "#FFF1D5"
-            PathAngleArc { centerX: 4; centerY: 4; radiusX: 3.5; radiusY: 3.5; startAngle: 0; sweepAngle: 360 }
+            strokeColor: "#55FFEABF"; strokeWidth: 1.1; fillColor: "transparent"
+            PathMove { x: 6; y: 55 }
+            PathCubic { control1X: 32; control1Y: 42; control2X: 75; control2Y: 69; x: 96; y: 51 }
         }
     }
     Shape {
@@ -390,22 +420,45 @@ Item {
             PathMove { x: 23; y: 2 }
             PathCubic { control1X: 4; control1Y: 19; control2X: 28; control2Y: 29; x: 13; y: 44 }
             PathCubic { control1X: 3; control1Y: 55; control2X: 24; control2Y: 62; x: 8; y: 74 }
+            PathMove { x: 14; y: 44 }
+            PathCubic { control1X: 25; control1Y: 45; control2X: 27; control2Y: 52; x: 32; y: 57 }
+            PathMove { x: 19; y: 34 }
+            PathCubic { control1X: 10; control1Y: 30; control2X: 7; control2Y: 25; x: 2; y: 22 }
         }
     }
     Shape {
         visible: root.bubbleStyle === "triton"
-        x: 18 + sphere.surfaceFlow * 2; y: 38; width: 100; height: 64
+        x: 24; y: 24; width: 88; height: 40
         ShapePath {
-            strokeColor: "#DDEFFFFF"; strokeWidth: 2.2; fillColor: "transparent"
-            PathAngleArc { centerX: 50; centerY: 32; radiusX: 48; radiusY: 28; startAngle: 205; sweepAngle: 130 }
+            strokeColor: "#C6E9FAFF"; strokeWidth: 1.0; fillColor: "#5CC6E9FF"
+            PathMove { x: 2; y: 30 }
+            PathCubic { control1X: 8; control1Y: 5; control2X: 29; control2Y: 1; x: 43; y: 9 }
+            PathCubic { control1X: 57; control1Y: 1; control2X: 77; control2Y: 9; x: 86; y: 30 }
+            PathCubic { control1X: 68; control1Y: 20; control2X: 55; control2Y: 35; x: 43; y: 26 }
+            PathCubic { control1X: 28; control1Y: 19; control2X: 14; control2Y: 35; x: 2; y: 30 }
+        }
+    }
+    Shape {
+        visible: root.bubbleStyle === "triton"
+        x: 31 + sphere.surfaceFlow * 2; y: 44; width: 73; height: 48
+        ShapePath {
+            strokeColor: "#D9F5FFFF"; strokeWidth: 1.7; fillColor: "transparent"
+            PathMove { x: 2; y: 24 }
+            PathCubic { control1X: 22; control1Y: 41; control2X: 51; control2Y: 3; x: 72; y: 20 }
         }
         ShapePath {
-            strokeColor: "#9BB7F2FA"; strokeWidth: 1.2; fillColor: "transparent"
-            PathAngleArc { centerX: 50; centerY: 32; radiusX: 39; radiusY: 22; startAngle: 215; sweepAngle: 112 }
+            strokeColor: "#738FE3FF"; strokeWidth: 0.9; fillColor: "transparent"
+            PathMove { x: 9; y: 37 }
+            PathCubic { control1X: 25; control1Y: 44; control2X: 47; control2Y: 12; x: 67; y: 30 }
         }
+    }
+    Shape {
+        visible: root.bubbleStyle === "triton"
+        x: 72 + Math.sin(sphere.surfaceFlow * Math.PI * 2) * 2; y: 38 - sphere.breathing * 4; width: 22; height: 34
         ShapePath {
-            strokeColor: "#7667CBE7"; strokeWidth: 0.8; fillColor: "transparent"
-            PathAngleArc { centerX: 50; centerY: 32; radiusX: 31; radiusY: 17; startAngle: 225; sweepAngle: 96 }
+            strokeColor: "#D9F6FFFF"; strokeWidth: 1.2; fillColor: "transparent"
+            PathMove { x: 11; y: 34 }
+            PathCubic { control1X: 5; control1Y: 21; control2X: 16; control2Y: 12; x: 11; y: 1 }
         }
     }
 

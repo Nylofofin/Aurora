@@ -15,9 +15,9 @@ Explore a Aurora em uma apresentação interativa, com carrossel de aparências,
 
 ## Veja a Aurora
 
-A esfera mantém o formato circular e muda de cor, luz, refração e detalhes conforme o estilo escolhido. As nove identidades agora se distinguem por elementos próprios: véus boreais, placas de gelo, tempestade joviana, eclipse, falhas cristalinas e correntes oceânicas. Reia e Titã têm satélites que percorrem anéis em ciclos contínuos. O site e a prancha usam imagens exportadas pelos componentes oficiais do onboarding.
+A esfera mantém o formato circular e muda de cor, luz, refração e detalhes conforme o estilo escolhido. As nove aparências têm assinaturas próprias: Cortina Boreal, Gelo Fraturado, Tempestade Âmbar, Órbita Índigo, Eclipse Rosé, Falha Prismática, Névoa Violeta, Crosta Incandescente e Calota Glacial. A Órbita Índigo tem um satélite que percorre um anel inclinado; as outras aparências usam fenômenos de superfície diferentes. O site e a prancha usam imagens exportadas pelo renderer oficial do onboarding.
 
-![Prancha dos nove estilos circulares da Aurora: Véu Boreal, Europa, Júpiter, Reia, Dione, Miranda, Titã, Ío e Tritão](docs/media/bubble-skins.png)
+![Prancha das nove aparências circulares da Aurora: Cortina Boreal, Gelo Fraturado, Tempestade Âmbar, Órbita Índigo, Eclipse Rosé, Falha Prismática, Névoa Violeta, Crosta Incandescente e Calota Glacial](docs/media/bubble-skins.png)
 
 O onboarding deixa a pessoa configurar nome, palavra de ativação, aparência, voz e assinatura sonora. O treinamento de um nome personalizado aparece quando necessário.
 

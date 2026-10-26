@@ -22,15 +22,15 @@ from ..voice.catalog import VOICES, voice_available, voice_runtime_available, en
 # Public appearance catalog shared by onboarding and the live orb.  Keep the
 # keys stable so a saved preference survives upgrades.
 BUBBLE_STYLES = (
-    ("boreal", "Véu Boreal", "Azul polar · cortinas luminosas"),
-    ("emerald", "Europa", "Verde glacial · placas de gelo"),
-    ("crimson", "Júpiter", "Âmbar estratificado · nuvens jovianas"),
-    ("amethyst", "Reia", "Índigo mineral · anéis em órbita"),
-    ("solaris", "Dione", "Rosa de eclipse · sombra lunar"),
-    ("ocean", "Miranda", "Ciano abissal · falhas cristalinas"),
-    ("titan", "Titã", "Índigo nebuloso · halo orbital"),
-    ("io", "Ío", "Ouro vulcânico · fratura incandescente"),
-    ("triton", "Tritão", "Azul polar · correntes oceânicas"),
+    ("boreal", "Cortina Boreal", "Véus turquesa · filamentos violetas · pontos de luz"),
+    ("emerald", "Gelo Fraturado", "Placas esmeralda · veios ramificados · brilho móvel"),
+    ("crimson", "Tempestade Âmbar", "Bandas jovianas · filamentos de nuvem · olho ciclônico"),
+    ("amethyst", "Órbita Índigo", "Anel duplo inclinado · satélite em percurso contínuo"),
+    ("solaris", "Eclipse Rosé", "Corona luminosa · sombra móvel · arco de refração"),
+    ("ocean", "Falha Prismática", "Placas ciano · fratura ramificada · faces de gelo"),
+    ("titan", "Névoa Violeta", "Véus lilás · profundidade escura · luz difusa"),
+    ("io", "Crosta Incandescente", "Basalto escuro · rios de magma · focos vulcânicos"),
+    ("triton", "Calota Glacial", "Gelo azul profundo · pluma polar · estrias gravadas"),
 )
 BUBBLE_STYLE_KEYS = {key for key, _title, _detail in BUBBLE_STYLES}
 
@@ -152,9 +152,9 @@ class _AnimatedOrb(QWidget):
             "amethyst": ("#f4f2ff", "#9caee7", "#47598f"),
             "solaris": ("#fff0f0", "#d77f98", "#552f62"),
             "ocean": ("#eaffff", "#58cfc6", "#1d678e"),
-            "titan": ("#efeffb", "#777eae", "#252a47"),
-            "io": ("#fff2c7", "#f18c39", "#913544"),
-            "triton": ("#effcff", "#80d2e8", "#2e5d98"),
+            "titan": ("#f4efff", "#76658f", "#30233f"),
+            "io": ("#ffe8a1", "#ec633c", "#702d3c"),
+            "triton": ("#eaf0ff", "#3c65b0", "#101d4b"),
         }
         return tuple(QColor(color) for color in palette.get(style, palette["boreal"]))
 
@@ -248,19 +248,19 @@ class _AnimatedOrb(QWidget):
                                 (.60, "#58cfc6"), (1.0, "#1d678e")):
                 gradient.setColorAt(stop, QColor(color))
         elif self.style == "titan":
-            gradient = QLinearGradient(size*.12, 0, size*.82, size)
-            for stop, color in ((0.0, "#efeffb"), (.28, "#b4b8d9"),
-                                (.55, "#777eae"), (.78, "#4b527e"), (1.0, "#252a47")):
+            gradient = QLinearGradient(size*.16, 0, size*.78, size)
+            for stop, color in ((0.0, "#f4efff"), (.22, "#c7b9e4"),
+                                (.48, "#76658f"), (.74, "#504062"), (1.0, "#30233f")):
                 gradient.setColorAt(stop, QColor(color))
         elif self.style == "io":
             gradient = QLinearGradient(size*.14, 0, size*.82, size)
-            for stop, color in ((0.0, "#fff2c7"), (.28, "#ffd775"),
-                                (.51, "#f8a544"), (.73, "#e96f37"), (1.0, "#913544")):
+            for stop, color in ((0.0, "#ffe8a1"), (.22, "#f8c04e"),
+                                (.48, "#ec633c"), (.72, "#b43f3d"), (1.0, "#702d3c")):
                 gradient.setColorAt(stop, QColor(color))
         elif self.style == "triton":
             gradient = QLinearGradient(0, size*.08, size, size*.96)
-            for stop, color in ((0.0, "#effcff"), (.3, "#c6f3f4"),
-                                (.58, "#80d2e8"), (.82, "#4d91bd"), (1.0, "#2e5d98")):
+            for stop, color in ((0.0, "#eaf0ff"), (.25, "#a6b9ee"),
+                                (.50, "#3c65b0"), (.76, "#243e82"), (1.0, "#101d4b")):
                 gradient.setColorAt(stop, QColor(color))
         else:
             gradient.setColorAt(0, QColor("#effaff"))
@@ -276,7 +276,7 @@ class _AnimatedOrb(QWidget):
             "solaris": ((.76, .68), "#3e264f", 110, .74),
             "ocean": ((.70, .76), "#154d80", 138, .74),
             "crimson": ((.32, .20), "#ffffff", 78, .62),
-            "titan": ((.72, .72), "#c2b5e2", 120, .88),
+            "titan": ((.72, .72), "#c7a6f5", 104, .82),
             "io": ((.70, .70), "#ff492f", 142, .68),
             "triton": ((.30, .74), "#d8ffff", 118, .82),
         }
@@ -317,75 +317,115 @@ class _AnimatedOrb(QWidget):
     def _paint_style_detail(self, painter, size, lower, violet):
         """Draw a distinct, animated surface signature for each glass finish."""
         painter.save()
-        flow = (math.sin(self.phase * .48) + 1.0) * .5
-        pulse = flow
         orbit = self.phase * .42
+        detail_phase = orbit if self.style == "amethyst" else self.phase * .48
+        flow = (math.sin(detail_phase) + 1.0) * .5
+        pulse = (math.sin(detail_phase + .8) + 1.0) * .5
+
+        def stroke(path, color, width):
+            painter.setPen(QPen(color, max(1.0, size * width), Qt.PenStyle.SolidLine,
+                                Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawPath(path)
+
+        def glint(x, y, radius, alpha=190, color=(255, 255, 255)):
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(*color, int(alpha)))
+            painter.drawEllipse(QRectF(x-radius, y-radius, radius*2, radius*2))
+            painter.setPen(QPen(QColor(*color, int(alpha*.65)), max(1.0, size*.004)))
+            painter.drawLine(QPointF(x-radius*1.8, y), QPointF(x+radius*1.8, y))
+            painter.drawLine(QPointF(x, y-radius*1.8), QPointF(x, y+radius*1.8))
+
         if self.style == "boreal":
-            # Two soft aurora veils drift in opposite directions.
+            # Layered aurora curtains: broad color bands, fine streamers and
+            # tiny stars make this read as atmospheric light rather than waves.
             for index, (color, offset, width) in enumerate((
-                (QColor(157, 255, 244, 135), flow, size*.035),
-                (QColor(200, 178, 255, 100), 1.0-flow, size*.022),
+                (QColor(76, 245, 229, 105), flow, .046),
+                (QColor(135, 235, 226, 154), 1.0-flow, .021),
+                (QColor(201, 177, 255, 119), flow, .012),
             )):
                 veil = QPainterPath()
-                y = size*(.43 + index*.17)
-                veil.moveTo(size*.08, y + size*.11)
-                veil.cubicTo(size*(.30 + offset*.04), y-size*.16,
-                             size*(.56 + offset*.05), y+size*.18,
-                             size*.94, y-size*.02)
-                painter.setPen(QPen(color, width, Qt.PenStyle.SolidLine,
-                                    Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
-                painter.drawPath(veil)
+                y = size*(.38 + index*.115)
+                sway = (offset-.5)*size*.12
+                veil.moveTo(size*.03, y + size*.10)
+                veil.cubicTo(size*(.22)+sway, y-size*.18,
+                             size*(.57)-sway*.5, y+size*.20,
+                             size*.98, y-size*.04)
+                stroke(veil, color, width)
+            for x, y, radius in ((.20,.30,.012),(.78,.37,.010),(.69,.70,.008),(.30,.77,.007)):
+                glint(size*x, size*y, size*radius, int(100+pulse*90), (228,250,255))
         elif self.style == "emerald":
-            # Europa's shell is divided into broad, fine ice plates.
-            painter.setPen(QPen(QColor(236, 255, 247, 118), max(1.0, size*.012),
-                                Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            # Irregular ice plates, nested hairline cracks and a traveling
+            # glint; the offset network avoids a generic starburst.
             seams = QPainterPath()
-            drift = (flow-.5)*size*.018
-            seams.moveTo(size*.24+drift, size*.26); seams.cubicTo(size*.39, size*.30+drift, size*.43, size*.37, size*.47, size*.47)
-            seams.moveTo(size*.47, size*.47); seams.cubicTo(size*.56, size*.52, size*.67, size*.49-drift, size*.79, size*.42)
-            seams.moveTo(size*.47, size*.47); seams.cubicTo(size*.44, size*.59, size*.32-drift, size*.68, size*.25, size*.75)
-            seams.moveTo(size*.47, size*.47); seams.cubicTo(size*.55, size*.62, size*.64+drift, size*.72, size*.77, size*.74)
-            painter.drawPath(seams)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(232, 255, 246, int(65 + pulse*75)))
-            painter.drawEllipse(QRectF(size*.44, size*.44, size*.06, size*.06))
+            d = (flow-.5)*size*.035
+            seams.moveTo(size*.16, size*.28); seams.cubicTo(size*.31, size*.31, size*.37, size*.42, size*.49+d, size*.47)
+            seams.moveTo(size*.49+d, size*.47); seams.cubicTo(size*.59, size*.42, size*.72, size*.34, size*.84, size*.37)
+            seams.moveTo(size*.49+d, size*.47); seams.cubicTo(size*.56, size*.58, size*.60, size*.68, size*.80, size*.76)
+            seams.moveTo(size*.49+d, size*.47); seams.cubicTo(size*.40, size*.55, size*.33, size*.65, size*.22, size*.70)
+            seams.moveTo(size*.35, size*.39); seams.cubicTo(size*.31, size*.47, size*.27, size*.51, size*.19, size*.54)
+            seams.moveTo(size*.65, size*.41); seams.cubicTo(size*.70, size*.48, size*.76, size*.52, size*.84, size*.53)
+            stroke(seams, QColor(225, 255, 244, 177), .012)
+            hairline = QPainterPath(); hairline.moveTo(size*.17, size*.30); hairline.lineTo(size*.49+d, size*.47); hairline.lineTo(size*.81, size*.75)
+            stroke(hairline, QColor(255,255,255,93), .0045)
+            glint(size*(.49+d/size), size*.47, size*.018, int(90+pulse*100), (235,255,246))
         elif self.style == "crimson":
-            # A moving storm eye sits across the layered jovian cloud bands.
-            x = size*(.48 + flow*.06)
-            y = size*(.34 + pulse*.02)
+            # Broken cloud filaments and a slowly rotating storm with a clear
+            # warm eye. The broad bands live in the base gradient.
+            x = size*(.47 + (flow-.5)*.10)
+            y = size*(.35 + (pulse-.5)*.045)
+            for offset, alpha, width in ((.06,105,.008),(.11,75,.005),(.72,86,.007),(.77,62,.004)):
+                band = QPainterPath(); yy = size*(offset + (flow-.5)*.025)
+                band.moveTo(size*.04, yy); band.cubicTo(size*.31, yy-size*.035, size*.66, yy+size*.04, size*.96, yy-size*.015)
+                stroke(band, QColor(255, 240, 206, alpha), width)
             painter.setPen(Qt.PenStyle.NoPen)
-            storm = QRadialGradient(x, y, size*.13)
-            storm.setColorAt(0, QColor(255, 206, 153, 220))
-            storm.setColorAt(.48, QColor(185, 77, 65, 210))
+            storm = QRadialGradient(x, y, size*.16)
+            storm.setColorAt(0, QColor(255, 224, 166, 245))
+            storm.setColorAt(.22, QColor(202, 95, 65, 235))
+            storm.setColorAt(.62, QColor(133, 57, 54, 195))
             storm.setColorAt(1, QColor(127, 56, 53, 0))
             painter.setBrush(storm)
-            painter.drawEllipse(QRectF(x-size*.15, y-size*.085, size*.30, size*.17))
-            painter.setPen(QPen(QColor(255, 224, 173, 150), max(1.0, size*.008)))
-            painter.drawArc(QRectF(x-size*.11, y-size*.06, size*.22, size*.12), 15*16, 145*16)
+            painter.drawEllipse(QRectF(x-size*.16, y-size*.095, size*.32, size*.19))
+            spiral = QPainterPath(); spiral.moveTo(x-size*.06,y+size*.01)
+            spiral.cubicTo(x-size*.02,y-size*.08,x+size*.12,y-size*.04,x+size*.08,y+size*.015)
+            spiral.cubicTo(x+size*.04,y+size*.06,x-size*.025,y+size*.025,x-size*.02,y-size*.005)
+            stroke(spiral, QColor(255, 221, 169, 198), .009)
         elif self.style == "amethyst":
-            # Reia's fine double ring is a true orbital plane; its moon moves
-            # around the ellipse on a long, constant-speed cycle.
+            # Two tilted tracks share one orbital plane; the bright satellite
+            # moves independently of the surface's slow breathing.
+            painter.save()
             painter.translate(size*.5, size*.5)
             painter.rotate(-24)
             painter.translate(-size*.5, -size*.5)
             painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.setPen(QPen(QColor(229, 234, 255, 198), max(1.0, size*.018)))
-            painter.drawEllipse(QRectF(size*.035, size*.34, size*.93, size*.32))
-            painter.setPen(QPen(QColor(183, 204, 255, 112), max(1.0, size*.008)))
-            painter.drawEllipse(QRectF(size*.08, size*.38, size*.84, size*.24))
+            painter.setPen(QPen(QColor(213, 223, 255, 98), max(1.0, size*.008)))
+            painter.drawEllipse(QRectF(size*.02, size*.32, size*.96, size*.36))
+            painter.setPen(QPen(QColor(246, 247, 255, 219), max(1.0, size*.018)))
+            painter.drawEllipse(QRectF(size*.035, size*.36, size*.93, size*.28))
+            painter.setPen(QPen(QColor(168, 196, 255, 154), max(1.0, size*.006)))
+            painter.drawEllipse(QRectF(size*.12, size*.405, size*.76, size*.19))
             theta = math.radians(orbit)
-            mx = size*.5 + math.cos(theta)*size*.44
-            my = size*.5 + math.sin(theta)*size*.15
-            painter.setPen(QPen(QColor(255, 255, 255, 180), max(1.0, size*.008)))
-            painter.setBrush(QColor(248, 251, 255, 242))
-            painter.drawEllipse(QRectF(mx-size*.036, my-size*.036, size*.072, size*.072))
+            mx = size*.5 + math.cos(theta)*size*.46
+            my = size*.5 + math.sin(theta)*size*.14
+            painter.setPen(Qt.PenStyle.NoPen)
+            moon_glow = QRadialGradient(QPointF(mx,my), size*.075)
+            moon_glow.setColorAt(0, QColor(255,255,255,238)); moon_glow.setColorAt(1,QColor(207,225,255,0))
+            painter.setBrush(moon_glow); painter.drawEllipse(QRectF(mx-size*.075,my-size*.075,size*.15,size*.15))
+            painter.setBrush(QColor(249,252,255,248)); painter.drawEllipse(QRectF(mx-size*.024,my-size*.024,size*.048,size*.048))
+            painter.restore()
+            painter.save(); painter.translate(size*.5,size*.5); painter.rotate(-24); painter.translate(-size*.5,-size*.5)
+            painter.setBrush(Qt.BrushStyle.NoBrush); painter.setPen(QPen(QColor(239,245,255,185), max(1.0,size*.016)))
+            painter.drawArc(QRectF(size*.035,size*.36,size*.93,size*.28), 205*16, 132*16)
+            painter.restore()
         elif self.style == "solaris":
-            # Dione becomes a small eclipse: warm corona behind a cool shadow.
+            # An offset shadow crosses a large rosy disc; a bright limb and
+            # separated corona preserve a crisp eclipse silhouette.
             center = QPointF(size*.5, size*.51)
-            radius = size*.275
-            corona = QRadialGradient(center, radius*1.35)
-            corona.setColorAt(.70, QColor(255, 226, 207, 0))
-            corona.setColorAt(.83, QColor(255, 196, 191, int(145 + pulse*55)))
+            radius = size*.285
+            corona = QRadialGradient(center, radius*1.50)
+            corona.setColorAt(.66, QColor(255, 226, 207, 0))
+            corona.setColorAt(.78, QColor(255, 204, 190, int(188 + pulse*50)))
+            corona.setColorAt(.91, QColor(255, 157, 177, 74))
             corona.setColorAt(1.0, QColor(226, 131, 157, 0))
             painter.setPen(Qt.PenStyle.NoPen); painter.setBrush(corona)
             painter.drawEllipse(QRectF(center.x()-radius*1.35, center.y()-radius*1.35,
@@ -393,80 +433,80 @@ class _AnimatedOrb(QWidget):
             painter.setBrush(QColor(255, 220, 213, 235))
             painter.drawEllipse(QRectF(center.x()-radius, center.y()-radius,
                                        radius*2, radius*2))
-            shadow = QRectF(center.x()-radius*.36 + flow*size*.035,
-                            center.y()-radius*.95, radius*1.9, radius*1.9)
-            painter.setBrush(QColor(83, 45, 94, 245))
+            shadow = QRectF(center.x()-radius*.34 + (flow-.5)*size*.15,
+                            center.y()-radius*.93, radius*1.86, radius*1.86)
+            shade = QRadialGradient(shadow.center(), radius*1.9)
+            shade.setColorAt(0,QColor(64,34,81,255)); shade.setColorAt(.72,QColor(92,47,96,250)); shade.setColorAt(1,QColor(136,69,112,235))
+            painter.setBrush(shade)
             painter.drawEllipse(shadow)
             painter.setPen(QPen(QColor(255, 211, 207, 188), max(1.0, size*.009)))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawArc(QRectF(center.x()-radius*1.15, center.y()-radius*1.15,
-                                   radius*2.3, radius*2.3), 28*16, 120*16)
+                                   radius*2.3, radius*2.3), 25*16, 142*16)
+            glint(size*.29,size*.32,size*.012,int(110+pulse*70),(255,241,229))
         elif self.style == "ocean":
-            # Miranda's fractured ice planes use an angular fault, not a ring.
+            # A major tectonic split branches into smaller cracks. Two angular
+            # facets catch light so the surface reads as layered ice.
             fault = QPainterPath()
-            shift = flow*size*.025
-            fault.moveTo(size*(.22+shift), size*.28)
-            fault.lineTo(size*.39, size*.42)
-            fault.lineTo(size*.34, size*.51)
-            fault.lineTo(size*.59, size*.61)
-            fault.lineTo(size*.55, size*.69)
-            fault.lineTo(size*.79, size*.78)
-            painter.setPen(QPen(QColor(233, 255, 252, 200), max(1.0, size*.021),
-                                Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
-            painter.drawPath(fault)
-            painter.setPen(QPen(QColor(116, 244, 230, 130), max(1.0, size*.007)))
-            painter.drawLine(QPointF(size*.25, size*.30), QPointF(size*.72, size*.70))
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(247, 255, 248, 205))
-            painter.drawEllipse(QRectF(size*.69, size*.25, size*.04, size*.04))
+            shift = (flow-.5)*size*.045
+            fault.moveTo(size*.29, size*.18); fault.lineTo(size*.41, size*.35); fault.lineTo(size*.37+shift, size*.48)
+            fault.lineTo(size*.57, size*.57); fault.lineTo(size*.52, size*.68); fault.lineTo(size*.73, size*.81)
+            fault.moveTo(size*.39,size*.41); fault.lineTo(size*.25,size*.48); fault.lineTo(size*.18,size*.61)
+            fault.moveTo(size*.57,size*.57); fault.lineTo(size*.70,size*.48); fault.lineTo(size*.83,size*.46)
+            fault.moveTo(size*.54,size*.65); fault.lineTo(size*.66,size*.70); fault.lineTo(size*.78,size*.68)
+            stroke(fault,QColor(220,255,255,211),.018)
+            facet = QPainterPath(); facet.moveTo(size*.18,size*.27); facet.lineTo(size*.34,size*.20); facet.lineTo(size*.41,size*.35); facet.closeSubpath()
+            painter.setPen(QPen(QColor(229,255,255,110),max(1.0,size*.006))); painter.setBrush(QColor(205,255,246,23)); painter.drawPath(facet)
+            facet2 = QPainterPath(); facet2.moveTo(size*.63,size*.73); facet2.lineTo(size*.80,size*.60); facet2.lineTo(size*.82,size*.78); facet2.closeSubpath()
+            painter.setPen(QPen(QColor(213,251,255,100),max(1.0,size*.005))); painter.setBrush(QColor(190,244,255,24)); painter.drawPath(facet2)
+            hairline=QPainterPath(); hairline.moveTo(size*.27,size*.20); hairline.lineTo(size*.40,size*.36); hairline.lineTo(size*.37+shift,size*.48)
+            stroke(hairline,QColor(255,255,255,105),.005)
+            glint(size*.41,size*.36,size*.014,int(100+pulse*85),(242,255,255))
         elif self.style == "titan":
-            # Titan wears two atmospheric arcs with a satellite on the outer
-            # path; the slow orbital period is visibly different from Reia.
-            painter.save(); painter.translate(size*.5, size*.5); painter.rotate(5); painter.translate(-size*.5, -size*.5)
+            # Titan is a deep amber haze, not a second ringed planet: several
+            # soft, offset cloud decks drift at different speeds.
             painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.setPen(QPen(QColor(231, 203, 162, 150), max(1.0, size*.028)))
-            painter.drawEllipse(QRectF(size*.015, size*.36, size*.97, size*.28))
-            painter.setPen(QPen(QColor(202, 198, 232, 86), max(1.0, size*.010)))
-            painter.drawEllipse(QRectF(size*.075, size*.405, size*.85, size*.19))
-            theta = math.radians(-orbit*.62)
-            mx = size*.5 + math.cos(theta)*size*.47
-            my = size*.5 + math.sin(theta)*size*.13
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(255, 239, 205, 245))
-            painter.drawEllipse(QRectF(mx-size*.031, my-size*.031, size*.062, size*.062))
-            painter.restore()
+            for index,(yy,alpha,width,drift) in enumerate(((.28,130,.045,1),(.40,116,.030,-1),(.58,92,.023,1),(.70,74,.015,-1))):
+                deck=QPainterPath(); offset=(flow-.5)*size*.07*drift; y=size*yy
+                deck.moveTo(size*.05,y+size*.03); deck.cubicTo(size*.28+offset,y-size*.10,size*.66-offset,y+size*.11,size*.96,y-size*.035)
+                stroke(deck,QColor(224-index*7,209-index*8,255,alpha),width)
+            haze=QRadialGradient(size*(.72-(flow-.5)*.08),size*.30,size*.30)
+            haze.setColorAt(0,QColor(239,226,255,int(115+pulse*60))); haze.setColorAt(1,QColor(190,160,238,0))
+            painter.setPen(Qt.PenStyle.NoPen); painter.setBrush(haze); painter.drawEllipse(QRectF(size*.50,size*.08,size*.45,size*.45))
+            glint(size*.77,size*.29,size*.009,int(65+pulse*65),(245,235,255))
         elif self.style == "io":
-            # The volcanic fissure breathes through two layers of molten light.
-            fissure = QPainterPath()
-            shift = (flow-.5)*size*.035
-            fissure.moveTo(size*.62+shift, size*.25)
-            fissure.cubicTo(size*.43+shift, size*.39, size*.68+shift, size*.48, size*.52+shift, size*.60)
-            fissure.cubicTo(size*.42+shift, size*.68, size*.58+shift, size*.75, size*.45+shift, size*.83)
-            painter.setPen(QPen(QColor(95, 37, 45, int(150+pulse*45)), max(1.0, size*.038),
-                                Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
-            painter.drawPath(fissure)
-            painter.setPen(QPen(QColor(255, 226, 138, int(175+pulse*75)), max(1.0, size*.012),
-                                Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
-            painter.drawPath(fissure)
-            painter.setPen(Qt.PenStyle.NoPen)
-            vent = QRadialGradient(QPointF(size*.64, size*.26), size*.09)
-            vent.setColorAt(0, QColor(255, 255, 205, 245))
-            vent.setColorAt(.4, QColor(255, 216, 125, 185))
-            vent.setColorAt(1, QColor(255, 136, 61, 0))
-            painter.setBrush(vent)
-            painter.drawEllipse(QRectF(size*.55, size*.17, size*.18, size*.18))
+            # Dark basalt plates hold multiple branching molten seams. Three
+            # vents flare separately so this is not a single decorative crack.
+            for x,y,w,h in ((.17,.24,.24,.17),(.60,.19,.23,.19),(.27,.64,.28,.16),(.63,.60,.20,.20)):
+                painter.setPen(QPen(QColor(90,38,42,92),max(1.0,size*.006))); painter.setBrush(QColor(69,42,49,44))
+                painter.drawEllipse(QRectF(size*x,size*y,size*w,size*h))
+            fissure=QPainterPath(); shift=(flow-.5)*size*.035
+            fissure.moveTo(size*.62+shift,size*.18); fissure.cubicTo(size*.44,size*.31,size*.71,size*.41,size*.48+shift,size*.52)
+            fissure.cubicTo(size*.29,size*.61,size*.55,size*.72,size*.38,size*.84)
+            fissure.moveTo(size*.49+shift,size*.52); fissure.cubicTo(size*.67,size*.53,size*.72,size*.61,size*.80,size*.68)
+            fissure.moveTo(size*.46,size*.60); fissure.cubicTo(size*.37,size*.55,size*.30,size*.48,size*.22,size*.44)
+            stroke(fissure,QColor(100,38,43,int(150+pulse*55)),.040)
+            stroke(fissure,QColor(255,218,113,int(180+pulse*72)),.012)
+            for x,y,r in ((.63,.21,.105),(.24,.43,.072),(.79,.69,.082)):
+                vent=QRadialGradient(QPointF(size*x,size*y),size*r)
+                vent.setColorAt(0,QColor(255,255,204,int(225+pulse*25))); vent.setColorAt(.35,QColor(255,191,79,178)); vent.setColorAt(1,QColor(255,97,52,0))
+                painter.setPen(Qt.PenStyle.NoPen); painter.setBrush(vent); painter.drawEllipse(QRectF(size*(x-r),size*(y-r),size*r*2,size*r*2))
         elif self.style == "triton":
-            # Three polar tides glide at different speeds across a cyan sea.
-            offset = (flow-.5)*size*.035
-            painter.setPen(QPen(QColor(239, 255, 255, 222), max(1.0, size*.022),
-                                Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-            painter.drawArc(QRectF(size*.08+offset, size*.18, size*.83, size*.52), 205*16, 130*16)
-            painter.setPen(QPen(QColor(183, 242, 250, 155), max(1.0, size*.012),
-                                Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-            painter.drawArc(QRectF(size*.16-offset, size*.27, size*.68, size*.43), 215*16, 112*16)
-            painter.setPen(QPen(QColor(103, 203, 231, 118), max(1.0, size*.008),
-                                Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-            painter.drawArc(QRectF(size*.23+offset*.5, size*.35, size*.53, size*.35), 225*16, 96*16)
+            # A blue polar cap, etched glacial seams and one rising cryogenic
+            # plume distinguish this from Boreal's soft ribbon-like curtains.
+            cap=QPainterPath(); cap.moveTo(size*.12,size*.37); cap.cubicTo(size*.18,size*.08,size*.73,size*.07,size*.88,size*.35)
+            cap.cubicTo(size*.70,size*.27,size*.57,size*.39,size*.43,size*.32); cap.cubicTo(size*.31,size*.27,size*.22,size*.38,size*.12,size*.37); cap.closeSubpath()
+            painter.setPen(QPen(QColor(231,248,255,105),max(1.0,size*.008))); painter.setBrush(QColor(213,243,255,73)); painter.drawPath(cap)
+            for index,(yy,alpha,width) in enumerate(((.45,194,.017),(.55,133,.010),(.67,93,.007))):
+                seam=QPainterPath(); offset=(flow-.5)*size*.04*(1 if index%2==0 else -1); y=size*yy
+                seam.moveTo(size*.12,y); seam.cubicTo(size*.30+offset,y+size*.12,size*.64-offset,y-size*.13,size*.88,y+size*.015)
+                stroke(seam,QColor(211,244,255,alpha),width)
+            plume_x=size*(.63+(flow-.5)*.025); plume_y=size*(.34-(pulse*.065))
+            plume=QPainterPath(); plume.moveTo(size*.61,size*.39); plume.cubicTo(size*.57,size*.28,plume_x-size*.015,plume_y+size*.04,plume_x,plume_y)
+            stroke(plume,QColor(226,249,255,int(155+pulse*55)),.010)
+            for index in range(4):
+                dot_y=plume_y-size*(.035+index*.025)
+                glint(plume_x+size*math.sin(self.phase*.4+index)*.025,dot_y,size*.005,int(80+pulse*75),(232,249,255))
         painter.restore()
 
 
