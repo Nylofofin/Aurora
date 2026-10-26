@@ -37,3 +37,25 @@ def test_launchpad_runtime_version_matches_rpm_metadata():
     assert runtime_version is not None
     assert rpm_version is not None
     assert runtime_version.group(1) == rpm_version.group(1)
+
+
+def test_aurora_studio_profile_settings_feed_the_system_prompt():
+    from aurora_core.llm.prompts import assistant_system_prompt
+
+    prompt = assistant_system_prompt(
+        assistant_name="Luna",
+        user_name="Nylo",
+        preferences={
+            "assistant_personality": "playful",
+            "conversation_tone": 82,
+            "response_detail": "concise",
+            "custom_instructions": "Use exemplos curtos.",
+        },
+    )
+
+    assert "Você é Luna" in prompt
+    assert "Leve e espirituosa" in prompt
+    assert "uma ou duas frases curtas" in prompt
+    assert "Tom caloroso e expressivo" in prompt
+    assert "Use exemplos curtos." in prompt
+    assert "não mudam fatos, ferramentas, permissões" in prompt

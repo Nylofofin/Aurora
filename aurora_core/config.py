@@ -33,6 +33,10 @@ DEFAULTS = {
     'user_name':'',
     'profile_configured':False,
     'assistant_name':'Aurora',
+    'assistant_personality':'companion',
+    'conversation_tone':55,
+    'response_detail':'balanced',
+    'custom_instructions':'',
     'wake_profile':None,
     'bubble_style':'boreal',
     'onboarding_pending':False,
@@ -112,6 +116,23 @@ def settings_load():
     if not isinstance(data,dict): data={}
     data.pop('hands_free',None); data.pop('wake_enabled',None)
     result={**DEFAULTS,**data}
+    if result.get('assistant_personality') not in {'companion','direct','playful','formal'}:
+        result['assistant_personality']='companion'
+        should_save=True
+    if result.get('response_detail') not in {'concise','balanced','detailed'}:
+        result['response_detail']='balanced'
+        should_save=True
+    try:
+        normalized_tone=max(0,min(100,int(result.get('conversation_tone',55))))
+    except (TypeError,ValueError):
+        normalized_tone=55
+    if normalized_tone != result.get('conversation_tone'):
+        result['conversation_tone']=normalized_tone
+        should_save=True
+    custom_instructions=' '.join(str(result.get('custom_instructions') or '').split())[:240]
+    if custom_instructions != result.get('custom_instructions'):
+        result['custom_instructions']=custom_instructions
+        should_save=True
     # This developer build uses local speech synthesis only. Migrate legacy
     # Edge selections once so normal responses cannot silently use the web.
     current_voice = str(result.get('tts_voice', ''))

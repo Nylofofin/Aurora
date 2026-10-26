@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=Aurora Launchpad
-GenericName=Instalador da Aurora
-Comment=Prepare a Aurora Desktop no Fedora Workstation
+Name=Aurora Studio
+GenericName=Personalização e instalação da Aurora
+Comment=Instale e personalize a Aurora no Fedora Workstation
 Exec=aurora-launchpad
 Icon=com.nylofofin.AuroraLaunchpad
 Terminal=false

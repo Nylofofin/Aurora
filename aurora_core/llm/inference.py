@@ -117,7 +117,11 @@ class Inference(QThread):
                                 'completed':0,'total':1})
         system=self.system_prompt or assistant_system_prompt(
             self.use_tools,self.response_language,self.cfg.get('assistant_name','Aurora'),
-            self.cfg.get('user_name',''))
+            self.cfg.get('user_name',''),preferences=self.cfg)
+        if self.system_prompt and 'tradutor' not in self.system_prompt.casefold():
+            from .prompts import assistant_style_instructions
+            style=assistant_style_instructions(self.cfg)
+            if style: system += '\n\n'+style
         msgs=[{'role':'system','content':system}]
         msgs.extend({'role':item['role'],'content':str(item['content'])[:900]} for item in self.history if item.get('role') in ('user','assistant'))
         msgs.append({'role':'user','content':self.prompt})

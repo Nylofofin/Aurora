@@ -57,7 +57,7 @@ from aurora_launchpad_core import (
 
 
 APP_ID = "com.nylofofin.AuroraLaunchpad"
-INSTALLER_VERSION = "0.4.8"
+INSTALLER_VERSION = "0.4.9"
 PKEXEC = "/usr/bin/pkexec"
 SYSTEMCTL = "/usr/bin/systemctl"
 DNF = "/usr/bin/dnf"
@@ -396,7 +396,7 @@ class Launchpad(Adw.Application):
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self.report = assess_environment(read_os_release(), dict(os.environ), memory_total_bytes(), disk_free_bytes(Path.home()))
         self.install_health = self._installation_health()
-        self.window = Adw.ApplicationWindow(application=self, title="Aurora Launchpad", default_width=820, default_height=660)
+        self.window = Adw.ApplicationWindow(application=self, title="Aurora Studio", default_width=820, default_height=660)
         self.window.add_css_class("launchpad")
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         header = Adw.HeaderBar()
@@ -407,7 +407,7 @@ class Launchpad(Adw.Application):
         brand_text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         brand_title = Gtk.Label(label="Aurora", xalign=0)
         brand_title.add_css_class("brand-title")
-        brand_subtitle = Gtk.Label(label="LAUNCHPAD", xalign=0)
+        brand_subtitle = Gtk.Label(label="STUDIO", xalign=0)
         brand_subtitle.add_css_class("brand-subtitle")
         brand_text.append(brand_title)
         brand_text.append(brand_subtitle)
@@ -445,9 +445,9 @@ class Launchpad(Adw.Application):
         col = self._column()
         hero = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         hero.add_css_class("hero")
-        hero.append(self._label("AURORA DESKTOP · PAINEL LOCAL", "caption"))
-        hero.append(self._label("Aurora instalada", "title-1"))
-        hero.append(self._label("Confira o estado básico e mantenha a Aurora atualizada sem perder suas preferências locais.", "subtle", True))
+        hero.append(self._label("AURORA STUDIO · PAINEL LOCAL", "caption"))
+        hero.append(self._label("Sua assistente, do seu jeito", "title-1"))
+        hero.append(self._label("Acompanhe a instalação, personalize como a Aurora fala e se comporta, e mantenha tudo atualizado.", "subtle", True))
         col.append(hero)
 
         status = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
@@ -480,8 +480,8 @@ class Launchpad(Adw.Application):
         personalization = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         personalization.add_css_class("panel")
         personalization.append(self._label("PERSONALIZAÇÃO", "caption"))
-        personalization.append(self._label("Reescolha o nome, a voz e o estilo da bolha sem reinstalar a Aurora.", "subtle", True))
-        self.personalization_status = self._label("As escolhas atuais só serão substituídas depois que você concluir o assistente.", "subtle", True)
+        personalization.append(self._label("Ajuste identidade, personalidade, tom, nível de detalhe, voz, aparência e sons sem reinstalar.", "subtle", True))
+        self.personalization_status = self._label("Seu perfil só muda depois que você concluir e salvar a personalização.", "subtle", True)
         personalization.append(self.personalization_status)
         personalization.append(self._button("Abrir personalização", self._open_personalization, suggested=True))
 
@@ -490,7 +490,7 @@ class Launchpad(Adw.Application):
         self.update_panel.append(self._label("ATUALIZAÇÃO DO LAUNCHPAD", "caption"))
         self.update_status = self._label("Verificando se há uma versão nova…", "subtle", True)
         self.update_panel.append(self.update_status)
-        self.update_button = self._button("Atualizar Launchpad", self._start_launchpad_update, suggested=True)
+        self.update_button = self._button("Atualizar Aurora Studio", self._start_launchpad_update, suggested=True)
         self.update_button.set_visible(False)
         self.update_panel.append(self.update_button)
         self.refresh_releases_button = self._button("Tentar novamente", self._load_releases)
@@ -548,7 +548,7 @@ class Launchpad(Adw.Application):
         col = self._column()
         hero = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         hero.add_css_class("hero")
-        hero.append(self._label("AURORA DESKTOP · FEDORA WORKSTATION", "caption"))
+        hero.append(self._label("AURORA STUDIO · FEDORA WORKSTATION", "caption"))
         hero.append(self._label("Escolha sua versão da Aurora", "title-1"))
         hero.append(self._label("Compare as versões recomendadas. A instalação só começa depois que você escolher e confirmar.", "subtle", True))
         col.append(hero)
@@ -601,7 +601,7 @@ class Launchpad(Adw.Application):
         self.update_panel.append(self._label("ATUALIZAÇÃO DO LAUNCHPAD", "caption"))
         self.update_status = self._label("Verificando se há uma versão nova…", "subtle", True)
         self.update_panel.append(self.update_status)
-        self.update_button = self._button("Atualizar Launchpad", self._start_launchpad_update, suggested=True)
+        self.update_button = self._button("Atualizar Aurora Studio", self._start_launchpad_update, suggested=True)
         self.update_button.set_visible(False)
         self.update_panel.append(self.update_button)
         self.refresh_releases_button = self._button("Tentar novamente", self._load_releases)
@@ -686,11 +686,11 @@ class Launchpad(Adw.Application):
                     f"Esta cópia é {INSTALLER_VERSION}; a versão {version} está disponível. Atualize antes de continuar."
                 )
                 self.update_button.set_visible(True)
-                self.aurora_update_status.set_text("Atualize o Launchpad antes de atualizar a Aurora.")
+                self.aurora_update_status.set_text("Atualize o Aurora Studio antes de atualizar a Aurora.")
                 self.aurora_update_button.set_sensitive(False)
                 return False
             self.aurora_update_button.set_sensitive(bool(self.new_aurora_releases))
-            self.update_status.set_text(f"Launchpad {INSTALLER_VERSION} está atualizado.")
+            self.update_status.set_text(f"Aurora Studio {INSTALLER_VERSION} está atualizado.")
             if self.new_aurora_releases:
                 release = self.new_aurora_releases[0]
                 self.aurora_update_status.set_text(
@@ -718,9 +718,9 @@ class Launchpad(Adw.Application):
             )
             self.update_button.set_visible(True)
             self.releases_box.set_sensitive(False)
-            self.release_status.set_text("Atualização obrigatória do Launchpad disponível.")
+            self.release_status.set_text("Atualização obrigatória do Aurora Studio disponível.")
             return False
-        self.update_status.set_text(f"Launchpad {INSTALLER_VERSION} está atualizado.")
+        self.update_status.set_text(f"Aurora Studio {INSTALLER_VERSION} está atualizado.")
         if not options:
             self.release_status.set_text("O GitHub não retornou releases publicadas válidas.")
             return False
@@ -763,7 +763,7 @@ class Launchpad(Adw.Application):
         if self.aurora_update_in_progress:
             return
         if self.launchpad_update:
-            self.aurora_update_status.set_text("Atualize o Launchpad antes de atualizar a Aurora.")
+            self.aurora_update_status.set_text("Atualize o Aurora Studio antes de atualizar a Aurora.")
             return
         self.aurora_update_in_progress = True
         self.aurora_update_button.set_sensitive(False)
@@ -850,7 +850,7 @@ class Launchpad(Adw.Application):
             GLib.idle_add(self._launchpad_update_failed, str(exc))
 
     def _finish_launchpad_update(self):
-        self.update_status.set_text("Launchpad atualizado. Reabrindo a versão nova…")
+        self.update_status.set_text("Aurora Studio atualizado. Reabrindo a versão nova…")
         GLib.timeout_add(700, self._restart_launchpad)
         return False
 
@@ -912,7 +912,7 @@ class Launchpad(Adw.Application):
         content.append(self._label(f"{release.get('name') or release['tag_name']} · {release['tag_name']}", wrap=True))
         content.append(self._label(f"{channel}\n{channel_detail}", "subtle", True))
         content.append(self._label(
-            "O Launchpad baixará essa versão do GitHub, instalará dependências Python e o modelo de voz, baixará os modelos Gemma que faltarem e configurará o serviço da Aurora. Se o Ollama estiver ausente, a instalação poderá solicitar autenticação e alterar componentes do sistema, incluindo serviços e drivers.",
+            "O Aurora Studio baixará essa versão do GitHub, instalará dependências Python e o modelo de voz, baixará os modelos Gemma que faltarem e configurará o serviço da Aurora. Se o Ollama estiver ausente, a instalação poderá solicitar autenticação e alterar componentes do sistema, incluindo serviços e drivers.",
             "subtle", True,
         ))
         acknowledgement = Gtk.CheckButton(label="Entendi os downloads e as possíveis alterações do Ollama no sistema.")
@@ -1248,7 +1248,7 @@ class Launchpad(Adw.Application):
         try:
             validate_ollama_installer(script)
         except ValueError as exc:
-            raise RuntimeError(f"{exc} Atualize o Launchpad antes de continuar.") from exc
+            raise RuntimeError(f"{exc} Atualize o Aurora Studio antes de continuar.") from exc
         with tempfile.NamedTemporaryFile(prefix="aurora-ollama-install-", suffix=".sh", delete=False) as temp:
             temp.write(script); path = Path(temp.name)
         try:
@@ -1431,7 +1431,7 @@ class Launchpad(Adw.Application):
         content.append(Gtk.Label(label="A ação remove o serviço e os arquivos da Aurora deste usuário. Ela não remove o Ollama do sistema.", xalign=0, wrap=True))
         self.remove_data = Gtk.CheckButton(label="Apagar também configurações, memória e logs em ~/.config/aurora e ~/.local/state/aurora")
         self.remove_models = Gtk.CheckButton(label="Apagar apenas modelos Gemma baixados pelo Launchpad e registrados por ele")
-        self.remove_rpm = Gtk.CheckButton(label="Remover também o RPM Aurora Launchpad (pode pedir autenticação)")
+        self.remove_rpm = Gtk.CheckButton(label="Remover também o RPM Aurora Studio (pode pedir autenticação)")
         self.remove_rpm.set_active(is_rpm_install())
         content.append(self.remove_data); content.append(self.remove_models); content.append(self.remove_rpm)
         content.append(Gtk.Label(label="Modelos já existentes antes da instalação nunca serão apagados. Preferências e modelos ficam preservados se as opções acima não forem marcadas.", xalign=0, wrap=True))

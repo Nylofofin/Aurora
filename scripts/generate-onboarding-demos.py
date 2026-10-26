@@ -215,13 +215,60 @@ def make_transition_demo(app: QApplication, wizard: PersonalizationWizard) -> No
     save_gif(frames, MEDIA / "onboarding-transitions.gif")
 
 
+def make_studio_personalization_demo(app: QApplication, wizard: PersonalizationWizard) -> None:
+    """Capture a longer, continuous tour of the complete local profile setup."""
+    frames: list[Image.Image] = []
+
+    def hold(page: int, milliseconds: int, *, transition: bool = True) -> None:
+        wizard._set_page(page, animated=transition)
+        animate_for(app, wizard, 420 if transition else 1,
+                    frames, hold_ms=milliseconds, fixed_height=648)
+
+    wizard.resize(900, 640)
+    wizard._needs_training = True
+    wizard.user_name.setText("Nylo")
+    wizard.assistant_name.setText("Luna")
+    wizard.default_name.setChecked(False)
+    wizard.personality_choice.setCurrentIndex(wizard.personality_choice.findData("playful"))
+    wizard.detail_choice.setCurrentIndex(wizard.detail_choice.findData("balanced"))
+    wizard.tone_slider.setValue(76)
+    wizard.custom_instructions.setText("Seja calorosa, direta e use exemplos quando ajudarem.")
+
+    hold(0, 780, transition=False)
+    hold(1, 900)
+    wizard.wake_training_status.setText("Perfil local criado · 4 de 4 amostras válidas")
+    wizard.wake_training_button.setText("Amostras concluídas ✓")
+    hold(2, 820)
+    hold(3, 450)
+    wizard._step_style(1)
+    animate_for(app, wizard, 420, frames, hold_ms=240, fixed_height=648)
+    wizard._step_style(1)
+    animate_for(app, wizard, 420, frames, hold_ms=420, fixed_height=648)
+    hold(4, 600)
+    wizard._step_voice(1)
+    animate_for(app, wizard, 420, frames, hold_ms=380, fixed_height=648)
+    hold(5, 500)
+    wizard._step_feedback(1)
+    animate_for(app, wizard, 420, frames, hold_ms=380, fixed_height=648)
+    wizard._loading_pulse.start()
+    hold(6, 1450)
+    wizard._loading_pulse.stop()
+    save_gif(frames, MEDIA / "studio-personalization.gif")
+
+
 def main() -> int:
     MEDIA.mkdir(parents=True, exist_ok=True)
     app, wizard = make_wizard()
+    if "--studio-only" in sys.argv:
+        make_studio_personalization_demo(app, wizard)
+        wizard.close()
+        app.processEvents()
+        return 0
     make_skin_assets(app)
     make_skin_contact_sheet(app)
     make_carousel_demo(app, wizard)
     make_transition_demo(app, wizard)
+    make_studio_personalization_demo(app, wizard)
     wizard.close()
     app.processEvents()
     return 0

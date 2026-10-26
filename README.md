@@ -1,6 +1,6 @@
-# Aurora Desktop
+# Aurora Project
 
-**Versão:** `3.1.1` · **Canal:** Stable · **Codinome:** `Eris Skin Cleanup` · **Build:** `aurora-desktop-3.1.1-eris-skin-cleanup`
+**Versão:** `3.2.0-beta.1` · **Canal:** Pré-release beta · **Codinome:** `Callisto Persona Studio` · **Build:** `aurora-project-3.2.0-beta.1-callisto-persona-studio`
 
 **Uma assistente de voz para Linux, com uma presença pequena na tela e o processamento principal no próprio computador.** A Aurora desperta por voz, entende pedidos cotidianos, conversa em uma sessão contínua e pode pesquisar na web ou executar ações locais.
 
@@ -19,11 +19,15 @@ A esfera mantém o formato circular e muda de cor, luz, refração e detalhes co
 
 ![Prancha das oito aparências circulares da Aurora: Cortina Boreal, Gelo Fraturado, Tempestade Âmbar, Órbita Índigo, Eclipse Rosé, Falha Prismática, Névoa Violeta e Calota Glacial](docs/media/bubble-skins.png)
 
-O onboarding deixa a pessoa configurar nome, palavra de ativação, aparência, voz e assinatura sonora. O treinamento de um nome personalizado aparece quando necessário.
+O Aurora Studio deixa configurar nome, personalidade, tom, nível de detalhe, preferências de resposta, palavra de ativação, aparência, voz e assinatura sonora. As escolhas montam uma camada de estilo limitada dentro do prompt local da assistente; não alteram permissões nem regras de segurança. O treinamento de um nome personalizado aparece quando necessário.
 
 As animações abaixo foram capturadas dos próprios componentes do onboarding: a troca de páginas desliza, e as escolhas percorrem os carrosséis com o mesmo movimento usado na configuração.
 
 ![Fluxo animado do onboarding: boas-vindas, perfil, treinamento opcional do nome, aparência, voz e sons](docs/media/onboarding-transitions.gif)
+
+### Conheça o Aurora Studio
+
+![Demonstração longa do Aurora Studio: identidade, personalidade, tom, treinamento local do nome, skins, voz, sons e aplicação do perfil](docs/media/studio-personalization.gif)
 
 ### Escolha da bolha
 
@@ -49,7 +53,7 @@ A pesquisa web precisa de internet. Modelos e pesos de voz são baixados quando 
 
 ## Instalação
 
-A versão gráfica é voltada ao **Fedora Workstation com GNOME em Wayland**. Baixe o RPM mais recente do Aurora Launchpad na página de [Releases](https://github.com/Nylofofin/Aurora/releases/latest), abra-o pelo GNOME Software e siga as etapas apresentadas. O Launchpad verifica o ambiente, explica os componentes e permite atualizar uma instalação existente preservando as preferências do usuário.
+A versão gráfica é voltada ao **Fedora Workstation com GNOME em Wayland**. Baixe o RPM do Aurora Studio na página de [Releases](https://github.com/Nylofofin/Aurora/releases/latest), abra-o pelo GNOME Software e siga as etapas apresentadas. O Studio verifica o ambiente, instala ou atualiza a Aurora e permite revisar as preferências do usuário.
 
 Instruções de empacotamento e instalação manual estão em [`packaging/rpm/README.md`](packaging/rpm/README.md). Outros ambientes Linux ainda não são oficialmente suportados.
 
@@ -57,7 +61,7 @@ Instruções de empacotamento e instalação manual estão em [`packaging/rpm/RE
 
 Áudio, transcrição, inferência e perfil são processados localmente. Quando você pede uma pesquisa, o texto da consulta é enviado a serviços web para obter resultados; o áudio não é enviado. Modelos e vozes escolhidos são baixados quando necessário. Ações que alteram o sistema pedem confirmação. Pesos de modelos não são incluídos no repositório ou no RPM.
 
-## Projeto e licença
+## Aurora Project e licença
 
 Aurora é um projeto independente, conduzido por **Nylofofin**. O código e a documentação foram gerados por IA. O mantenedor conduz as decisões, a integração e os testes.
 

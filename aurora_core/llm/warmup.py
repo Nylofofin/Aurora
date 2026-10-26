@@ -23,7 +23,9 @@ class ModelWarmup(QThread):
             payload = {
                 'model': model,
                 'messages': [
-                    {'role': 'system', 'content': assistant_system_prompt()},
+                    {'role': 'system', 'content': assistant_system_prompt(
+                        assistant_name=self.cfg.get('assistant_name','Aurora'),
+                        user_name=self.cfg.get('user_name',''), preferences=self.cfg)},
                     {'role': 'user', 'content': 'Responda apenas: Pronto.'},
                 ],
                 'stream': False,

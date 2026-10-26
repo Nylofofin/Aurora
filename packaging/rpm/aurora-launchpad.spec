@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-only
 Name:           aurora-launchpad
-Version:        0.4.8
+Version:        0.4.9
 Release:        1%{?dist}
-Summary:        GTK setup assistant and installer for Aurora Desktop
+Summary:        Aurora Studio installer and personalization manager
 License:        GPL-3.0-only
 URL:            https://github.com/Nylofofin/Aurora
 Source0:        %{name}-%{version}.tar.gz
@@ -18,7 +18,7 @@ Requires:       unzip
 Requires:       python3-pip
 
 %description
-Aurora Launchpad is a graphical setup wizard for Aurora Desktop,
+Aurora Studio is a graphical setup and personalization manager for Aurora,
 initially targeted only at Fedora Workstation running GNOME on Wayland. It
 checks compatibility, explains each operation and installs Aurora into the
 current user's home directory. Ollama models and local user data are preserved
@@ -45,6 +45,9 @@ install -Dpm0644 launchpad/aurora-launchpad.desktop %{buildroot}%{_datadir}/appl
 %{_datadir}/icons/hicolor/scalable/apps/com.nylofofin.AuroraLaunchpad.svg
 
 %changelog
+* Sun Oct 25 2026 Aurora Project <nylofofin@localhost> - 0.4.9-1
+- Rename the graphical app to Aurora Studio and describe expanded profile customization.
+
 * Sun Oct 25 2026 Aurora Project <nylofofin@localhost> - 0.4.8-1
 - Report the actual packaged Launchpad version so self-update stops after a successful upgrade.
 

@@ -1,5 +1,14 @@
 # Histórico de versões
 
+## Aurora Desktop 3.2.0-beta.1 — Callisto Persona Studio, 2026-10-25
+
+- Apresenta o Aurora Studio, com escolhas locais de personalidade, tom, nível de detalhe e preferência de resposta.
+- Monta uma camada de estilo determinística a partir do perfil; ela entra no prompt de cada conversa e não altera ferramentas, permissões, confirmação ou regras de segurança.
+- Amplia o onboarding e o painel do Studio; aplica o perfil, inicia a escuta e aquece a engine após a conclusão.
+- Corrige a etapa final do onboarding para exibir a tela de preparação antes de iniciar a assistente.
+- Adiciona um GIF longo e original que percorre o fluxo completo de personalização.
+- Inclui o Aurora Studio 0.4.9 como RPM para Fedora Workstation.
+
 ## Aurora Desktop 3.1.1 — Eris Skin Cleanup, 2026-10-25 (patch estável)
 
 - Remove Crosta Incandescente de todos os catálogos ativos, normaliza preferências antigas para uma skin válida e mantém as oito aparências atuais.
@@ -209,9 +218,9 @@ Pré-release pública para demonstração e avaliação técnica. Não represent
 - Mantém uma única inferência Gemma para sintetizar resultados e preserva os limites de fontes e segurança do pipeline existente.
 - Não inclui pacotes Flatpak/RPM, atualização automática ou suporte Android ativo.
 
-## 1.3.0 — Lumen Desktop Runtime (LDR), 2026-10-23
+## 1.3.0 — Identidade de build, 2026-10-23
 
-- Formaliza a identidade técnica LDR e o identificador da build no cliente e nos logs.
+- Registra o identificador técnico da build no cliente e nos logs.
 - Adiciona cartões de informação experimentais e refinamentos visuais da bolha.
 - Inclui checagens automatizadas de compilação, testes e scripts no GitHub Actions.
 

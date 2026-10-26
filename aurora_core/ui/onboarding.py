@@ -9,8 +9,8 @@ from PySide6.QtCore import (QAbstractAnimation, QElapsedTimer, QEasingCurve, QPa
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QRadialGradient, QLinearGradient, QPen
 from PySide6.QtMultimedia import QSoundEffect
 from PySide6.QtWidgets import (
-    QCheckBox, QDialog, QFrame, QGraphicsOpacityEffect, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QStackedWidget, QVBoxLayout, QWidget, QProgressBar,
+    QCheckBox, QComboBox, QDialog, QFrame, QGraphicsOpacityEffect, QHBoxLayout,
+    QLabel, QLineEdit, QPushButton, QSlider, QStackedWidget, QVBoxLayout, QWidget, QProgressBar,
 )
 
 from ..config import VOSK_PATH
@@ -565,7 +565,7 @@ class PersonalizationWizard(QDialog):
         self._selected_feedback = str(cfg.get("feedback_theme", "boreal"))
         if self._selected_feedback not in FEEDBACK_THEME_KEYS:
             self._selected_feedback = "boreal"
-        self.setWindowTitle("Personalizar a Aurora")
+        self.setWindowTitle("Aurora Studio")
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
         self.setModal(True)
         # Give cards and form fields a real horizontal rhythm.  The previous
@@ -599,7 +599,7 @@ class PersonalizationWizard(QDialog):
         root = QVBoxLayout(self)
         root.setContentsMargins(22, 18, 22, 16)
         root.setSpacing(10)
-        self.eyebrow = QLabel("AURORA · PRIMEIRA CONFIGURAÇÃO")
+        self.eyebrow = QLabel("AURORA STUDIO · SUA ASSISTENTE")
         self.eyebrow.setObjectName("eyebrow")
         progress_header = QHBoxLayout()
         progress_header.addWidget(self.eyebrow)
@@ -686,6 +686,11 @@ class PersonalizationWizard(QDialog):
             QFrame#choiceCard[selected="true"] { background:#292238; border:2px solid #b89be9; }
             QLineEdit { background:#24212d; border:1px solid #514961; border-radius:12px; padding:12px 14px; min-height:24px; color:#faf8ff; selection-background-color:#5d477e; }
             QLineEdit:focus { background:#2a2634; border:2px solid #b89be9; padding:11px 13px; }
+            QComboBox { background:#24212d; border:1px solid #514961; border-radius:10px; padding:8px 10px; min-height:20px; color:#faf8ff; }
+            QComboBox QAbstractItemView { background:#211f29; color:#faf8ff; selection-background-color:#574477; border:1px solid #514961; }
+            QSlider::groove:horizontal { height:4px; background:#393541; border-radius:2px; }
+            QSlider::sub-page:horizontal { background:#a98bd8; border-radius:2px; }
+            QSlider::handle:horizontal { width:14px; margin:-5px 0; border-radius:7px; background:#d5baff; }
             QPushButton { background:#302d38; color:#f2eff7; border:0; border-radius:12px; padding:11px 17px; font-weight:600; }
             QPushButton:hover { background:#3d3848; }
             QPushButton#primary { background:#8b6bc2; color:#fff; padding-left:22px; padding-right:22px; }
@@ -725,6 +730,11 @@ class PersonalizationWizard(QDialog):
             QFrame#choiceCard[selected="true"] { background:#faf8ff; border:2px solid #7052a8; }
             QLineEdit { background:#fbfaff; border:1px solid #d7d3df; border-radius:13px; padding:13px 15px; min-height:24px; color:#25232b; selection-background-color:#ddd3f1; }
             QLineEdit:focus { background:#fff; border:2px solid #7052a8; padding:12px 14px; }
+            QComboBox { background:#fbfaff; border:1px solid #d7d3df; border-radius:10px; padding:8px 10px; min-height:20px; color:#25232b; }
+            QComboBox QAbstractItemView { background:#fff; color:#25232b; selection-background-color:#ddd3f1; border:1px solid #d7d3df; }
+            QSlider::groove:horizontal { height:4px; background:#e1dce8; border-radius:2px; }
+            QSlider::sub-page:horizontal { background:#8062b7; border-radius:2px; }
+            QSlider::handle:horizontal { width:14px; margin:-5px 0; border-radius:7px; background:#7052a8; }
             QPushButton { background:#eeecf3; color:#302e37; border:0; border-radius:13px; padding:12px 18px; font-weight:600; }
             QPushButton:hover { background:#e5e1ed; }
             QPushButton#primary { background:#6750a4; color:#fff; padding-left:23px; padding-right:23px; }
@@ -810,7 +820,7 @@ class PersonalizationWizard(QDialog):
         self.stack.addWidget(frame)
 
     def _build_profile(self):
-        frame, layout = self._panel("Quem está por aqui?", "A Aurora usará esse nome nas saudações, em vez do nome da conta do desktop.")
+        frame, layout = self._panel("Quem está por aqui?", "Escolha como chamar você e defina o jeito de conversar da sua assistente.")
         columns = QHBoxLayout()
         columns.setSpacing(22)
         user_column = QVBoxLayout(); user_column.setSpacing(8)
@@ -843,7 +853,73 @@ class PersonalizationWizard(QDialog):
         columns.addLayout(user_column, 1)
         columns.addLayout(assistant_column, 1)
         layout.addLayout(columns)
+
+        style_heading = QLabel("JEITO DA AURORA")
+        style_heading.setObjectName("eyebrow")
+        layout.addWidget(style_heading)
+        style_row = QHBoxLayout()
+        style_row.setSpacing(14)
+
+        personality_column = QVBoxLayout()
+        personality_column.setSpacing(5)
+        personality_column.addWidget(QLabel("Personalidade"))
+        self.personality_choice = QComboBox()
+        for label, value in (("Companheira · próxima e natural", "companion"),
+                             ("Objetiva · direta e organizada", "direct"),
+                             ("Brincalhona · leve quando couber", "playful"),
+                             ("Formal · polida e profissional", "formal")):
+            self.personality_choice.addItem(label, value)
+        personality_index = self.personality_choice.findData(self.cfg.get("assistant_personality", "companion"))
+        self.personality_choice.setCurrentIndex(max(0, personality_index))
+        personality_column.addWidget(self.personality_choice)
+        style_row.addLayout(personality_column, 1)
+
+        detail_column = QVBoxLayout()
+        detail_column.setSpacing(5)
+        detail_column.addWidget(QLabel("Nível de detalhe"))
+        self.detail_choice = QComboBox()
+        for label, value in (("Conciso", "concise"), ("Equilibrado", "balanced"), ("Explicativo", "detailed")):
+            self.detail_choice.addItem(label, value)
+        detail_index = self.detail_choice.findData(self.cfg.get("response_detail", "balanced"))
+        self.detail_choice.setCurrentIndex(max(0, detail_index))
+        detail_column.addWidget(self.detail_choice)
+        style_row.addLayout(detail_column, 1)
+
+        tone_column = QVBoxLayout()
+        tone_column.setSpacing(4)
+        tone_label_row = QHBoxLayout()
+        tone_label_row.addWidget(QLabel("Tom da conversa"))
+        tone_label_row.addStretch(1)
+        self.tone_value = QLabel()
+        self.tone_value.setObjectName("cardDetail")
+        tone_label_row.addWidget(self.tone_value)
+        tone_column.addLayout(tone_label_row)
+        self.tone_slider = QSlider(Qt.Orientation.Horizontal)
+        self.tone_slider.setRange(0, 100)
+        self.tone_slider.setValue(max(0, min(100, int(self.cfg.get("conversation_tone", 55)))))
+        self.tone_slider.valueChanged.connect(self._update_tone_label)
+        tone_column.addWidget(self.tone_slider)
+        tone_bounds = QHBoxLayout()
+        tone_bounds.addWidget(QLabel("Neutro"))
+        tone_bounds.addStretch(1)
+        tone_bounds.addWidget(QLabel("Caloroso"))
+        tone_column.addLayout(tone_bounds)
+        style_row.addLayout(tone_column, 1)
+        layout.addLayout(style_row)
+
+        custom_label = QLabel("Preferência pessoal · opcional")
+        layout.addWidget(custom_label)
+        self.custom_instructions = QLineEdit(str(self.cfg.get("custom_instructions", "")))
+        self.custom_instructions.setMaxLength(240)
+        self.custom_instructions.setPlaceholderText("Ex.: prefiro respostas curtas, com exemplos práticos")
+        self.custom_instructions.setClearButtonEnabled(True)
+        layout.addWidget(self.custom_instructions)
+        self._update_tone_label(self.tone_slider.value())
         self.stack.addWidget(frame)
+
+    def _update_tone_label(self, value):
+        if hasattr(self, "tone_value"):
+            self.tone_value.setText("Neutro" if value < 30 else "Equilibrado" if value < 70 else "Caloroso")
 
     def _build_wake_training(self):
         frame, layout = self._panel(
@@ -1146,7 +1222,7 @@ class PersonalizationWizard(QDialog):
         self.feedback_status.setText(f"{self._feedback_choices[self._feedback_index][1]} · par selecionado")
 
     def _build_loading(self):
-        frame, layout = self._panel("Vamos configurar tudo para você…", "Aguarde enquanto aplicamos suas escolhas à Aurora.")
+        frame, layout = self._panel("Preparando sua assistente…", "Montando seu perfil local e iniciando a Aurora com as escolhas que você fez.")
         self.loading_mark = QLabel("◌")
         self.loading_mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.loading_mark.setStyleSheet("font-size:66px;color:#7655ae")
@@ -1721,6 +1797,10 @@ class PersonalizationWizard(QDialog):
             "user_name": " ".join(self.user_name.text().split())[:80],
             "profile_configured": True,
             "assistant_name": "Aurora" if self.default_name.isChecked() else " ".join(self.assistant_name.text().split())[:80],
+            "assistant_personality": str(self.personality_choice.currentData() or "companion"),
+            "conversation_tone": int(self.tone_slider.value()),
+            "response_detail": str(self.detail_choice.currentData() or "balanced"),
+            "custom_instructions": " ".join(self.custom_instructions.text().split())[:240],
             "wake_profile": self._wake_profile if self._needs_training else None,
             "bubble_style": self._selected_style,
             "tts_voice": voice or self.cfg.get("tts_voice", "pt_BR-faber-medium"),
@@ -1729,7 +1809,7 @@ class PersonalizationWizard(QDialog):
             "onboarding_pending": False,
             "onboarding_boot_id": "",
         }
-        self._set_page(5)
+        self._set_page(6)
         self._play_sfx("success")
         self._loading_pulse.start()
         self.back_button.setVisible(False)

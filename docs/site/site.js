@@ -80,6 +80,7 @@
     transitions: ['Onboarding','TRANSIÇÕES DO ONBOARDING','media/onboarding-transitions.gif','Demonstração das transições das páginas do onboarding'],
     voices: ['Vozes','ESCOLHA DE VOZ','media/onboarding-voices.gif','Demonstração da escolha de voz no onboarding'],
     sounds: ['Sons','ASSINATURAS SONORAS','media/onboarding-sounds.gif','Demonstração das opções de sons da Aurora'],
+    studio: ['Studio','PERSONALIZAÇÃO COMPLETA','media/studio-personalization.gif','Demonstração completa da personalização da assistente no Aurora Studio'],
   };
   document.querySelectorAll('.demo-tab').forEach((tab) => tab.addEventListener('click', () => {
     document.querySelectorAll('.demo-tab').forEach((item) => { item.classList.toggle('active', item === tab); item.setAttribute('aria-selected', item === tab ? 'true' : 'false'); });
