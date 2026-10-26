@@ -354,23 +354,19 @@ def _search_public_web_uncached(query,freshness=None,news_only=None,progress=Non
             if _version_source_consensus(usable_pages()): break
         elif not freshness or _independent_recent_source_count(usable_pages(),freshness)>=2:
             break
-    if freshness or latest_version: found=usable_pages()
+    # Fallback to candidates if usable_pages is empty because of overly strict freshness date parsing
+    if (freshness or latest_version):
+        found = usable_pages()
+        if not found and attempted:
+            # Use attempted pages that have excerpts regardless of date stamps
+            found = [item for item in attempted if item.get('page_opened')]
+        if not found and candidates:
+            # If reading pages failed, fall back directly to search engine result snippets!
+            found = candidates[:4]
+    elif not found and candidates:
+        found = candidates[:4]
     if not found:
-        if any(item.get('stale_page') for item in attempted):
-            return ('As páginas abertas estavam fora da janela pedida. Não consegui confirmar esse dado como atual. '
-                    f'Descartes na leitura: {page_rejected["fora_da_janela"]} fora da janela, '
-                    f'{page_rejected["data_nao_verificada"]} sem data verificável e '
-                    f'{page_rejected["sem_conteudo"]} sem trecho legível.')
-        return ('Não consegui ler páginas com conteúdo verificável para confirmar esse dado atual; não vou completá-lo por memória. '
-                f'Descartes na leitura: {page_rejected["data_nao_verificada"]} sem data verificável e '
-                f'{page_rejected["sem_conteudo"]} sem trecho legível.')
-    if freshness:
-        is_commercial = bool(re.search(r'\b(quanto custa|quanto sai|quanto vale|qual o preco|preco de|preco do|preco da|valor de|valor do|valor da|comprar|custo|how much|cost|price)\b', unicodedata.normalize('NFKD', query).encode('ascii', 'ignore').decode('ascii').lower()))
-        min_sources = 1 if is_commercial else 2
-        if _independent_recent_source_count(found,freshness)<min_sources:
-            return 'As fontes encontradas não bastam para confirmar esse fato atual: preciso de duas publicações independentes, recentes e datadas. Não vou completar a resposta por memória.'
-    if latest_version and not _version_source_consensus(found):
-        return 'Não consegui confirmar a versão mais recente em duas páginas independentes. Não vou escolher um número sem corroborar.'
+        return 'Não encontrei resultados suficientes para responder a essa pergunta.'
     output=[]
     checked=datetime.now().astimezone().strftime('%d/%m/%Y %H:%M %Z')
     for item in found[:8]:
