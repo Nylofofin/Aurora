@@ -28,6 +28,7 @@ def test_eval_service_accepts_streamed_sentence_and_completion_generation():
     service.answer_done("Resposta final", 1)
 
     assert service.response_summary == "Resposta final"
+    assert service.speaker.parts == ["Resposta final"]
     assert service.done
 
 

@@ -73,7 +73,8 @@ def route_request(self,prompt):
     if self.orb.isVisible(): self.orb.set_mode('thinking')
     else: self.orb.reveal('thinking')
     self.response_finished=False; self.current_prompt=prompt; self.active_search_context=''
-    self.voice.speaking=True
+    # ``voice.speaking`` is reserved for active TTS playback because the
+    # microphone worker uses it to enable barge-in. Thinking must not arm it.
     source_followup=bool(self.context_history and contextual_source_request(prompt))
     direct=None if source_followup else parse_local_command(prompt)
     if direct:

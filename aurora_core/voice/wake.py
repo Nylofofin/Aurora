@@ -408,7 +408,7 @@ class LocalVoice(QThread):
                                 # Keep up to 20 seconds of command audio. The old
                                 # 8-second cap silently clipped natural pauses and
                                 # longer spoken requests before Whisper saw them.
-                                pcm=b''.join(buffer[-200:]); active=False; buffer=[]; wake_audio=[]; started=time.monotonic(); self.speaking=True; self.status.emit('thinking')
+                                pcm=b''.join(buffer[-200:]); active=False; buffer=[]; wake_audio=[]; started=time.monotonic(); self.status.emit('thinking')
                                 command=self.local_transcribe(pcm,text,command_confidence)
                                 if command and self.request_active.is_set():
                                     print(f'[voice] comando transcrito e enviado; chars={len(command)}',file=sys.stderr,flush=True)
@@ -446,7 +446,7 @@ class LocalVoice(QThread):
                                     print('[voice] nome personalizado confirmado pela transcrição local',file=sys.stderr,flush=True)
                                     self.begin_request(); self.wake.emit()
                                     if command:
-                                        self.audio_level.emit(0.0); self.status.emit('thinking'); self.speaking=True
+                                        self.audio_level.emit(0.0); self.status.emit('thinking')
                                         self.transcript.emit(command)
                                     else:
                                         self.status.emit('listening'); active=True; buffer=[]; started=time.monotonic()

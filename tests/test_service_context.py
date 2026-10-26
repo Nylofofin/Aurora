@@ -4,6 +4,47 @@ import threading
 import time
 
 
+def test_model_processing_does_not_arm_voice_barge_in():
+    class Worker:
+        def isRunning(self): return True
+
+    class Speaker:
+        active = False
+        playing = False
+        q = __import__('queue').Queue()
+
+    class Orb:
+        def set_mode(self, _mode): pass
+
+    class Voice:
+        speaking = False
+
+    class ServiceStub:
+        inf = Worker()
+        background_requests = []
+        system_update_worker = None
+        speaker = Speaker()
+        voice = Voice()
+        orb = Orb()
+        response_finished = False
+
+    stub = ServiceStub()
+    service_module.AuroraService.speaking_changed(stub, False)
+
+    assert stub.voice.speaking is False
+
+    service_module.AuroraService.speaking_changed(stub, True)
+    assert stub.voice.speaking is False  # synthesis began; playback has not
+
+    stub.speaker.playing = True
+    service_module.AuroraService.audio_started(stub)
+    assert stub.voice.speaking is True
+
+    stub.speaker.playing = False
+    service_module.AuroraService.speaking_changed(stub, False)
+    assert stub.voice.speaking is False
+
+
 def test_latest_version_guard_requires_matching_page_versions_on_distinct_hosts():
     source_a = {
         "host": "python.org",

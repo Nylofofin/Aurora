@@ -596,7 +596,7 @@ class AuroraService(QObject):
             rpm=report.get('rpm',{}); flatpak=report.get('flatpak',{})
             update_rpm=bool(rpm.get('ok') and rpm.get('packages'))
             update_flatpak=bool(flatpak.get('ok') and flatpak.get('apps'))
-            self.orb.set_mode('controlling'); self.voice.speaking=True
+            self.orb.set_mode('controlling')
             worker=SystemUpdateRequest(update_rpm,update_flatpak,self)
             self.system_update_worker=worker
             worker.completed.connect(lambda result,g=generation:self._system_updates_complete(result,g))
@@ -1092,19 +1092,30 @@ class AuroraService(QObject):
             self.voice.speaking=False
             self._finish_companion_request(result=self.response_summary)
             return
+        # Streaming sentence playback stays disabled to avoid duplicate audio;
+        # enqueue the single completed answer here instead.
+        if self.response_summary:
+            self.speaker.say(self.response_summary)
         self.active_search_context=''
         if not self.pending:
             self.orb.set_mode('speaking' if self.speaker.playing else 'preparing' if self.speaker.active or not self.speaker.q.empty() else 'thinking')
         if not self.speaker.active and self.speaker.q.empty(): self.schedule_dismiss(900)
     def speaking_changed(self,on):
-        model_busy=bool(self.inf and self.inf.isRunning())
-        request_busy=any(request.isRunning() for request in self.background_requests)
-        update_busy=bool(self.system_update_worker and self.system_update_worker.isRunning())
-        self.voice.speaking=on or model_busy or request_busy or update_busy or not self.speaker.q.empty()
+        # LocalVoice uses ``speaking`` exclusively to detect barge-in. Marking
+        # it true while Ollama/background work is running lets microphone noise
+        # cancel an answer before TTS starts, which looks like a silent turn.
+        # Keep the detector tied to actual Speaker playback; other busy state
+        # is represented by the orb and request lifecycle instead.
+        # Speaker emits ``speaking=True`` as soon as synthesis begins, which
+        # can be several seconds before the first audio reaches the player.
+        # Only the playback flag is a valid barge-in window.
+        self.voice.speaking=bool(self.speaker.playing)
         if on: self.orb.set_mode('speaking' if self.speaker.playing else 'preparing')
         elif not self.speaker.active and self.speaker.q.empty() and self.response_finished:
             self.schedule_dismiss(750)
-    def audio_started(self): self.orb.set_mode('speaking')
+    def audio_started(self):
+        self.voice.speaking=True
+        self.orb.set_mode('speaking')
     def speech_error(self,message):
         print(f'[voice] {message}',file=sys.stderr,flush=True)
         # TTS failures are recoverable and must not trigger the global
@@ -1158,11 +1169,10 @@ class AuroraService(QObject):
         if inference is not None:
             if inference in self.inferences: self.inferences.remove(inference)
             if getattr(inference,'request_generation',None)!=self.request_generation: return
-        request_busy=any(request.isRunning() for request in self.background_requests)
         model_busy=bool(self.inf and self.inf.isRunning())
         if not self.speaker.active and self.speaker.q.empty() and not model_busy:
-            self.voice.speaking=request_busy
-            if request_busy: self.orb.set_mode('thinking')
+            self.voice.speaking=False
+            if any(request.isRunning() for request in self.background_requests): self.orb.set_mode('thinking')
         # Keep both configured models resident (Ollama allows two); warming
         # both again after every agent call only queues extra requests ahead
         # of the user's next prompt.
