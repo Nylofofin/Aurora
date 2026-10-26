@@ -210,7 +210,7 @@ class Inference(QThread):
                 return
             complete_response=complete_spoken_response(' '.join(spoken_parts))
             if not complete_response:
-                complete_response=complete_spoken_response(complete) or 'Não consegui concluir a resposta.'
+                complete_response=complete_spoken_response(complete) or (complete.strip() + '.' if complete.strip() and not complete.strip().endswith(('.', '!', '?')) else complete.strip()) or 'Não consegui concluir a resposta.'
             self.result.emit(complete_response)
         except urllib.error.HTTPError as e:
             self.error.emit(f'Ollama local retornou {e.code}. Confira a tag {self.model}.')

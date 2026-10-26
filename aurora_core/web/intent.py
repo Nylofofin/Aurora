@@ -38,6 +38,11 @@ def current_search_window(text):
     # Present-tense identity questions with a definite role/entity ask for the
     # current state even when the speaker omits "atual" or "current".
     if re.search(r'^\s*(?:aurora[, ]*)?(?:quem e (?:o|a)|who is (?:the|a|an))\b',plain) and not re.search(r'\b(?:quem e voce|who are you)\b',plain): return '30d'
+    # Commercial and pricing queries ask for market value, not hourly news.
+    # Forcing a 1-day news window discards product listings and store pages.
+    is_commercial = bool(re.search(r'\b(quanto custa|quanto sai|quanto vale|qual o preco|preco de|preco do|preco da|valor de|valor do|valor da|comprar|custo|how much|cost|price)\b', plain))
+    if is_commercial:
+        return '30d'
     if re.search(r'\b(hoje|agora|neste momento|neste instante|ao vivo|tempo real|ultimas 24 horas|right now|today|live)\b',plain): return '1d'
     if re.search(r'\b(ultima hora|ultimas noticias|noticias recentes|noticia recente|esta semana|nesta semana|ultimos dias|ultima semana|breaking news|news about)\b',plain): return '7d'
     if re.search(r'\b(atual|atualmente|atualizado|atualizada|mais recentes?|recentemente|recentes?|ultimo|ultima|latest|current|newest|updated|how much|quanto custa|quanto custam|quanto sai|quanto vale|cost|price|custo|preco atual|valor atual)\b',plain): return '30d'

@@ -153,6 +153,16 @@ class EvalService(QObject):
         self.fx_api_timings = ()
         self.local_action = ""
         self.done = False
+        self.system_routine_pending = None
+        self.pending_clarification = None
+        self.clarification_listening = False
+        self.continuous_mode = False
+        self.conversation_turns = 0
+        self.conversation_token = 0
+        self.current_turn_kind = 'action'
+
+    def _handle_system_routine_confirmation(self, _prompt):
+        return False
 
     def start_background_request(self, request):
         self.background_requests.append(request)
