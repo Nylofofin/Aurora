@@ -99,7 +99,8 @@ def _search_public_web_uncached(query,freshness=None,news_only=None,progress=Non
                 rows.append((href,title,snippet,published))
         return rows
     def collect_query(search_query,relevance_query,timeout,subagents=None):
-        providers=(('DuckDuckGo Lite','ddg'),('Bing RSS','bing-rss'))
+        # Bing and Google News are fast, accurate, and do not trigger anti-bot 202 challenges.
+        providers=(('Bing RSS','bing-rss'),)
         units=[]
         if subagents and len(subagents)>1:
             for agent in subagents:

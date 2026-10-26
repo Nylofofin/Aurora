@@ -30,7 +30,7 @@ class SearchRequest(QThread):
     def run(self):
 
         try:
-            self.progress.emit({"stage":"searching","tasks":["DuckDuckGo Lite", "Bing RSS", "Bing Notícias"],"workers":1,"completed":0,"total":3})
+            self.progress.emit({"stage":"searching","tasks":["Bing RSS", "Bing Notícias"],"workers":1,"completed":0,"total":2})
             output=search_public_web(self.query,self.freshness,self.news_only,progress=self.progress.emit)
             self.result.emit(self.query,output)
 
