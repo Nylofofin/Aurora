@@ -1,6 +1,15 @@
 # SPDX-License-Identifier: GPL-3.0-only
+import pytest
+
 from aurora_core.service import AuroraService
+from aurora_core.voice import wake
 from aurora_core.voice.wake import parse_vosk_result
+
+
+@pytest.fixture(autouse=True)
+def reset_vosk_log_throttle():
+    """Keep rate-limited diagnostics isolated between tests."""
+    wake._LAST_MALFORMED_RESULT_LOG.clear()
 
 
 def test_voice_error_logs_cause_speaks_once_and_schedules_bounded_retry(monkeypatch, capsys):
