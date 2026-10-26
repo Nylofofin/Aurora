@@ -151,7 +151,7 @@ def route_request(self,prompt):
             card.update_progress(generation,{'stage':'understanding','tasks':['Entendendo o pedido'],
                                              'workers':1,'completed':0,'total':1})
     self.current_turn_kind='action' if agent_intent else 'conversation'
-    model=self.cfg.get('agent_model','gemma4:e2b-it-q4_K_M') if agent_intent else self.cfg['model']
+    model=self.cfg.get('agent_model','qwen2.5:1.5b') if agent_intent else self.cfg['model']
     inference=Inference(self.cfg,prompt,model=model,use_tools=agent_intent,history=self.context_history[-6:],response_language=self.response_language)
     generation=self.request_generation
     inference.sentence.connect(lambda text,g=generation:self.queue_sentence(text,g)); inference.search.connect(lambda q,out,g=generation:self.search_update(q,out) if g==self.request_generation else None,Qt.ConnectionType.QueuedConnection); inference.progress.connect(lambda event,g=generation:self.research_progress(event,g),Qt.ConnectionType.QueuedConnection); inference.approval.connect(lambda name,detail,g=generation:self.request_approval(name,detail) if g==self.request_generation else None); inference.error.connect(lambda message,g=generation:self.answer_error(message,g)); inference.result.connect(lambda text,g=generation:self.answer_done(text,g)); self.start_inference(inference,generation)

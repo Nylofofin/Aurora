@@ -22,7 +22,7 @@ PIPER_MODEL_PATH = PIPER_MODEL_DIR/'pt_BR-faber-medium.onnx'
 DEFAULTS = {
     'endpoint':'http://127.0.0.1:11434',
     'model':'gemma3:1b-it-qat',
-    'agent_model':'gemma4:e2b-it-q4_K_M',
+    'agent_model':'qwen2.5:1.5b',
     'num_ctx':1024,
     'num_thread':4,
     'num_gpu':99,
