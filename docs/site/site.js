@@ -115,4 +115,7 @@
   } else {
     document.querySelectorAll('.reveal').forEach((element) => element.classList.add('visible'));
   }
+  // Keep the page readable if any later script fails to initialize. Reveal
+  // animations are progressive enhancement, so enable hidden states last.
+  document.documentElement.classList.add('js-reveal');
 })();
