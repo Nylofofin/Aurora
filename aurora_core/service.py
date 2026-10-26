@@ -947,21 +947,6 @@ class AuroraService(QObject):
         if not items:
             message=search_failure_summary(output,self.current_prompt or query)
             self.quick_summary_done(message,generation); return
-        asks_current_fact=bool(current_search_window(self.current_prompt))
-        if asks_current_fact:
-            window=current_search_window(self.current_prompt)
-            if asks_latest_version(self.current_prompt):
-                verified_current=_has_corroborated_version_pages(items)
-            else:
-                verified_current=_independent_recent_source_count(items,window)>=2
-            if not verified_current:
-                if news_search_intent(self.current_prompt):
-                    message=news_unconfirmed_message()
-                elif asks_latest_version(self.current_prompt):
-                    message='Não confirmei a versão mais recente em duas páginas independentes; não vou escolher um número sem corroborar.'
-                else:
-                    message='Encontrei páginas relacionadas, mas não duas fontes independentes e recentes que confirmem o dado. Não vou responder com informação possivelmente antiga.'
-                self.quick_summary_done(message,generation); return
         if asks_latest_version(self.current_prompt or query):
             answer=_format_latest_version_answer(items)
             if answer:
