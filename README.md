@@ -15,7 +15,7 @@ Explore a Aurora em uma apresentação interativa, com carrossel de aparências,
 
 ## Veja a Aurora
 
-A esfera mantém o formato circular e muda de cor, luz, refração e detalhes conforme o estilo escolhido. São nove acabamentos, cada um com identidade própria; o onboarding e a bolha ativa compartilham as mesmas prévias.
+A esfera mantém o formato circular e muda de cor, luz, refração e detalhes conforme o estilo escolhido. As nove identidades agora se distinguem por elementos próprios: véus boreais, placas de gelo, tempestade joviana, eclipse, falhas cristalinas e correntes oceânicas. Reia e Titã têm satélites que percorrem anéis em ciclos contínuos. O site e a prancha usam imagens exportadas pelos componentes oficiais do onboarding.
 
 ![Prancha dos nove estilos circulares da Aurora: Véu Boreal, Europa, Júpiter, Reia, Dione, Miranda, Titã, Ío e Tritão](docs/media/bubble-skins.png)
 

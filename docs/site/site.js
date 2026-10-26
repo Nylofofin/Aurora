@@ -1,14 +1,14 @@
 (() => {
   const skins = [
-    ['boreal','Véu Boreal','Azul-violeta · vidro refratado','#4d9cff'],
-    ['emerald','Europa','Verde mineral · porcelana','#56d6ae'],
-    ['crimson','Júpiter','Âmbar · faixas atmosféricas','#e5a45e'],
-    ['amethyst','Reia','Lavanda · anel inclinado','#9b9fe2'],
-    ['solaris','Dione','Rosa-violeta · eclipse','#c17da9'],
-    ['ocean','Miranda','Ciano · crista de gelo','#52c4d1'],
-    ['titan','Titã','Índigo · halo enevoado','#7f89c1'],
-    ['io','Ío','Mel vulcânico · fissura','#ed8743'],
-    ['triton','Tritão','Azul glacial · correntes polares','#59c3df'],
+    ['boreal','Véu Boreal','Azul polar · cortina de aurora','Cortinas azul-turquesa deslizam sobre vidro polar enquanto a luz percorre a superfície.','#6961c7'],
+    ['emerald','Europa','Verde glacial · placas de gelo','Veios finos encontram-se no centro como placas de gelo sob tensão; o brilho respira devagar.','#247d70'],
+    ['crimson','Júpiter','Âmbar · faixas atmosféricas','Nuvens douradas cruzam a esfera em bandas; um olho de tempestade se move entre elas.','#dfa45f'],
+    ['amethyst','Reia','Índigo mineral · anel duplo','Dois anéis estreitos inclinam-se pelo vidro, com uma pequena lua percorrendo o mesmo plano.','#9caee7'],
+    ['solaris','Dione','Rosa de eclipse · corona móvel','Uma sombra escura avança sobre a esfera rosada; a corona clara pulsa ao redor do eclipse.','#d77f98'],
+    ['ocean','Miranda','Ciano abissal · falha cristalina','Uma fratura angular atravessa o azul-ciano e revela planos de gelo com brilho próprio.','#58cfc6'],
+    ['titan','Titã','Índigo nebuloso · halo atmosférico','Um halo largo e quase horizontal contorna o índigo; seu satélite completa uma órbita lenta.','#777eae'],
+    ['io','Ío','Ouro vulcânico · fratura incandescente','Uma fissura pulsa do dourado ao vermelho, como lava acesa sob uma camada de vidro.','#f18c39'],
+    ['triton','Tritão','Azul polar · correntes oceânicas','Três correntes curvas atravessam um mar glacial em ritmos sobrepostos.','#80d2e8'],
   ];
   let current = 0;
   const orb = document.querySelector('#skinOrb');
@@ -19,20 +19,29 @@
   const updateSkin = (index) => {
     current = (index + skins.length) % skins.length;
     const [key, name, description, color] = skins[current];
-    orb.className = `skin-orb skin-${key}`;
-    if (heroOrb) heroOrb.className = `hero-orb skin-${key}`;
+    orb.src = `media/skins/${key}.png`;
+    orb.alt = `Prévia oficial da aparência ${name}`;
+    if (heroOrb) {
+      heroOrb.src = `media/skins/${key}.png`;
+      heroOrb.alt = `Bolha oficial da Aurora no estilo ${name}`;
+    }
     document.querySelector('#skinName').textContent = name;
     document.querySelector('#skinDesc').textContent = description;
+    document.querySelector('#skinMotion').textContent = motion;
     document.querySelector('#skinCount').textContent = `${String(current + 1).padStart(2,'0')} — 09`;
     document.querySelector('.stage-glow').style.background = `radial-gradient(circle,${color}35,transparent 68%)`;
-    sideLeft.className = `side-orb side-left skin-${skins[(current + skins.length - 1) % skins.length][0]}`;
-    sideRight.className = `side-orb side-right skin-${skins[(current + 1) % skins.length][0]}`;
+    const previous = skins[(current + skins.length - 1) % skins.length];
+    const next = skins[(current + 1) % skins.length];
+    sideLeft.src = `media/skins/${previous[0]}.png`;
+    sideRight.src = `media/skins/${next[0]}.png`;
+    sideLeft.alt = `Aparência anterior: ${previous[1]}`;
+    sideRight.alt = `Próxima aparência: ${next[1]}`;
     [...rail.children].forEach((button, i) => {
       button.classList.toggle('active', i === current);
       button.setAttribute('aria-selected', i === current ? 'true' : 'false');
     });
   };
-  skins.forEach(([key, name, _description, color], i) => {
+  skins.forEach(([key, name, _description, _motion, color], i) => {
     const button = document.createElement('button');
     button.className = 'skin-pill'; button.type = 'button'; button.role = 'tab';
     button.style.setProperty('--swatch', color); button.textContent = name;

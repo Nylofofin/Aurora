@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""Capture compact README and release demos from the real onboarding widgets."""
+"""Generate official skin artwork and motion demos from the real onboarding widgets."""
 from __future__ import annotations
 
+import math
 import os
 import sys
 import time
@@ -69,6 +70,59 @@ def save_gif(frames: list[Image.Image], path: Path) -> None:
         disposal=2,
     )
     print(f"{path.relative_to(ROOT)}: {len(frames)} frames, {path.stat().st_size // 1024} KiB")
+
+
+def capture_orb(orb: _AnimatedOrb) -> Image.Image:
+    size = orb.size()
+    image = QImage(size.width(), size.height(), QImage.Format.Format_RGBA8888)
+    image.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(image)
+    orb.render(painter, QPoint())
+    painter.end()
+    return Image.frombytes("RGBA", (image.width(), image.height()), bytes(image.bits()))
+
+
+def save_animated_webp(frames: list[Image.Image], path: Path, frame_ms: int) -> None:
+    if not frames:
+        raise RuntimeError(f"No frames captured for {path.name}")
+    frames[0].save(path, format="WEBP", save_all=True, append_images=frames[1:],
+                    duration=frame_ms, loop=0, quality=90, method=0)
+    print(f"{path.relative_to(ROOT)}: {len(frames)} official frames, {path.stat().st_size // 1024} KiB")
+
+
+def make_skin_assets(app: QApplication) -> None:
+    """Export stills and looping motion from the exact onboarding orb painter."""
+    skin_dir = MEDIA / "skins"
+    skin_dir.mkdir(parents=True, exist_ok=True)
+    for index, (key, title, _detail) in enumerate(BUBBLE_STYLES):
+        orb = _AnimatedOrb(key)
+        orb.setFixedSize(288, 288)
+        orb.phase = index * .73
+        orb.show()
+        app.processEvents()
+        image = QImage(288, 288, QImage.Format.Format_ARGB32_Premultiplied)
+        image.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(image)
+        orb.render(painter, QPoint())
+        painter.end()
+        destination = skin_dir / f"{key}.png"
+        image.save(str(destination), "PNG")
+        # Each site loop follows the actual detail cycle: drifting veils and
+        # surface details complete one cycle; the two orbital skins use their
+        # true revolution time so the satellite returns seamlessly.
+        cycle_seconds = 2 * math.pi / (.42 * 2 * math.pi / 5) if key == "amethyst" else (
+            2 * math.pi / (.62 * 2 * math.pi / 5) if key == "titan" else 2 * math.pi / (.48 * 2 * math.pi / 5)
+        )
+        frame_ms = 83
+        frame_count = round(cycle_seconds * 1000 / frame_ms)
+        frames = []
+        for frame_index in range(frame_count):
+            orb.phase = 2 * math.pi * (frame_index * frame_ms / 1000) / 5
+            frames.append(capture_orb(orb))
+        save_animated_webp(frames, skin_dir / f"{key}.webp", frame_ms)
+        orb.close()
+        orb.deleteLater()
+        print(f"{destination.relative_to(ROOT)}: official {title} orb")
 
 
 def make_skin_contact_sheet(app: QApplication) -> None:
@@ -161,6 +215,7 @@ def make_transition_demo(app: QApplication, wizard: PersonalizationWizard) -> No
 def main() -> int:
     MEDIA.mkdir(parents=True, exist_ok=True)
     app, wizard = make_wizard()
+    make_skin_assets(app)
     make_skin_contact_sheet(app)
     make_carousel_demo(app, wizard)
     make_transition_demo(app, wizard)

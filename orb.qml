@@ -65,11 +65,11 @@ Item {
     // comes from color, refraction and small surface details inside the glass.
     readonly property string orbPath: "M 57 1 A 56 56 0 1 1 57 113 A 56 56 0 1 1 57 1 Z"
     readonly property color stateColor: statePalette[mode] || statePalette.idle
-    readonly property color styleBase: bubbleStyle === "emerald" ? "#E9FFF7" : bubbleStyle === "crimson" ? "#FFF8E8" : bubbleStyle === "amethyst" ? "#F6F5FF" : bubbleStyle === "solaris" ? "#FFF4F6" : bubbleStyle === "ocean" ? "#EDFFFF" : bubbleStyle === "titan" ? "#F4F3FF" : bubbleStyle === "io" ? "#FFF9E3" : bubbleStyle === "triton" ? "#F0FDFF" : "#EDF8FC"
-    readonly property color styleMid: bubbleStyle === "emerald" ? "#BCEBDD" : bubbleStyle === "crimson" ? "#F2D49B" : bubbleStyle === "amethyst" ? "#D2D8F8" : bubbleStyle === "solaris" ? "#E7B8C6" : bubbleStyle === "ocean" ? "#A5E8E5" : bubbleStyle === "titan" ? "#C3C6E2" : bubbleStyle === "io" ? "#FFE69B" : bubbleStyle === "triton" ? "#B8EDF0" : "#BFEAF5"
-    readonly property color styleLow: bubbleStyle === "emerald" ? "#70CBB0" : bubbleStyle === "crimson" ? "#E4AC68" : bubbleStyle === "amethyst" ? "#A6B4E5" : bubbleStyle === "solaris" ? "#BB88A6" : bubbleStyle === "ocean" ? "#61C6CE" : bubbleStyle === "titan" ? "#7E86B7" : bubbleStyle === "io" ? "#F1A34A" : bubbleStyle === "triton" ? "#64C4DF" : "#91B9EF"
-    readonly property color styleDeep: bubbleStyle === "emerald" ? "#328F86" : bubbleStyle === "crimson" ? "#C77848" : bubbleStyle === "amethyst" ? "#737FBF" : bubbleStyle === "solaris" ? "#805477" : bubbleStyle === "ocean" ? "#397DA6" : bubbleStyle === "titan" ? "#4B527E" : bubbleStyle === "io" ? "#ED7041" : bubbleStyle === "triton" ? "#397DB7" : "#8078DD"
-    readonly property color styleBottom: bubbleStyle === "emerald" ? "#206A68" : bubbleStyle === "crimson" ? "#985244" : bubbleStyle === "amethyst" ? "#4D568D" : bubbleStyle === "solaris" ? "#583D68" : bubbleStyle === "ocean" ? "#245B83" : bubbleStyle === "titan" ? "#292D49" : bubbleStyle === "io" ? "#8D3540" : bubbleStyle === "triton" ? "#243A73" : "#4C46A8"
+    readonly property color styleBase: bubbleStyle === "emerald" ? "#EDFFF7" : bubbleStyle === "crimson" ? "#FFF4DF" : bubbleStyle === "amethyst" ? "#F4F2FF" : bubbleStyle === "solaris" ? "#FFF0F0" : bubbleStyle === "ocean" ? "#EAFFFF" : bubbleStyle === "titan" ? "#EFEFFB" : bubbleStyle === "io" ? "#FFF2C7" : bubbleStyle === "triton" ? "#EFFCFF" : "#EFFAFF"
+    readonly property color styleMid: bubbleStyle === "emerald" ? "#B7EBDD" : bubbleStyle === "crimson" ? "#F2D398" : bubbleStyle === "amethyst" ? "#D0D5F4" : bubbleStyle === "solaris" ? "#EDB0BD" : bubbleStyle === "ocean" ? "#B3F0E4" : bubbleStyle === "titan" ? "#B4B8D9" : bubbleStyle === "io" ? "#FFD775" : bubbleStyle === "triton" ? "#C6F3F4" : "#BFEAF5"
+    readonly property color styleLow: bubbleStyle === "emerald" ? "#70D2AE" : bubbleStyle === "crimson" ? "#D78F57" : bubbleStyle === "amethyst" ? "#9CAEE7" : bubbleStyle === "solaris" ? "#D77F98" : bubbleStyle === "ocean" ? "#58CFC6" : bubbleStyle === "titan" ? "#777EAE" : bubbleStyle === "io" ? "#F18C39" : bubbleStyle === "triton" ? "#80D2E8" : "#6CA9EC"
+    readonly property color styleDeep: bubbleStyle === "emerald" ? "#247D70" : bubbleStyle === "crimson" ? "#B9654B" : bubbleStyle === "amethyst" ? "#47598F" : bubbleStyle === "solaris" ? "#A94F72" : bubbleStyle === "ocean" ? "#1D678E" : bubbleStyle === "titan" ? "#4B527E" : bubbleStyle === "io" ? "#E96F37" : bubbleStyle === "triton" ? "#4D91BD" : "#6961C7"
+    readonly property color styleBottom: bubbleStyle === "emerald" ? "#165A56" : bubbleStyle === "crimson" ? "#92513F" : bubbleStyle === "amethyst" ? "#2D3F70" : bubbleStyle === "solaris" ? "#552F62" : bubbleStyle === "ocean" ? "#124567" : bubbleStyle === "titan" ? "#252A47" : bubbleStyle === "io" ? "#913544" : bubbleStyle === "triton" ? "#2E5D98" : "#4B479E"
     property color animatedStateColor: stateColor
     property real tintStrength: mode === "listening" ? 0.34
         : mode === "speaking" ? 0.34
@@ -105,6 +105,7 @@ Item {
         property real sway: 0.0
         property real surfaceFlow: 0.0
         property real refraction: 0.0
+        property real orbitPhase: 0.0
         scale: 0.99 + breathing * 0.012 + root.activeEnergy * 0.026 + root.hoverEnergy * 0.008
         // A restrained tilt and counter-tilt sell a living glass surface while
         // keeping the silhouette perfectly round to the eye.
@@ -118,13 +119,13 @@ Item {
             NumberAnimation {
                 from: 0; to: 1
                 duration: root.mode === "searching" ? 1550
-                    : root.mode === "thinking" || root.mode === "preparing" ? 2300 : 3500
+                    : root.mode === "thinking" || root.mode === "preparing" ? 2300 : 2500
                 easing.type: Easing.InOutSine
             }
             NumberAnimation {
                 from: 1; to: 0
                 duration: root.mode === "searching" ? 1850
-                    : root.mode === "thinking" || root.mode === "preparing" ? 2700 : 4100
+                    : root.mode === "thinking" || root.mode === "preparing" ? 2700 : 2500
                 easing.type: Easing.InOutSine
             }
         }
@@ -153,14 +154,19 @@ Item {
         SequentialAnimation on surfaceFlow {
             running: root.motionEnabled
             loops: Animation.Infinite
-            NumberAnimation { from: 0; to: 1; duration: root.mode === "searching" ? 1900 : 3200; easing.type: Easing.InOutSine }
-            NumberAnimation { from: 1; to: 0; duration: root.mode === "searching" ? 2200 : 3600; easing.type: Easing.InOutSine }
+            NumberAnimation { from: 0; to: 1; duration: root.mode === "searching" ? 1900 : 5200; easing.type: Easing.InOutSine }
+            NumberAnimation { from: 1; to: 0; duration: root.mode === "searching" ? 2200 : 5200; easing.type: Easing.InOutSine }
         }
         SequentialAnimation on refraction {
             running: root.motionEnabled
             loops: Animation.Infinite
             NumberAnimation { from: -1; to: 1; duration: root.mode === "speaking" ? 1800 : 3900; easing.type: Easing.InOutSine }
             NumberAnimation { from: 1; to: -1; duration: root.mode === "speaking" ? 2100 : 4300; easing.type: Easing.InOutSine }
+        }
+        NumberAnimation on orbitPhase {
+            running: root.motionEnabled && (root.bubbleStyle === "amethyst" || root.bubbleStyle === "titan")
+            from: 0; to: 360; duration: root.bubbleStyle === "amethyst" ? 11900 : 8065
+            loops: Animation.Infinite; easing.type: Easing.Linear
         }
 
         // Pearlescent shell with a style-specific tonal gradient.
@@ -225,112 +231,181 @@ Item {
         }
     }
 
-    // Planet-specific accents remain small and attached to the glass body.
-    Rectangle {
-        visible: root.bubbleStyle === "emerald"
-        x: 34; y: 34; width: 68; height: 68
-        rotation: -8 + sphere.sway * 0.8
-        radius: 24
-        color: "transparent"
-        border.color: "#FFFFFF72"
-        border.width: 1.2
-    }
+    // Each finish gets its own restrained surface signature. Rings have a
+    // real satellite moving along the orbital plane instead of a static dot.
     Shape {
-        visible: root.bubbleStyle === "amethyst" || root.bubbleStyle === "solaris"
-        x: 23; y: 50 + sphere.sway; width: 90; height: 36
-        rotation: (root.bubbleStyle === "amethyst" ? -19 : -31) + sphere.sway * 0.8
+        visible: root.bubbleStyle === "boreal"
+        x: 20 + sphere.surfaceFlow * 3; y: 39; width: 96; height: 61
         ShapePath {
-            strokeColor: root.bubbleStyle === "amethyst" ? "#DCD9FFB0" : "#F2D5E2B8"
-            strokeWidth: 1.6; fillColor: "transparent"
-            PathAngleArc { centerX: 45; centerY: 18; radiusX: 42; radiusY: 15; startAngle: 0; sweepAngle: 360 }
+            strokeColor: "#B0A5FFF0"; strokeWidth: 3.0; fillColor: "transparent"
+            PathMove { x: 2; y: 41 }
+            PathCubic { control1X: 22; control1Y: 2; control2X: 47; control2Y: 58; x: 94; y: 15 }
+        }
+        ShapePath {
+            strokeColor: "#8AD6C8FF"; strokeWidth: 1.8; fillColor: "transparent"
+            PathMove { x: 3; y: 55 }
+            PathCubic { control1X: 26; control1Y: 19; control2X: 61; control2Y: 60; x: 92; y: 31 }
         }
     }
     Shape {
-        visible: root.bubbleStyle === "amethyst" || root.bubbleStyle === "solaris"
-        x: 93 + sphere.sway * 0.5; y: 35 - sphere.sway * 0.35; width: 12; height: 12
+        visible: root.bubbleStyle === "emerald"
+        x: 22 + sphere.surfaceFlow * 1.4; y: 31; width: 92; height: 76
         ShapePath {
-            strokeColor: "#FFFFFF90"; strokeWidth: 0.6
-            fillGradient: RadialGradient {
-                centerX: 4; centerY: 3; centerRadius: 12
-                GradientStop { position: 0; color: "#FFFFFF" }
-                GradientStop { position: 1; color: root.bubbleStyle === "amethyst" ? "#A9B4E8" : "#C78DAD" }
-            }
-            PathAngleArc { centerX: 6; centerY: 6; radiusX: 5.5; radiusY: 5.5; startAngle: 0; sweepAngle: 360 }
+            strokeColor: sphere.breathing > 0.5 ? "#C8E9FFF7" : "#A8E9FFF7"; strokeWidth: 1.15; fillColor: "transparent"
+            PathMove { x: 16; y: 10 }
+            PathCubic { control1X: 33; control1Y: 15; control2X: 38; control2Y: 24; x: 46; y: 38 }
+            PathCubic { control1X: 55; control1Y: 45; control2X: 66; control2Y: 41; x: 80; y: 31 }
+            PathMove { x: 46; y: 38 }
+            PathCubic { control1X: 42; control1Y: 51; control2X: 29; control2Y: 58; x: 18; y: 68 }
+            PathMove { x: 46; y: 38 }
+            PathCubic { control1X: 54; control1Y: 51; control2X: 62; control2Y: 65; x: 79; y: 68 }
         }
     }
     Shape {
         visible: root.bubbleStyle === "crimson"
-        x: 83 + sphere.surfaceFlow * 1.2; y: 76; width: 25; height: 16
+        x: 19 + sphere.surfaceFlow * 1.6; y: 40; width: 98; height: 61
         ShapePath {
-            strokeColor: "#FFE4B099"; strokeWidth: 0.8
+            strokeColor: "#74FFF0C7"; strokeWidth: 4.0; fillColor: "transparent"
+            PathMove { x: 1; y: 12 }
+            PathCubic { control1X: 26; control1Y: 1; control2X: 68; control2Y: 20; x: 97; y: 8 }
+        }
+        ShapePath {
+            strokeColor: "#5E92513F"; strokeWidth: 5.0; fillColor: "transparent"
+            PathMove { x: 0; y: 28 }
+            PathCubic { control1X: 25; control1Y: 19; control2X: 65; control2Y: 39; x: 98; y: 25 }
+        }
+        ShapePath {
+            strokeColor: "#82FFE5B0"; strokeWidth: 3.0; fillColor: "transparent"
+            PathMove { x: 1; y: 45 }
+            PathCubic { control1X: 29; control1Y: 35; control2X: 68; control2Y: 55; x: 97; y: 42 }
+        }
+    }
+    Shape {
+        visible: root.bubbleStyle === "crimson"
+        x: 68 + sphere.surfaceFlow * 5; y: 49 + sphere.breathing * 1.5; width: 24; height: 16
+        ShapePath {
+            strokeColor: "#C8FFDBB8"; strokeWidth: 1.0
             fillGradient: RadialGradient {
-                centerX: 7; centerY: 5; centerRadius: 20
-                GradientStop { position: 0; color: "#E79572" }
-                GradientStop { position: 1; color: "#A94E48" }
+                centerX: 8; centerY: 6; centerRadius: 15
+                GradientStop { position: 0; color: "#FFD39F" }
+                GradientStop { position: 0.52; color: "#B94D41" }
+                GradientStop { position: 1; color: "#007F3835" }
             }
-            PathAngleArc { centerX: 12; centerY: 8; radiusX: 11; radiusY: 6; startAngle: 0; sweepAngle: 360 }
+            PathAngleArc { centerX: 12; centerY: 8; radiusX: 12; radiusY: 8; startAngle: 0; sweepAngle: 360 }
+        }
+    }
+    Shape {
+        visible: root.bubbleStyle === "amethyst"
+        x: 17; y: 39; width: 102; height: 58
+        rotation: -24
+        ShapePath {
+            strokeColor: "#C6E5EAFF"; strokeWidth: 1.8; fillColor: "transparent"
+            PathAngleArc { centerX: 51; centerY: 29; radiusX: 49; radiusY: 17; startAngle: 0; sweepAngle: 360 }
+        }
+        ShapePath {
+            strokeColor: "#78B7CCFF"; strokeWidth: 0.9; fillColor: "transparent"
+            PathAngleArc { centerX: 51; centerY: 29; radiusX: 44; radiusY: 13; startAngle: 0; sweepAngle: 360 }
+        }
+    }
+    Shape {
+        visible: root.bubbleStyle === "amethyst"
+        x: 68 + Math.cos(sphere.orbitPhase * Math.PI / 180) * 46 * Math.cos(-24 * Math.PI / 180) - Math.sin(sphere.orbitPhase * Math.PI / 180) * 16 * Math.sin(-24 * Math.PI / 180) - 4
+        y: 68 + Math.cos(sphere.orbitPhase * Math.PI / 180) * 46 * Math.sin(-24 * Math.PI / 180) + Math.sin(sphere.orbitPhase * Math.PI / 180) * 16 * Math.cos(-24 * Math.PI / 180) - 4
+        width: 8; height: 8
+        ShapePath {
+            strokeColor: "#E8FFFFFF"; strokeWidth: 0.8; fillColor: "#F8FBFF"
+            PathAngleArc { centerX: 4; centerY: 4; radiusX: 3.5; radiusY: 3.5; startAngle: 0; sweepAngle: 360 }
+        }
+    }
+    Shape {
+        visible: root.bubbleStyle === "solaris"
+        x: 39 + sphere.surfaceFlow * 2.0; y: 38; width: 58; height: 58
+        ShapePath {
+            strokeColor: "#B0FFD0C9"; strokeWidth: 1.0
+            fillGradient: RadialGradient {
+                centerX: 22; centerY: 20; centerRadius: 34
+                GradientStop { position: 0; color: "#DFFFF0DF" }
+                GradientStop { position: 0.82; color: "#FFE8A4AF" }
+                GradientStop { position: 1; color: "#00D77F98" }
+            }
+            PathAngleArc { centerX: 29; centerY: 29; radiusX: 28; radiusY: 28; startAngle: 0; sweepAngle: 360 }
+        }
+        ShapePath {
+            strokeColor: "#70FFFFFF"; strokeWidth: 0.6; fillColor: "#F5532D5E"
+            PathAngleArc { centerX: 39; centerY: 25; radiusX: 27; radiusY: 27; startAngle: 0; sweepAngle: 360 }
         }
     }
     Shape {
         visible: root.bubbleStyle === "ocean"
-        x: 19; y: 37; width: 97; height: 69
-        rotation: -27 + sphere.sway * 0.7
+        x: 24 + sphere.surfaceFlow * 2.5; y: 30; width: 88; height: 76
         ShapePath {
-            strokeColor: "#EDFFFFA8"; strokeWidth: 1.7; fillColor: "transparent"
-            PathAngleArc { centerX: 48; centerY: 34; radiusX: 39; radiusY: 28; startAngle: 24; sweepAngle: 72 }
+            strokeColor: "#DEE9FFFC"; strokeWidth: 2.1; fillColor: "transparent"
+            PathMove { x: 5; y: 8 }
+            PathLine { x: 30; y: 25 }
+            PathLine { x: 24; y: 36 }
+            PathLine { x: 48; y: 48 }
+            PathLine { x: 43; y: 57 }
+            PathLine { x: 78; y: 72 }
+        }
+        ShapePath {
+            strokeColor: "#8274F4E6"; strokeWidth: 0.9; fillColor: "transparent"
+            PathMove { x: 12; y: 6 }
+            PathLine { x: 69; y: 69 }
         }
     }
     Shape {
         visible: root.bubbleStyle === "titan"
-        x: 19; y: 31; width: 98; height: 75
-        rotation: -18 + sphere.sway * 0.45
+        x: 14; y: 49; width: 108; height: 38
+        rotation: 5
         ShapePath {
-            strokeColor: "#F6D79D90"; strokeWidth: 2.2; fillColor: "transparent"
-            PathAngleArc { centerX: 49; centerY: 37; radiusX: 46; radiusY: 29; startAngle: 205; sweepAngle: 136 }
+            strokeColor: "#96E7CBA2"; strokeWidth: 2.4; fillColor: "transparent"
+            PathAngleArc { centerX: 54; centerY: 19; radiusX: 52; radiusY: 16; startAngle: 0; sweepAngle: 360 }
+        }
+        ShapePath {
+            strokeColor: "#5ECAC6E2"; strokeWidth: 0.9; fillColor: "transparent"
+            PathAngleArc { centerX: 54; centerY: 19; radiusX: 45; radiusY: 12; startAngle: 0; sweepAngle: 360 }
         }
     }
     Shape {
         visible: root.bubbleStyle === "titan"
-        x: 78 + sphere.sway * 0.25; y: 82; width: 11; height: 11
+        x: 68 + Math.cos(-sphere.orbitPhase * 0.62 * Math.PI / 180) * 48 * Math.cos(14 * Math.PI / 180) - Math.sin(-sphere.orbitPhase * 0.62 * Math.PI / 180) * 20 * Math.sin(14 * Math.PI / 180) - 4
+        y: 68 + Math.cos(-sphere.orbitPhase * 0.62 * Math.PI / 180) * 48 * Math.sin(14 * Math.PI / 180) + Math.sin(-sphere.orbitPhase * 0.62 * Math.PI / 180) * 20 * Math.cos(14 * Math.PI / 180) - 4
+        width: 8; height: 8
         ShapePath {
-            strokeColor: "#FFFFFFAA"; strokeWidth: 0.7; fillColor: "#F5DCA8"
-            PathAngleArc { centerX: 5.5; centerY: 5.5; radiusX: 5; radiusY: 5; startAngle: 0; sweepAngle: 360 }
+            strokeColor: "#D0FFF1D5"; strokeWidth: 0.6; fillColor: "#FFF1D5"
+            PathAngleArc { centerX: 4; centerY: 4; radiusX: 3.5; radiusY: 3.5; startAngle: 0; sweepAngle: 360 }
         }
     }
     Shape {
         visible: root.bubbleStyle === "io"
-        x: 64 + sphere.surfaceFlow * 1.3; y: 32; width: 30; height: 69
+        x: 64 + sphere.surfaceFlow * 2; y: 30; width: 34; height: 76
         ShapePath {
-            strokeColor: "#8D3540C8"; strokeWidth: 3.0; fillColor: "transparent"
-            PathMove { x: 19; y: 2 }
-            PathCubic { control1X: 4; control1Y: 19; control2X: 27; control2Y: 28; x: 13; y: 42 }
-            PathCubic { control1X: 3; control1Y: 52; control2X: 21; control2Y: 57; x: 8; y: 68 }
+            strokeColor: "#C25F252D"; strokeWidth: 4.0; fillColor: "transparent"
+            PathMove { x: 23; y: 2 }
+            PathCubic { control1X: 4; control1Y: 19; control2X: 28; control2Y: 29; x: 13; y: 44 }
+            PathCubic { control1X: 3; control1Y: 55; control2X: 24; control2Y: 62; x: 8; y: 74 }
         }
-    }
-    Shape {
-        visible: root.bubbleStyle === "io"
-        x: 82; y: 31; width: 10; height: 10
         ShapePath {
-            strokeColor: "#FFFFFFB0"; strokeWidth: 0.6; fillColor: "#FFF1B2"
-            PathAngleArc { centerX: 5; centerY: 5; radiusX: 4.5; radiusY: 4.5; startAngle: 0; sweepAngle: 360 }
-        }
-    }
-    Shape {
-        visible: root.bubbleStyle === "triton"
-        x: 20; y: 39; width: 96; height: 63
-        rotation: -12 + sphere.sway * 0.45
-        ShapePath {
-            strokeColor: "#F1FFFFC8"; strokeWidth: 2.2; fillColor: "transparent"
-            PathAngleArc { centerX: 48; centerY: 31; radiusX: 43; radiusY: 27; startAngle: 212; sweepAngle: 116 }
+            strokeColor: sphere.breathing > 0.5 ? "#8AFFE28A" : "#CCFFE28A"; strokeWidth: 1.4; fillColor: "transparent"
+            PathMove { x: 23; y: 2 }
+            PathCubic { control1X: 4; control1Y: 19; control2X: 28; control2Y: 29; x: 13; y: 44 }
+            PathCubic { control1X: 3; control1Y: 55; control2X: 24; control2Y: 62; x: 8; y: 74 }
         }
     }
     Shape {
         visible: root.bubbleStyle === "triton"
-        x: 28; y: 45; width: 80; height: 51
-        rotation: -12 + sphere.sway * 0.45
+        x: 18 + sphere.surfaceFlow * 2; y: 38; width: 100; height: 64
         ShapePath {
-            strokeColor: "#BDEEF780"; strokeWidth: 1.1; fillColor: "transparent"
-            PathAngleArc { centerX: 40; centerY: 25; radiusX: 35; radiusY: 22; startAngle: 212; sweepAngle: 116 }
+            strokeColor: "#DDEFFFFF"; strokeWidth: 2.2; fillColor: "transparent"
+            PathAngleArc { centerX: 50; centerY: 32; radiusX: 48; radiusY: 28; startAngle: 205; sweepAngle: 130 }
+        }
+        ShapePath {
+            strokeColor: "#9BB7F2FA"; strokeWidth: 1.2; fillColor: "transparent"
+            PathAngleArc { centerX: 50; centerY: 32; radiusX: 39; radiusY: 22; startAngle: 215; sweepAngle: 112 }
+        }
+        ShapePath {
+            strokeColor: "#7667CBE7"; strokeWidth: 0.8; fillColor: "transparent"
+            PathAngleArc { centerX: 50; centerY: 32; radiusX: 31; radiusY: 17; startAngle: 225; sweepAngle: 96 }
         }
     }
 

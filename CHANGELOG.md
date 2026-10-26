@@ -1,5 +1,13 @@
 # Histórico de versões
 
+## Não lançado
+
+- Refina as nove aparências: cortinas boreais, placas de gelo Europa, tempestade joviana, eclipse de Dione e falhas cristalinas de Miranda; torna os detalhes menos parecidos entre si.
+- Reia recebe um anel duplo inclinado com lua em órbita; Titã usa um halo atmosférico largo e quase horizontal, com um satélite em ciclo próprio.
+- Anima correntes, fissuras vulcânicas, nuvens e coroas com ciclos contínuos na bolha e na prévia do onboarding.
+- Amplia o site com arte PNG/WebP transparente exportada pelo renderer oficial da Aurora e uma galeria animada com transições laterais.
+
+
 ## Aurora Desktop 3.1.0 — Eris Skin Studio, 2026-10-25 (release estável)
 
 - Amplia de seis para nove aparências circulares, com identidades visuais próprias para Titã, Ío e Tritão.

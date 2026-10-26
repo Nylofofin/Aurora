@@ -7,11 +7,8 @@
   <meta name="description" content="Aurora é uma assistente desktop por voz, feita para o uso diário, com uma bolha viva e uma experiência que você personaliza.">
   <meta property="og:title" content="Aurora — presença que acompanha você">
   <meta property="og:description" content="Conheça a assistente desktop, explore as aparências e veja a Aurora em movimento.">
-  <meta property="og:image" content="media/bubble-skins.png">
+  <meta property="og:image" content="https://nylofofin.github.io/Aurora/media/bubble-skins.png">
   <title>Aurora — presença que acompanha você</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="site/site.css">
 </head>
 <body>
@@ -40,7 +37,7 @@
         </div>
         <div class="hero-art reveal" aria-label="Prévia animada da bolha Aurora">
           <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="star star-a">✦</div><div class="star star-b">·</div><div class="star star-c">✧</div>
-          <div class="hero-orb skin-boreal" id="heroOrb"><span class="orb-glint"></span><span class="orb-current"></span><span class="orb-core"></span></div>
+          <img class="hero-orb official-orb" id="heroOrb" src="media/skins/boreal.webp" alt="Bolha oficial da Aurora no estilo Véu Boreal">
           <div class="art-caption"><span class="caption-line"></span><span>Uma interface pequena.<br>Um mundo de personalidade.</span></div>
           <div class="float-chip chip-top"><span class="chip-pulse"></span> Sempre por perto</div>
           <div class="float-chip chip-bottom"><span class="chip-icon">✧</span> Feita para ser sua</div>
@@ -67,15 +64,15 @@
         <div class="skin-showcase reveal">
           <div class="skin-stage">
             <div class="stage-grid"></div><div class="stage-glow"></div>
-            <div class="skin-orb skin-boreal" id="skinOrb"><span class="orb-glint"></span><span class="orb-current"></span><span class="orb-core"></span></div>
-            <div class="side-orb side-left" id="sideLeft"></div><div class="side-orb side-right" id="sideRight"></div>
+            <img class="skin-orb official-orb" id="skinOrb" src="media/skins/boreal.webp" alt="Prévia oficial do Véu Boreal">
+            <img class="side-orb side-left official-orb" id="sideLeft" src="media/skins/triton.webp" alt="Aparência anterior: Tritão"><img class="side-orb side-right official-orb" id="sideRight" src="media/skins/emerald.webp" alt="Próxima aparência: Europa">
             <button class="carousel-arrow prev" aria-label="Aparência anterior">←</button><button class="carousel-arrow next" aria-label="Próxima aparência">→</button>
-            <div class="stage-label"><span class="stage-kicker" id="skinCount">01 — 09</span><h3 id="skinName">Véu Boreal</h3><p id="skinDesc">Azul-violeta · vidro refratado</p></div>
+            <div class="stage-label"><span class="stage-kicker" id="skinCount">01 — 09</span><h3 id="skinName">Véu Boreal</h3><p id="skinDesc">Azul polar · cortina de aurora</p><p class="stage-motion" id="skinMotion">Cortinas azul-turquesa deslizam sobre vidro polar enquanto a luz percorre a superfície.</p></div>
             <div class="stage-signature">AURORA / SKIN STUDIO</div>
           </div>
           <div class="skin-rail" role="tablist" aria-label="Escolha uma aparência" id="skinRail"></div>
         </div>
-        <div class="skins-note reveal"><span class="note-star">✳</span><span>Prévia contínua inspirada nos acabamentos reais da bolha.<br><b>Toque em um nome para explorar.</b></span><a href="https://github.com/Nylofofin/Aurora/blob/master/docs/media/bubble-skins.png">Ver a coleção completa <span>↗</span></a></div>
+        <div class="skins-note reveal"><span class="note-star">✳</span><span>Prévia feita com a arte renderizada pelo próprio onboarding.<br><b>Toque em um nome para explorar.</b></span><a href="https://github.com/Nylofofin/Aurora/blob/master/docs/media/bubble-skins.png">Ver a coleção completa <span>↗</span></a></div>
       </section>
 
       <section class="demos section-wrap" id="demonstracoes">
