@@ -850,11 +850,20 @@ class AuroraService(QObject):
         self.clarification_listening=False
         return False
     def queue_sentence(self,text,generation):
-        # Streaming sentences are useful for progress/UI, but speaking each
-        # chunk makes the desktop repeat the answer when ``answer_done``
-        # emits the complete response.  Keep audio single-shot: the final
-        # grounded response is the only text sent to TTS.
-        return
+        # Streaming: enqueue each sentence to TTS as soon as the LLM emits it,
+        # so the first audio chunk starts playing while the LLM is still
+        # generating the remainder of the answer. This only activates for
+        # plain conversation turns (no tools); tool-backed turns use
+        # ``answer_done`` as before to avoid audio arriving before the grounded
+        # result is ready.  ``_streamed_sentences`` tracks whether any sentence
+        # was already sent so ``answer_done`` knows not to re-queue the full text.
+        if generation != self.request_generation: return
+        inf = getattr(self, 'inf', None)
+        if inf is None or inf.use_tools: return
+        text = Speaker.clean(text.strip())
+        if not text: return
+        self._streamed_sentences = getattr(self, '_streamed_sentences', 0) + 1
+        self.speaker.say(text)
     def run_local_action(self,name,args):
         self.orb.set_mode('thinking')
         if requires_user_approval(name,args,explicit_user_request=True):
@@ -1092,9 +1101,13 @@ class AuroraService(QObject):
             self.voice.speaking=False
             self._finish_companion_request(result=self.response_summary)
             return
-        # Streaming sentence playback stays disabled to avoid duplicate audio;
-        # enqueue the single completed answer here instead.
-        if self.response_summary:
+        # If sentences were already streamed to the Speaker via queue_sentence,
+        # the audio pipeline is already running; do not re-queue the complete
+        # text or the answer would be spoken twice.  For tool-backed turns and
+        # any turn where streaming was not used, fall back to the single-shot path.
+        streamed = getattr(self, '_streamed_sentences', 0)
+        self._streamed_sentences = 0
+        if streamed == 0 and self.response_summary:
             self.speaker.say(self.response_summary)
         self.active_search_context=''
         if not self.pending:
