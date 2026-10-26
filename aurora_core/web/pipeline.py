@@ -222,7 +222,7 @@ def _search_public_web_uncached(query,freshness=None,news_only=None,progress=Non
                 report(**update)
     subagents=plan_research_subagents(query)
     for attempt,(search_query,relevance_query) in enumerate(query_variants):
-        collect_query(search_query,relevance_query,3.5 if attempt==0 else 1.8,
+        collect_query(search_query,relevance_query,1.5 if attempt==0 else 1.0,
                       subagents if attempt==0 and len(subagents)>1 else None)
         # Google News RSS links may remain Google wrapper pages that our safe
         # HTTP reader cannot extract. They must not suppress the compact-query
@@ -245,7 +245,7 @@ def _search_public_web_uncached(query,freshness=None,news_only=None,progress=Non
         workers=resource_worker_limit(len(news_queries))
         report(stage='searching',tasks=task_names,workers=workers,completed=0,total=len(news_queries))
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-            futures={pool.submit(search_bing_news,variant,2.5):task_name for variant,task_name in zip(news_queries,task_names)}
+            futures={pool.submit(search_bing_news,variant,1.5):task_name for variant,task_name in zip(news_queries,task_names)}
             for completed,future in enumerate(concurrent.futures.as_completed(futures),1):
                 task_name=futures[future]
                 try: rows=future.result()
@@ -293,7 +293,7 @@ def _search_public_web_uncached(query,freshness=None,news_only=None,progress=Non
         return f'Não confirmei fontes para essa pergunta. Resultados de busca ({counts}).{filtered}{reason} Não vou completar por memória.'
     # Keep a small reserve of independent candidates. Some publishers block the
     # reader or expose no text; a failed first choice must not hide the next
-    # current source. At most two page requests run concurrently.
+    # current source.
     candidates=[]; selected_sources=set()
     for item in found:
         if freshness and item['published'] and not _publication_within_window(item['published'],freshness): continue
@@ -303,11 +303,38 @@ def _search_public_web_uncached(query,freshness=None,news_only=None,progress=Non
             if source in selected_sources: continue
             selected_sources.add(source)
         candidates.append(item)
-        if len(candidates)>=(6 if freshness or latest_version else 2): break
+        if len(candidates)>=(4 if freshness or latest_version else 2): break
     if not candidates:
         if freshness: return 'Não encontrei páginas com data recente verificável para confirmar esse fato. Não vou apresentar um resultado sem data como atual.'
         candidates=found[:2]
-    report(stage='reading',tasks=[item.get('title','Fonte')[:72] for item in candidates[:6]],workers=2,completed=0,total=min(6,len(candidates)),sources=[{key:item.get(key,'') for key in ('provider','title','snippet','url','host','publisher','published')} for item in candidates[:4]])
+    # --- FAST PATH: skip page reads when snippets are already rich enough ---
+    # If we have 2+ candidates with substantial snippets and we do NOT need
+    # a freshness-verified page date, return search snippets directly. This
+    # saves ~1.2-1.4s of page-read timeout per query.
+    def _snippets_are_rich(items, min_len=90, min_count=2):
+        return sum(1 for item in items if len(item.get('snippet',''))>=min_len)>=min_count
+    skip_page_reads=(
+        not latest_version  # version queries MUST read pages (need text match)
+        and not news_only   # news queries already carry dated snippets from feed
+        and _snippets_are_rich(candidates)
+    )
+    if skip_page_reads:
+        report(stage='reading',tasks=['Usando trechos da busca (rápido)'],workers=0,completed=1,total=1,sources=[{key:item.get(key,'') for key in ('provider','title','snippet','url','host','publisher','published')} for item in candidates[:4]])
+        found=candidates
+        output=[]
+        checked=datetime.now().astimezone().strftime('%d/%m/%Y %H:%M %Z')
+        for item in found[:8]:
+            label=item['title'][:180]
+            if item['published']:
+                publisher=item.get('publisher') or item.get('host') or item['provider']
+                label+=f' [{publisher} · {item["published"]}]'
+            snippet_limit=350
+            line=label+(f' :: {item["snippet"][:snippet_limit]}' if item['snippet'] else '')+f' — {item["url"]}'
+            output.append(line)
+        sources=', '.join(dict.fromkeys(item['provider'] for item in found))
+        return f'Resultados de {sources}; consulta executada em {checked}. Relevância e atualidade precisam ser conferidas antes de afirmar fatos:\n'+'\n'.join(output)
+    # --- FULL PATH: read pages to extract excerpts and verify dates ---
+    report(stage='reading',tasks=[item.get('title','Fonte')[:72] for item in candidates[:4]],workers=3,completed=0,total=min(4,len(candidates)),sources=[{key:item.get(key,'') for key in ('provider','title','snippet','url','host','publisher','published')} for item in candidates[:4]])
     attempted=[]
     page_rejected={'fora_da_janela':0,'data_nao_verificada':0,'sem_conteudo':0}
     def read_page_batch(batch):
@@ -347,16 +374,21 @@ def _search_public_web_uncached(query,freshness=None,news_only=None,progress=Non
             and not item.get('unverified_page_date') and not item.get('page_unavailable')
             and (not item.get('feed_published') or item.get('page_date_verified') or item.get('feed_date_accepted'))]
     next_candidate=0
-    # Process at most 1 fast batch of 3 candidate pages instead of chaining multiple slow batches
-    while next_candidate<min(3,len(candidates)):
-        batch=candidates[next_candidate:next_candidate+3]
+    # News queries use batch size 2 so a blocked publisher triggers a retry with
+    # the next candidate. Other queries use batch size 3 (no retry needed).
+    batch_size=2 if news_only else 3
+    max_pages_to_read=4 if news_only else 3
+    while next_candidate<min(max_pages_to_read,len(candidates)):
+        batch=candidates[next_candidate:next_candidate+batch_size]
         next_candidate+=len(batch)
         read_page_batch(batch)
-        report(stage='reading',tasks=[item.get('title','Fonte')[:72] for item in candidates[:6]],workers=3,completed=len(attempted),total=min(3,len(candidates)),sources=[{key:item.get(key,'') for key in ('provider','title','snippet','url','host','publisher','published')} for item in attempted[:4]],page_rejected=dict(page_rejected))
+        report(stage='reading',tasks=[item.get('title','Fonte')[:72] for item in candidates[:6]],workers=3,completed=len(attempted),total=min(max_pages_to_read,len(candidates)),sources=[{key:item.get(key,'') for key in ('provider','title','snippet','url','host','publisher','published')} for item in attempted[:4]],page_rejected=dict(page_rejected))
+        good=usable_pages()
         if latest_version:
-            if _version_source_consensus(usable_pages()): break
-        elif usable_pages():
-            break
+            if _version_source_consensus(good): break
+        elif good:
+            # For news queries keep going until we have 2+ usable pages or exhaust candidates
+            if not news_only or len(good)>=2: break
     # Fallback to candidates if usable_pages is empty because of overly strict freshness date parsing
     if (freshness or latest_version):
         found = usable_pages()
