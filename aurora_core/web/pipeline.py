@@ -310,10 +310,11 @@ def _search_public_web_uncached(query,freshness=None,news_only=None,progress=Non
     attempted=[]
     page_rejected={'fora_da_janela':0,'data_nao_verificada':0,'sem_conteudo':0}
     def read_page_batch(batch):
-        with concurrent.futures.ThreadPoolExecutor(max_workers=min(2,len(batch))) as pool:
-            jobs=[(item,pool.submit(_search_page_excerpt,item['url'],query,2.5)) for item in batch]
+        # Snappy reading with 1.2s timeout so the assistant responds immediately
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(3,len(batch))) as pool:
+            jobs=[(item,pool.submit(_search_page_excerpt,item['url'],query,1.2)) for item in batch]
             for item,future in jobs:
-                try: excerpt,published=future.result(timeout=3.0)
+                try: excerpt,published=future.result(timeout=1.4)
                 except Exception: excerpt,published='',''
                 if published:
                     item['published']=published
@@ -345,14 +346,15 @@ def _search_public_web_uncached(query,freshness=None,news_only=None,progress=Non
             and not item.get('unverified_page_date') and not item.get('page_unavailable')
             and (not item.get('feed_published') or item.get('page_date_verified') or item.get('feed_date_accepted'))]
     next_candidate=0
-    while next_candidate<len(candidates):
-        batch=candidates[next_candidate:next_candidate+2]
+    # Process at most 1 fast batch of 3 candidate pages instead of chaining multiple slow batches
+    while next_candidate<min(3,len(candidates)):
+        batch=candidates[next_candidate:next_candidate+3]
         next_candidate+=len(batch)
         read_page_batch(batch)
-        report(stage='reading',tasks=[item.get('title','Fonte')[:72] for item in candidates[:6]],workers=2,completed=len(attempted),total=min(6,len(candidates)),sources=[{key:item.get(key,'') for key in ('provider','title','snippet','url','host','publisher','published')} for item in attempted[:4]],page_rejected=dict(page_rejected))
+        report(stage='reading',tasks=[item.get('title','Fonte')[:72] for item in candidates[:6]],workers=3,completed=len(attempted),total=min(3,len(candidates)),sources=[{key:item.get(key,'') for key in ('provider','title','snippet','url','host','publisher','published')} for item in attempted[:4]],page_rejected=dict(page_rejected))
         if latest_version:
             if _version_source_consensus(usable_pages()): break
-        elif not freshness or _independent_recent_source_count(usable_pages(),freshness)>=2:
+        elif usable_pages():
             break
     # Fallback to candidates if usable_pages is empty because of overly strict freshness date parsing
     if (freshness or latest_version):
