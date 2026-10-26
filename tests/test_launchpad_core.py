@@ -267,6 +267,24 @@ def test_latest_launchpad_update_requires_newer_signed_metadata():
     assert latest_launchpad_update(releases, "0.3.2") is None
 
 
+def test_latest_launchpad_update_finds_verified_rpm_in_prerelease():
+    asset = {
+        "name": "aurora-launchpad-0.4.9-1.fc44.noarch.rpm",
+        "browser_download_url": "https://github.com/Nylofofin/Aurora/releases/download/v3.2.0-beta.1/aurora-launchpad-0.4.9-1.fc44.noarch.rpm",
+        "digest": "sha256:" + "c" * 64,
+        "size": 1234,
+    }
+    release = {
+        "tag_name": "v3.2.0-beta.1", "published_at": "2026-10-26T01:40:23Z",
+        "draft": False, "prerelease": True, "assets": [asset],
+    }
+
+    update = latest_launchpad_update([release], "0.4.8")
+
+    assert update["asset"] is asset
+    assert latest_launchpad_update([release], "0.4.9") is None
+
+
 def test_latest_launchpad_update_rejects_untrusted_asset_metadata():
     bad = {
         "name": "aurora-launchpad-9.9.9-1.fc44.noarch.rpm",

@@ -57,7 +57,7 @@ from aurora_launchpad_core import (
 
 
 APP_ID = "com.nylofofin.AuroraLaunchpad"
-INSTALLER_VERSION = "0.4.9"
+INSTALLER_VERSION = "0.5.0"
 PKEXEC = "/usr/bin/pkexec"
 SYSTEMCTL = "/usr/bin/systemctl"
 DNF = "/usr/bin/dnf"
@@ -159,7 +159,7 @@ def fetch_release_recommendations():
 
 
 def fetch_launchpad_update():
-    """Return the newest stable Launchpad RPM, if this copy is outdated."""
+    """Return the newest verified Launchpad RPM, including beta releases."""
     api = f"https://api.github.com/repos/{GITHUB_REPOSITORY}"
     releases = _github_json(api + "/releases?per_page=100")
     return latest_launchpad_update(releases, INSTALLER_VERSION)

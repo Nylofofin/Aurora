@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-only
 Name:           aurora-launchpad
-Version:        0.4.9
+Version:        0.5.0
 Release:        1%{?dist}
 Summary:        Aurora Studio installer and personalization manager
 License:        GPL-3.0-only
@@ -45,6 +45,10 @@ install -Dpm0644 launchpad/aurora-launchpad.desktop %{buildroot}%{_datadir}/appl
 %{_datadir}/icons/hicolor/scalable/apps/com.nylofofin.AuroraLaunchpad.svg
 
 %changelog
+* Sun Oct 25 2026 Aurora Project <nylofofin@localhost> - 0.5.0-1
+- Detect verified Launchpad updates published in Aurora pre-releases.
+- Keep the mandatory self-update button available to older Launchpad builds.
+
 * Sun Oct 25 2026 Aurora Project <nylofofin@localhost> - 0.4.9-1
 - Rename the graphical app to Aurora Studio and describe expanded profile customization.
 

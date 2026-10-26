@@ -138,16 +138,17 @@ def _rpm_version_key(value: str) -> tuple[int, ...] | None:
 def latest_launchpad_update(releases, current_version: str) -> dict | None:
     """Return the newest published Launchpad RPM newer than ``current_version``.
 
-    Release metadata is untrusted: only an exact RPM filename, a GitHub release
-    download URL and a SHA-256 digest are accepted.  The caller still verifies
-    the bytes before asking dnf to install them.
+    Include stable and pre-release entries: a Launchpad build may ship alongside
+    an Aurora beta. Release metadata is untrusted, so only an exact RPM filename,
+    a GitHub release download URL and a SHA-256 digest are accepted. The caller
+    still verifies the bytes before asking dnf to install them.
     """
     current = _rpm_version_key(current_version)
     if current is None:
         return None
     candidates: list[tuple[tuple[int, ...], str, dict, dict]] = []
     for release in releases if isinstance(releases, list) else ():
-        if not isinstance(release, dict) or release.get("draft") or release.get("prerelease"):
+        if not isinstance(release, dict) or release.get("draft"):
             continue
         published = str(release.get("published_at") or "")
         for asset in release.get("assets") if isinstance(release.get("assets"), list) else ():
