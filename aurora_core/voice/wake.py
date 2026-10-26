@@ -190,10 +190,15 @@ class LocalVoice(QThread):
                 from .stt import transcribe_pcm
                 command=transcribe_pcm(pcm,SAMPLE_RATE,self.cfg.get('assistant_name','Aurora'))
                 if not command:
+                    print('[voice] Whisper retornou texto vazio; fallback local para Vosk',file=sys.stderr,flush=True)
                     command=fallback; outcome='vosk_fallback'
-            except Exception:
+            except Exception as exc:
                 # Preserve command usability if the larger local decoder fails;
                 # this fallback is still Vosk on-device and never sends audio out.
+                # Log only the exception type: diagnostics must not retain the
+                # microphone audio, transcript, or filesystem details.
+                print(f'[voice] Whisper indisponível; fallback local para Vosk ({type(exc).__name__})',
+                      file=sys.stderr,flush=True)
                 command=fallback; outcome='vosk_fallback'
         log_voice_timing('stt',elapsed_ms(started),outcome)
         command=self.strip_wake_word(command,self.cfg.get('assistant_name','Aurora'))

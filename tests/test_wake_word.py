@@ -98,6 +98,21 @@ def test_uncertain_vosk_transcript_uses_whisper_and_keeps_vosk_fallback(monkeypa
     assert voice.local_transcribe(b"pcm", "luna", 0.4) == "abra o navegador"
 
 
+def test_whisper_failure_uses_vosk_and_logs_only_safe_failure_type(monkeypatch, capsys):
+    import aurora_core.voice.stt as stt
+
+    def unavailable(*_args):
+        raise RuntimeError("private file path and transcript must not be logged")
+
+    monkeypatch.setattr(stt, "transcribe_pcm", unavailable)
+    voice = LocalVoice({"assistant_name": "Luna"})
+    assert voice.local_transcribe(b"pcm", "Ei Luna, abra o navegador", 0.4) == "abra o navegador"
+    output = capsys.readouterr().err
+    assert "RuntimeError" in output
+    assert "private file path" not in output
+    assert "abra o navegador" not in output
+
+
 def test_whisper_audio_context_scales_to_short_commands():
     from aurora_core.voice.stt import SAMPLE_RATE, _audio_context
 
