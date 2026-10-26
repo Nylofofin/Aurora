@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from urllib.parse import urlparse, urlencode, urljoin, parse_qs
-import base64, concurrent.futures, os, re, threading, time, urllib.request
+import base64, concurrent.futures, os, re, threading, time, unicodedata, urllib.request
 import xml.etree.ElementTree as ET
 from ..system.files import normalize_words
 from .intent import _fresh_query_terms, _search_query_variants, _search_relevance, _search_term_forms, asks_latest_version, current_search_window, international_news_only, news_search_intent
@@ -365,7 +365,9 @@ def _search_public_web_uncached(query,freshness=None,news_only=None,progress=Non
                 f'Descartes na leitura: {page_rejected["data_nao_verificada"]} sem data verificável e '
                 f'{page_rejected["sem_conteudo"]} sem trecho legível.')
     if freshness:
-        if _independent_recent_source_count(found,freshness)<2:
+        is_commercial = bool(re.search(r'\b(quanto custa|quanto sai|quanto vale|qual o preco|preco de|preco do|preco da|valor de|valor do|valor da|comprar|custo|how much|cost|price)\b', unicodedata.normalize('NFKD', query).encode('ascii', 'ignore').decode('ascii').lower()))
+        min_sources = 1 if is_commercial else 2
+        if _independent_recent_source_count(found,freshness)<min_sources:
             return 'As fontes encontradas não bastam para confirmar esse fato atual: preciso de duas publicações independentes, recentes e datadas. Não vou completar a resposta por memória.'
     if latest_version and not _version_source_consensus(found):
         return 'Não consegui confirmar a versão mais recente em duas páginas independentes. Não vou escolher um número sem corroborar.'

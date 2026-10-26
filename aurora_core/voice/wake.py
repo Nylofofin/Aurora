@@ -289,20 +289,20 @@ class LocalVoice(QThread):
                         if not self.request_active.is_set() and active:
                             active=False; buffer=[]; wake_audio=[]; rec.Reset(); wake_rec.Reset(); self.status.emit('hidden')
                         if self.speaking:
-                            # Barge-in: two consecutive energetic 100 ms blocks
-                            # interrupt Edge playback and arm a fresh command.
-                            # The exact wake word is not required while the
-                            # current response is being interrupted.
-                            if self.normalized_audio_level(block) >= .24:
-                                barge_frames += 1
-                            else:
-                                barge_frames = 0
-                            if barge_frames >= 2:
-                                barge_frames = 0; self.speaking=False
-                                self.one_shot.set(); self.barge_in.emit(); self.status.emit('listening')
-                            if self.speaking: continue
-                        else:
+                            # While Aurora is speaking, do not interrupt merely based on
+                            # raw audio energy, which is triggered by speaker output/echo.
+                            # Only deliberate speech cancellation or an explicit barge-in
+                            # via grammar ("para", "cancela", wake word) should stop speech.
                             barge_frames = 0
+                            finalized_cancel=cancel_rec.AcceptWaveform(block)
+                            if finalized_cancel:
+                                cancel_text=parse_vosk_result(cancel_rec.Result(),'cancelamento').get('text','').strip()
+                                cancel_rec.Reset()
+                                if self.is_final_cancel_phrase(cancel_text,True):
+                                    self.cancel_control_active.clear(); self.interrupt_active.clear()
+                                    self.speaking=False
+                                    self.cancel_control.emit()
+                            continue
                         if self.interrupt_active.is_set() or self.cancel_control_active.is_set():
                             finalized_cancel=cancel_rec.AcceptWaveform(block)
                             if finalized_cancel:
