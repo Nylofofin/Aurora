@@ -331,22 +331,26 @@ def test_right_click_is_wired_to_stop_the_current_request():
     assert "self.orb.hide_requested.connect(self.stop_conversation)" in service
 
 
-def test_orb_is_only_a_clean_animated_sphere():
+def test_orb_stays_round_with_distinct_skin_details_and_orbits():
     from pathlib import Path
 
     root = Path(aurora.__file__).parent
     source = (root / "orb.qml").read_text()
     orb = (root / "aurora_core" / "ui" / "orb.py").read_text()
-    assert "PathAngleArc { centerX: 48; centerY: 34; radiusX: 39; radiusY: 28" in source
+    assert "readonly property string orbPath" in source
     assert "property real sheenTravel" in source and "entranceActive" not in source and "exitActive" not in source
     assert source.count("PathCubic {") >= 2 and "morphPhase" not in source
+    assert "property real orbitPhase" in source
+    assert 'visible: root.bubbleStyle === "amethyst"' in source
+    assert 'visible: root.bubbleStyle === "titan"' in source
+    assert "NumberAnimation on orbitPhase" in source
     assert "RadialGradient" in source and "LinearGradient" in source
     assert "inputLevel" in source and "voiceEnergy" in source
     assert "SmoothedAnimation" in source and "activeEnergy" in source
     assert source.count("Shape {") >= 3
     assert "duration: root.mode === \"searching\" ? 1550" in source
     assert "statusText" not in source and "statusBadge" not in source
-    assert "voiceGlyph" not in source and "thoughtCore" not in source and "orbit" not in source
+    assert "voiceGlyph" not in source and "thoughtCore" not in source
     assert "Text {" not in source and "Repeater {" not in source
     assert "self.scale_anim.setStartValue(.68)" in orb
     assert "QEasingCurve.Type.OutBack" in orb and "QEasingCurve.Type.InBack" in orb
