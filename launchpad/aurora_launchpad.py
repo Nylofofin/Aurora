@@ -57,7 +57,7 @@ from aurora_launchpad_core import (
 
 
 APP_ID = "com.nylofofin.AuroraLaunchpad"
-INSTALLER_VERSION = "0.5.0"
+INSTALLER_VERSION = "0.5.1"
 PKEXEC = "/usr/bin/pkexec"
 SYSTEMCTL = "/usr/bin/systemctl"
 DNF = "/usr/bin/dnf"
@@ -654,7 +654,7 @@ class Launchpad(Adw.Application):
             options = recommend_releases(releases)
             update = latest_launchpad_update(releases, INSTALLER_VERSION)
             newer = newer_aurora_releases(
-                releases, self.installed_aurora_version, 100, stable_only=True
+                releases, self.installed_aurora_version, 100
             ) if self.existing_install else ()
             GLib.idle_add(self._show_release_options, options, None, update, newer)
         except Exception as exc:
@@ -698,7 +698,7 @@ class Launchpad(Adw.Application):
                 )
             else:
                 self.aurora_update_status.set_text(
-                    f"Aurora {self.installed_aurora_version} já está na versão estável mais recente."
+                    f"Aurora {self.installed_aurora_version} já está na versão publicada mais recente."
                 )
             self._refresh_maintenance_status()
             return False
@@ -767,7 +767,7 @@ class Launchpad(Adw.Application):
             return
         self.aurora_update_in_progress = True
         self.aurora_update_button.set_sensitive(False)
-        self.aurora_update_status.set_text("Buscando a versão estável mais recente no GitHub…")
+        self.aurora_update_status.set_text("Buscando a versão publicada mais recente no GitHub, incluindo pré-releases…")
         threading.Thread(target=self._aurora_update_worker, daemon=True).start()
 
     def _aurora_update_worker(self):
@@ -775,7 +775,7 @@ class Launchpad(Adw.Application):
             api = f"https://api.github.com/repos/{GITHUB_REPOSITORY}"
             releases = _github_json(api + "/releases?per_page=100")
             candidates = newer_aurora_releases(
-                releases, self.installed_aurora_version, 100, stable_only=True
+                releases, self.installed_aurora_version, 100
             )
             if not candidates:
                 GLib.idle_add(self._aurora_already_current)
@@ -788,7 +788,7 @@ class Launchpad(Adw.Application):
         self.aurora_update_in_progress = False
         self.aurora_update_button.set_sensitive(True)
         self.aurora_update_status.set_text(
-            f"Aurora {self.installed_aurora_version} já está na versão estável mais recente."
+            f"Aurora {self.installed_aurora_version} já está na versão publicada mais recente."
         )
         return False
 
@@ -798,7 +798,8 @@ class Launchpad(Adw.Application):
         self.aurora_update_mode = True
         self.failed_operation = "update"
         self.progress_title.set_text("Atualizando Aurora")
-        self.progress_subtitle.set_text(f"Preparando a versão estável {release['tag_name']}.")
+        channel = "pré-release experimental" if release.get("prerelease") else "versão estável"
+        self.progress_subtitle.set_text(f"Preparando {channel} {release['tag_name']}.")
         self.stack.set_visible_child_name("progress")
         self.lines.clear()
         self._append(f"Atualizando Aurora para {release['tag_name']}…")
