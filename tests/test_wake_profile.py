@@ -20,6 +20,21 @@ def test_wake_profile_keeps_only_features_and_matches_enrolled_voice():
     assert matches(profile, samples[0])
 
 
+def test_wake_profile_ignores_recording_silence_and_pace_alignment():
+    samples = [_tone(220, phase) for phase in (0.0, 0.08, 0.16, 0.24)]
+    profile = enroll("Luna", samples)
+    speech = _tone(220, 0.08)
+    padded = bytes(16_000 * 2 // 2) + speech + bytes(16_000 * 2 // 2)
+    assert matches(profile, padded)
+
+
+def test_legacy_profile_remains_usable_after_feature_upgrade():
+    samples = [_tone(220, phase) for phase in (0.0, 0.08, 0.16)]
+    current = enroll("Luna", samples)
+    legacy = {**current, "version": 1}
+    assert matches(legacy, samples[0])
+
+
 def test_wake_profile_does_not_match_silence():
     samples = [_tone(220, phase) for phase in (0.0, 0.08, 0.16)]
     profile = enroll("Luna", samples)

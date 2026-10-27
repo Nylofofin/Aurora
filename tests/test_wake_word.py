@@ -98,6 +98,15 @@ def test_uncertain_vosk_transcript_uses_whisper_and_keeps_vosk_fallback(monkeypa
     assert voice.local_transcribe(b"pcm", "luna", 0.4) == "abra o navegador"
 
 
+def test_one_character_whisper_glitch_recovers_the_substantive_vosk_text(monkeypatch):
+    import aurora_core.voice.stt as stt
+
+    monkeypatch.setattr(stt, "transcribe_pcm", lambda *_args: "a")
+    voice = LocalVoice({"assistant_name": "Luna"})
+
+    assert voice.local_transcribe(b"pcm", "Ei, Luna, abra o terminal", 0.4) == "abra o terminal"
+
+
 def test_whisper_failure_uses_vosk_and_logs_only_safe_failure_type(monkeypatch, capsys):
     import aurora_core.voice.stt as stt
 
@@ -168,40 +177,6 @@ def test_wake_session_is_a_single_request_gate():
     voice.end_request()
     assert not voice.request_active.is_set()
     assert not voice.one_shot.is_set()
-
-
-def test_phone_wake_audio_is_accepted_only_during_mobile_control_and_is_bounded():
-    voice = LocalVoice({})
-    assert not voice.feed_mobile_audio(b"\0\0")
-    voice.mobile_owned.set()
-    assert not voice.feed_mobile_audio(b"\0")
-    assert not voice.feed_mobile_audio(b"\0" * 32_002)
-
-
-def test_phone_wake_audio_is_evaluated_by_vosk_on_its_owner_thread():
-    import json
-    from PySide6.QtCore import QThread
-
-    class FakeWakeRecognizer:
-        def AcceptWaveform(self, _block): return True
-        def Result(self): return json.dumps({"text": "aurora"})
-        def Reset(self): pass
-
-    voice = LocalVoice({})
-    voice.mobile_owned.set()
-
-    class WakeWorker(QThread):
-        def run(self):
-            voice._drain_mobile_audio(FakeWakeRecognizer())
-
-    worker = WakeWorker()
-    worker.start()
-    try:
-        assert voice.feed_mobile_audio(b"\0\0") is True
-    finally:
-        voice.mobile_owned.clear()
-        assert worker.wait(1000)
-    assert not worker.isRunning()
 
 
 def test_wake_detection_stays_suppressed_until_request_finishes_but_allows_click():
@@ -279,12 +254,14 @@ def test_speaker_interrupt_discards_queued_speech():
 
 def test_voice_preview_queues_selected_voice_without_changing_saved_voice():
     speaker = aurora.Speaker({"tts_voice": "pt_BR-faber-medium"})
-    speaker.say_with_voice("Olá!", "supertonic:F1", engine="supertonic")
-    text, _queued_at, voice, engine, is_preview = speaker.q.get_nowait()
+    speaker.say_with_voice("Olá!", "pt_BR-faber-medium", pitch=1.1, speed=0.9)
+    text, _queued_at, voice, engine, is_preview, pitch, speed = speaker.q.get_nowait()
     assert text == "Olá!"
-    assert voice == "supertonic:F1"
-    assert engine == "supertonic"
+    assert voice == "pt_BR-faber-medium"
+    assert engine == "piper"
     assert is_preview
+    assert pitch == 1.1
+    assert speed == 0.9
     assert speaker.cfg["tts_voice"] == "pt_BR-faber-medium"
 
 

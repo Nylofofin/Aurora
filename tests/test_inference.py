@@ -7,6 +7,22 @@ import aurora_core.llm.inference as inference_module
 from aurora_core.web.language import likely_portuguese, likely_spanish
 
 
+def test_streaming_releases_long_clause_before_model_finishes():
+    prefix = "A Aurora já começou a responder em voz alta,"
+    suffix = " e continua processando o restante da mensagem"
+    chunks, tail = inference_module._take_spoken_chunks(prefix + suffix)
+
+    assert chunks == [prefix]
+    assert tail == suffix.lstrip()
+
+
+def test_streaming_keeps_unpunctuated_final_text_for_speech():
+    chunks, tail = inference_module._take_spoken_chunks("Resposta que termina sem pontuação", final=True)
+
+    assert chunks == ["Resposta que termina sem pontuação"]
+    assert tail == ""
+
+
 def test_spanish_output_is_detected_and_never_spoken_as_portuguese_when_translation_fails(monkeypatch):
     spanish = "La grabación comenzó correctamente. Ya puedes pedirme que la detenga."
     portuguese = "A gravação começou corretamente. Você pode pedir para eu parar."

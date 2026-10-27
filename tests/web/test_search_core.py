@@ -29,6 +29,18 @@ def test_stale_publication_is_rejected_and_recent_is_accepted():
     assert metadata.dates[0][1].startswith("2025-")
 
 
+def test_old_year_month_archive_url_cannot_masquerade_as_fresh_news():
+    assert aurora._has_stale_url_date(
+        "https://www.gov.br/mcti/noticias/2022/08/artigo", "1d", now=NOW,
+    )
+    assert aurora._has_stale_url_date(
+        "https://example.org/news/2026/10/story", "1d", now=NOW,
+    )
+    assert not aurora._has_stale_url_date(
+        "https://example.org/news/2026/10/22/story", "1d", now=NOW,
+    )
+
+
 def test_page_metadata_reads_json_ld_publication_dates():
     metadata = aurora.PageMetadata()
     metadata.feed('''<html><script type="application/ld+json">

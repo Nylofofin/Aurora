@@ -34,7 +34,7 @@ class ResearchCard(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setWindowTitle("Aurora · pesquisa")
-        self.resize(376, 408)
+        self.resize(620, 352)
         self.generation = None
         self.mode = "web"
         self._anchor = None
@@ -57,8 +57,8 @@ class ResearchCard(QWidget):
         self.panel.setObjectName("researchPanel")
         outer.addWidget(self.panel)
         layout = QVBoxLayout(self.panel)
-        layout.setContentsMargins(16, 14, 16, 15)
-        layout.setSpacing(8)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(10)
 
         top = QHBoxLayout()
         brand = QLabel("Aurora")
@@ -87,22 +87,36 @@ class ResearchCard(QWidget):
         self.stage_label = QLabel("Aguardando")
         self.stage_label.setObjectName("stage")
         self.stage_label.setTextFormat(Qt.TextFormat.PlainText)
-        layout.addWidget(self.stage_label)
         self.progress = QProgressBar()
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
         self.progress.setTextVisible(False)
-        layout.addWidget(self.progress)
-
+        body = QHBoxLayout()
+        body.setSpacing(14)
+        layout.addLayout(body, 1)
+        self.activity_panel = QFrame()
+        self.activity_panel.setObjectName("activityPanel")
+        activity_layout = QVBoxLayout(self.activity_panel)
+        activity_layout.setContentsMargins(12, 12, 12, 12)
+        activity_layout.setSpacing(9)
+        activity_layout.addWidget(self.stage_label)
+        activity_layout.addWidget(self.progress)
         self.worker_list = QVBoxLayout()
         self.worker_list.setSpacing(4)
-        layout.addLayout(self.worker_list)
+        activity_layout.addLayout(self.worker_list)
+        activity_layout.addStretch(1)
+        body.addWidget(self.activity_panel, 2)
         self.worker_labels = []
 
-        self.source_heading = QLabel("Fontes")
+        self.sources_panel = QFrame()
+        self.sources_panel.setObjectName("sourcesPanel")
+        sources_layout = QVBoxLayout(self.sources_panel)
+        sources_layout.setContentsMargins(12, 12, 12, 12)
+        sources_layout.setSpacing(8)
+        self.source_heading = QLabel("Resultados em validação")
         self.source_heading.setObjectName("sectionTitle")
         self.source_heading.setTextFormat(Qt.TextFormat.PlainText)
-        layout.addWidget(self.source_heading)
+        sources_layout.addWidget(self.source_heading)
         self.source_area = QScrollArea()
         self.source_area.setWidgetResizable(True)
         self.source_area.setFrameShape(QFrame.Shape.NoFrame)
@@ -113,9 +127,10 @@ class ResearchCard(QWidget):
         self.source_layout.setContentsMargins(0, 0, 0, 0)
         self.source_layout.setSpacing(6)
         self.source_area.setWidget(self.source_content)
-        self.source_area.setMinimumHeight(72)
-        self.source_area.setMaximumHeight(146)
-        layout.addWidget(self.source_area)
+        self.source_area.setMinimumHeight(100)
+        self.source_area.setMaximumHeight(210)
+        sources_layout.addWidget(self.source_area, 1)
+        body.addWidget(self.sources_panel, 3)
 
         self.answer = QLabel("")
         self.answer.setObjectName("answer")
@@ -160,6 +175,7 @@ class ResearchCard(QWidget):
         self._clear_sources()
         self.source_heading.setVisible(mode != "local")
         self.source_area.setVisible(mode != "local")
+        self.sources_panel.setVisible(mode != "local")
         self.progress.setValue(5 if mode == "local" else 8)
         self._show_near(anchor)
 
@@ -173,6 +189,7 @@ class ResearchCard(QWidget):
             visible=self.mode != "local"
             self.source_heading.setVisible(visible)
             self.source_area.setVisible(visible)
+            self.sources_panel.setVisible(visible)
             self._show_near(self._anchor)
         stage = event.get("stage", "searching")
         if stage not in {"planning", "searching", "executing"}:
@@ -288,11 +305,24 @@ class ResearchCard(QWidget):
             if excerpt.text(): box.addWidget(excerpt)
             self.source_layout.addWidget(card)
         if not items:
-            empty = QLabel("Nenhuma fonte verificável chegou à etapa de síntese.")
+            empty = QLabel("A busca não retornou fontes que passaram pela validação.")
             empty.setObjectName("muted")
             empty.setTextFormat(Qt.TextFormat.PlainText)
             empty.setWordWrap(True)
             self.source_layout.addWidget(empty)
+
+    def mark_unverified(self, generation):
+        """Keep candidate results visible while clearly separating them from evidence."""
+        if generation != self.generation:
+            return
+        self.source_heading.setText("Candidatos sem confirmação")
+        self.set_sources(generation, self._live_sources)
+
+    def mark_verified(self, generation, items):
+        if generation != self.generation:
+            return
+        self.set_sources(generation, items)
+        self.source_heading.setText("Fontes usadas na resposta")
 
     def finish(self, generation, answer):
         if generation != self.generation:
@@ -343,7 +373,8 @@ class ResearchCard(QWidget):
         )
         self.source_content.setStyleSheet("background: transparent;")
         self.panel.setStyleSheet(
-            f"QFrame#researchPanel {{ background: {c['surface']}; border: 1px solid {c['outline']}; border-radius: 26px; }}"
+            f"QFrame#researchPanel {{ background: {c['surface']}; border: 1px solid {c['outline']}; border-radius: 24px; }}"
+            f"QFrame#activityPanel, QFrame#sourcesPanel {{ background: {c['container']}; border: 1px solid {c['outline']}; border-radius: 18px; }}"
             f"QLabel {{ color: {c['text']}; background: transparent; border: 0; }}"
             f"QLabel#brand {{ color: {c['primary']}; font-size: 15px; font-weight: 650; }}"
             f"QLabel#kind {{ color: {c['secondary']}; background: {c['container']}; border-radius: 11px; padding: 4px 9px; font-size: 11px; }}"
@@ -438,19 +469,19 @@ class ResearchCard(QWidget):
                 widget.deleteLater()
 
     def _show_near(self, anchor):
+        preferred_width = 620 if self.mode != "local" else 410
+        preferred_height = 360 if self.mode != "local" else 320
         if anchor is None or anchor.isNull():
             screen = QApplication.primaryScreen()
             area = screen.availableGeometry() if screen else self.geometry()
-            self.resize(min(384, max(320, area.width() - 24)), min(420, max(320, area.height() - 32)))
-            if self.mode == "local": self.resize(self.width(), min(self.height(), 352))
-            self.source_area.setMaximumHeight(min(136, max(72, self.height() - 280)))
+            self.resize(min(preferred_width, max(320, area.width() - 24)), min(preferred_height, max(280, area.height() - 32)))
+            self.source_area.setMaximumHeight(min(210, max(72, self.height() - 170)))
             target = QPoint(area.right() - self.width() - 24, area.bottom() - self.height() - 24)
         else:
             screen = QApplication.screenAt(anchor.center()) or QApplication.primaryScreen()
             area = screen.availableGeometry() if screen else self.geometry()
-            self.resize(min(384, max(320, area.width() - 24)), min(420, max(320, area.height() - 32)))
-            if self.mode == "local": self.resize(self.width(), min(self.height(), 352))
-            self.source_area.setMaximumHeight(min(136, max(72, self.height() - 280)))
+            self.resize(min(preferred_width, max(320, area.width() - 24)), min(preferred_height, max(280, area.height() - 32)))
+            self.source_area.setMaximumHeight(min(210, max(72, self.height() - 170)))
             gap = 14
             left = anchor.left() - self.width() - gap
             right = anchor.right() + gap

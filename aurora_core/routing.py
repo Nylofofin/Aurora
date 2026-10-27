@@ -10,7 +10,7 @@ from .system.files import normalize_words
 from .voice.wake import LocalVoice
 from .web.intent import (
     contextual_followup, contextual_source_request, current_search_window,
-    factual_web_intent, local_datetime_answer, news_search_intent,
+    conversational_intent, local_datetime_answer, news_search_intent,
     requested_response_language, research_request_intent, search_intent,
 )
 from .web.requests import FXRequest, SearchRequest, WeatherRequest
@@ -114,10 +114,14 @@ def route_request(self,prompt):
     agent_intent=(source_followup or refers_to_source or needs_context_search
                   or _agent_action_intent(normalized)
                   or (not query and _local_context_intent(normalized)))
-    # Explicit research wording always remains web research. Inferred freshness
-    # and generic factual-question routes yield to action language so a local
-    # request such as "Como abro o terminal?" is not sent to search first.
-    if not query and not agent_intent and ((freshness and not needs_context_search) or ((factual_web_intent(prompt) or research_request_intent(prompt)) and not is_followup)):
+    # Search only when the user explicitly asks for research, asks for a
+    # clearly time-sensitive answer, or requests a research format (news or a
+    # tutorial). Broad openers like "o que é" and "me explica" are normal
+    # conversation by default; a factual-looking sentence alone is not proof
+    # that the user wants Google.
+    explicit_research = bool(query or research_request_intent(prompt))
+    automatic_freshness = bool(freshness and not needs_context_search and not conversational_intent(prompt))
+    if not query and not agent_intent and (explicit_research or automatic_freshness) and not is_followup:
         query=LocalVoice.strip_wake_word(prompt,self.cfg.get('assistant_name','Aurora')).strip(' \t,.:;!?')
     if query:
         self.current_turn_kind='research'

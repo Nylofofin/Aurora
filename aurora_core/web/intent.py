@@ -71,7 +71,24 @@ def research_request_intent(text):
 
 def guided_learning_intent(text):
     plain=normalize_words(text)
-    return bool(re.search(r'\b(tutorial|tutoriais|guia|guias|passo a passo|instrucoes|manual|dicas para|estrategia para|como jogar|como instalar|como configurar|como montar|me ensina|ensina a|quero aprender|aprenda a)\b',plain))
+    return bool(re.search(r'\b(tutorial|tutoriais|guia|guias|passo a passo|instrucoes|manual|dicas para|estrategia para|como jogar|como instalar|como configurar|como montar|como voce (?:instala|configura|monta|joga)|me ensina|ensina a|quero aprender|aprenda a)\b',plain))
+
+def conversational_intent(text):
+    """Recognize common small-talk/advice turns that should stay in chat.
+
+    This deliberately targets conversational form, not subject matter, so a
+    mention of a current date or an entity does not automatically turn a
+    personal exchange into a web search.
+    """
+    plain=unicodedata.normalize('NFKD',str(text)).encode('ascii','ignore').decode('ascii').lower()
+    return bool(re.search(
+        r'\b(como voce esta|como voce ta|como voce se sente|como voce vai|como vai voce|'
+        r'como foi (?:o )?(?:seu|sua)|tudo bem|quem e voce|o que voce e|qual (?:e )?seu nome|'
+        r'qual sua opiniao|na sua opiniao|o que acha|o que voce acha|o que voce faria|'
+        r'o que eu faco|o que devo fazer|me ajuda a pensar|me aconselha|me da um conselho|'
+        r'queria conversar|vamos conversar|conversa comigo|desabafar|me sinto)\b',plain)
+        or re.search(r'\bcomo voce(?:\s+(?:esta|ta|vai|passa|se sente|se sentindo))?[?.!,\s]*$',plain)
+        or re.search(r'\be ai(?:\s+tudo bem)?[?.!,\s]*$',plain))
 
 def requested_response_language(text):
     """Return a temporary response language from an explicit spoken preference."""
@@ -96,15 +113,16 @@ def current_web_query(query,window=''):
 
 def factual_web_intent(prompt):
     """Recognize ordinary factual questions that need sourced web information."""
+    plain=normalize_words(prompt)
     if re.search(r'\b(arquivo|arquivos|pasta|pastas|documento local|lembra|lembro|minha opiniao|o que acha|o que voce acha|crie|escreva|invente|resuma este texto|calcule)\b',prompt,re.I):
         return False
-    plain=unicodedata.normalize('NFKD',str(prompt)).encode('ascii','ignore').decode('ascii').lower()
-    if re.search(r'\b(como voce esta|como voce ta|como voce se sente|como voce vai|como vai voce|como foi (?:o )?(?:seu|sua)|tudo bem|quem e voce|o que voce e|qual (?:e )?seu nome|qual sua opiniao|minha opiniao|na sua opiniao|o que acha|o que voce acha|o que voce faria|o que eu faco|o que devo fazer|me ajuda a pensar|me aconselha|me da um conselho|queria conversar|vamos conversar|conversa comigo|desabafar|me sinto)\b',plain):
-        return False
+    if conversational_intent(prompt): return False
     if calculate_local_expression(prompt): return False
     if research_request_intent(plain): return True
-    return bool(re.search(r'^\s*(?:aurora[, ]*)?(?:qual\b|quais\b|quem\b|quando\b|onde\b|quanto\b|como\b|por que\b|porque\b|o que\b)',plain) or re.search(
-        r'\b(me fale sobre|me explica|explique|compare|diferenca entre|informacoes sobre|tell me about|how much|what (?:was|were|is|are)|who (?:was|is)|when did|where is|how does)\b',plain))
+    # This predicate is retained for evaluation/compatibility; factual phrasing
+    # alone is not sufficient to dispatch a web search. Freshness and explicit
+    # research are decided by the request router.
+    return bool(current_search_window(plain))
 
 def local_datetime_answer(prompt,now=None):
     """Answer unambiguous local clock/calendar questions without a web request."""

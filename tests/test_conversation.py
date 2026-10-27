@@ -50,7 +50,6 @@ def test_follow_up_turn_rearms_capture_without_wake_feedback(monkeypatch):
         speaker = type("Speaker", (), {"active": False, "q": []})()
         inf = None
         background_requests = []
-        def _mobile_audio_owned(self): return False
 
     monkeypatch.setattr(service_module, "QTimer", Timer)
     stub = Stub()

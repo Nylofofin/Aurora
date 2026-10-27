@@ -250,7 +250,6 @@ def test_timer_completion_announces_locally_and_does_not_reset_an_active_request
         activity_generation = 3
         response_finished = False
         response_summary = "in progress"
-        def _mobile_audio_owned(self): return False
 
     service = Service()
     AuroraService._timer_finished(service, 1, 60)

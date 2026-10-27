@@ -40,7 +40,7 @@ from .voice.tts import Speaker
 from .voice.wake import LocalVoice
 from .web.freshness import _independent_recent_source_count
 from .web.orchestra import plan_research_subagents
-from .web.intent import _result_query_relevance, asks_latest_version, contextual_followup, contextual_source_request, current_search_window, factual_web_intent, local_datetime_answer, news_search_intent, news_unconfirmed_message, requested_response_language, research_request_intent, search_failure_summary, search_intent
+from .web.intent import _result_query_relevance, asks_latest_version, contextual_followup, contextual_source_request, current_search_window, local_datetime_answer, news_search_intent, news_unconfirmed_message, requested_response_language, search_failure_summary, search_intent
 from .web.news_summary import format_news_digest
 from .web.requests import FXRequest, SearchRequest, WeatherRequest
 from .web.pipeline import _version_source_consensus
@@ -757,7 +757,10 @@ class AuroraService(QObject):
                 for relevance_query in relevance_queries)]
         research_card=getattr(self,'research_card',None)
         if generation is not None and research_card:
-            research_card.set_sources(generation,items)
+            if items:
+                research_card.mark_verified(generation,items)
+            else:
+                research_card.mark_unverified(generation)
         if not items:
             message=search_failure_summary(output,self.current_prompt or query)
             self.quick_summary_done(message,generation); return

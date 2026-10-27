@@ -8,9 +8,19 @@
 - Corrige a etapa final do onboarding para exibir a tela de preparação antes de iniciar a assistente.
 - Adiciona um GIF longo e original que percorre o fluxo completo de personalização.
 - Inclui o Aurora Studio 0.4.9 como RPM para Fedora Workstation.
+
+## Próxima atualização — em desenvolvimento
+
 - Remove o cliente Android, o servidor Companion e a síntese Edge TTS do produto desktop.
 - Mantém a voz Faber/Piper e migra preferências antigas de voz para a opção local ativa.
 - Corrige a persistência de configurações inválidas e de opções removidas durante a migração.
+- Remove rotas inativas de Supertonic e áudio móvel do serviço de voz e dos testes associados.
+- Refina o reconhecimento de nomes personalizados: gravações passam a capturar uma janela maior, remover silêncio das bordas e comparar uma referência acústica local com duração normalizada; a transcrição local ainda confirma o nome falado, e perfis anteriores continuam compatíveis.
+- Separa o onboarding em etapas para identidade, preferências de conversa e ativação, com instruções de gravação mais claras e progresso visível.
+- Trata falhas ao carregar o Vosk como erro de configuração, sem encaminhar indevidamente a pessoa para o treinamento de nome.
+- Ajusta o fim de fala, a transmissão de frases ao TTS e a recuperação do reconhecimento local.
+- Distingue melhor conversa de pesquisa, atualiza o cartão de pesquisa e corrige a avaliação da busca.
+- Atualiza o site para explicar o perfil local de ativação e a experiência de personalização.
 
 ## Aurora Desktop 3.1.1 — Eris Skin Cleanup, 2026-10-25 (patch estável)
 

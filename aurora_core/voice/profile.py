@@ -15,7 +15,7 @@ import math
 SAMPLE_RATE = 16_000
 FRAME_SAMPLES = 400  # 25 ms
 FRAME_COUNT = 48
-PROFILE_VERSION = 1
+PROFILE_VERSION = 2
 MIN_MATCH_RMS = 0.02
 MIN_ENROLL_RMS = 0.008
 MIN_VOICED_FRAMES = 4
@@ -51,40 +51,94 @@ def validate_recording(pcm: bytes) -> tuple[bool, str]:
     values = _samples(raw)
     if len(values) < FRAME_SAMPLES * 8:
         return False, "A gravação ficou curta demais. Tente novamente."
-    rms = math.sqrt(sum(sample * sample for sample in values) / len(values))
-    if rms < MIN_ENROLL_RMS:
+    frame_rms = []
+    for start in range(0, len(values) - FRAME_SAMPLES + 1, FRAME_SAMPLES):
+        frame = values[start:start + FRAME_SAMPLES]
+        frame_rms.append(math.sqrt(sum(sample * sample for sample in frame) / len(frame)))
+    peak = max(frame_rms, default=0.0)
+    threshold = max(MIN_ENROLL_RMS, peak * 0.12)
+    voiced_indices = [index for index, level in enumerate(frame_rms) if level >= threshold]
+    if peak < MIN_ENROLL_RMS:
         return False, "Não ouvi o nome com clareza. Fale um pouco mais perto do microfone e tente novamente."
     clipped = sum(abs(sample) >= 0.995 for sample in values) / len(values)
     if clipped > MAX_CLIPPED_RATIO:
         return False, "O áudio distorceu. Afaste um pouco o microfone e tente novamente."
-    voiced = 0
-    for start in range(0, len(values) - FRAME_SAMPLES + 1, FRAME_SAMPLES):
-        frame = values[start:start + FRAME_SAMPLES]
-        frame_rms = math.sqrt(sum(sample * sample for sample in frame) / len(frame))
-        if frame_rms >= MIN_ENROLL_RMS:
-            voiced += 1
-    if voiced < MIN_VOICED_FRAMES:
+    if len(voiced_indices) < MIN_VOICED_FRAMES:
         return False, "Não consegui distinguir a fala do silêncio. Grave o nome novamente."
+    if len(voiced_indices) / (SAMPLE_RATE / FRAME_SAMPLES) < 0.16:
+        return False, "A fala ficou curta demais para comparar. Repita o nome uma vez."
     return True, "Amostra de voz válida."
 
 
+def _voiced_frames(values: list[float]) -> list[list[float]]:
+    frames = [values[start:start + FRAME_SAMPLES]
+              for start in range(0, len(values) - FRAME_SAMPLES + 1, FRAME_SAMPLES)]
+    levels = [math.sqrt(sum(sample * sample for sample in frame) / len(frame)) for frame in frames]
+    peak = max(levels, default=0.0)
+    if peak < MIN_ENROLL_RMS:
+        return []
+    threshold = max(MIN_ENROLL_RMS, peak * 0.12)
+    active = [index for index, level in enumerate(levels) if level >= threshold]
+    if not active:
+        return []
+    # Keep a small amount of consonant onset/decay while dropping the long
+    # recording silence. This makes enrollment independent of when the user
+    # starts speaking inside the capture window.
+    first, last = max(0, active[0] - 2), min(len(frames), active[-1] + 3)
+    return frames[first:last]
+
+
 def feature_vector(pcm: bytes) -> list[float]:
-    """Return a compact, scale-normalized voice signature for ``pcm``."""
+    """Return a time-normalized acoustic template of the spoken wake phrase."""
+    values = _samples(pcm)
+    if not values:
+        return []
+    frames = _voiced_frames(values)
+    if len(frames) < MIN_VOICED_FRAMES:
+        return []
+    # Recordings vary in speaking pace. Resample voiced 25 ms frames into a
+    # fixed-length sequence so comparisons preserve phoneme order without a
+    # heavy ML runtime or storing microphone audio.
+    source_count = len(frames)
+    normalized_frames = []
+    for target_index in range(FRAME_COUNT):
+        source_position = target_index * (source_count - 1) / max(1, FRAME_COUNT - 1)
+        lower = int(source_position)
+        upper = min(source_count - 1, lower + 1)
+        fraction = source_position - lower
+        normalized_frames.append([
+            frames[lower][sample] * (1.0 - fraction) + frames[upper][sample] * fraction
+            for sample in range(FRAME_SAMPLES)
+        ])
+    vector: list[float] = []
+    for frame_index in range(FRAME_COUNT):
+        frame = normalized_frames[frame_index]
+        rms = math.sqrt(sum(sample * sample for sample in frame) / len(frame))
+        crossings = sum(1 for left, right in zip(frame, frame[1:]) if (left < 0) != (right < 0)) / len(frame)
+        vector.extend((min(1.0, rms * 8.0), min(1.0, crossings * 3.0)))
+        # A few stable spectral samples distinguish phonemes without pulling
+        # in a heavyweight ML dependency in the always-on microphone thread.
+        for cosine, sine in _SPECTRAL_COEFFICIENTS:
+            real = sum(sample * coefficient for sample, coefficient in zip(frame, cosine)) / len(frame)
+            imag = sum(sample * coefficient for sample, coefficient in zip(frame, sine)) / len(frame)
+            magnitude = math.sqrt(real * real + imag * imag)
+            vector.append(min(1.0, magnitude / max(rms, 0.01) * 5.0))
+    return vector
+
+
+def _legacy_feature_vector(pcm: bytes) -> list[float]:
+    """Version-1 signature reader so existing enrolled users keep working."""
     values = _samples(pcm)
     if not values:
         return []
     required = FRAME_SAMPLES * FRAME_COUNT
-    if len(values) < required:
-        values += [0.0] * (required - len(values))
-    values = values[:required]
+    values = (values + [0.0] * max(0, required - len(values)))[:required]
     vector: list[float] = []
     for frame_index in range(FRAME_COUNT):
         frame = values[frame_index * FRAME_SAMPLES:(frame_index + 1) * FRAME_SAMPLES]
         rms = math.sqrt(sum(sample * sample for sample in frame) / len(frame))
         crossings = sum(1 for left, right in zip(frame, frame[1:]) if (left < 0) != (right < 0)) / len(frame)
         vector.extend((min(1.0, rms * 8.0), min(1.0, crossings * 3.0)))
-        # A few stable spectral samples distinguish phonemes without pulling
-        # in a heavyweight ML dependency in the always-on microphone thread.
         for cosine, sine in _SPECTRAL_COEFFICIENTS:
             real = sum(sample * coefficient for sample, coefficient in zip(frame, cosine)) / len(frame)
             imag = sum(sample * coefficient for sample, coefficient in zip(frame, sine)) / len(frame)
@@ -109,8 +163,12 @@ def enroll(name: str, recordings: list[bytes]) -> dict:
 
 
 def similarity(profile: dict, pcm: bytes) -> float:
+    if not isinstance(profile, dict):
+        return 0.0
+    version = profile.get("version", 1)
     centroid = profile.get("centroid") if isinstance(profile, dict) else None
-    vector = feature_vector(pcm)
+    vector = feature_vector(pcm) if version == PROFILE_VERSION else (
+        _legacy_feature_vector(pcm) if version == 1 else [])
     if not isinstance(centroid, list) or not vector or len(centroid) != len(vector):
         return 0.0
     distance = sum(abs(float(left) - float(right)) for left, right in zip(centroid, vector)) / len(vector)

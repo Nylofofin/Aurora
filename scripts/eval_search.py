@@ -95,6 +95,13 @@ class ResearchCardStub:
         if generation == self.generation:
             self.events.append({"stage": "sources", "items": items})
 
+    def mark_verified(self, generation, items):
+        self.set_sources(generation, items)
+
+    def mark_unverified(self, generation):
+        if generation == self.generation:
+            self.events.append({"stage": "unverified_sources"})
+
     def finish(self, generation, summary):
         if generation == self.generation:
             self.events.append({"stage": "finished", "summary": summary})
@@ -167,10 +174,6 @@ class EvalService(QObject):
     def start_background_request(self, request):
         self.background_requests.append(request)
         request.start()
-
-    def _mobile_audio_owned(self):
-        # No mobile Companion is connected in this headless evaluation.
-        return False
 
     def research_progress(self, event, generation):
         aurora.AuroraService.research_progress(self, event, generation)
@@ -303,14 +306,11 @@ def decision_explanation(question):
         return True, "rota estruturada de cotação/conversão; consulta API antes da busca web"
     explicit_query = aurora.search_intent(question)
     freshness = aurora.current_search_window(question)
-    factual = aurora.factual_web_intent(question)
     if explicit_query:
         return True, f"pedido explícito de pesquisa; consulta inicial: {explicit_query!r}"
     if freshness:
         return True, f"sinal de atualidade; janela: {freshness}"
-    if factual:
-        return True, "reconhecida como pergunta factual por factual_web_intent"
-    return False, "não corresponde a busca explícita, atualidade, pergunta factual ou rota local"
+    return False, "conversa geral/fato estável sem pedido de busca ou sinal de atualidade"
 
 
 def parse_provider_result_lines(text):

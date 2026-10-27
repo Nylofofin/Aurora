@@ -12,25 +12,25 @@ def test_default_voice_engine_is_local_piper():
     assert DEFAULTS["tts_voice"] == "pt_BR-faber-medium"
 
 
-def test_local_supertonic_voice_preview_is_marked_as_preview():
+def test_local_faber_voice_preview_is_marked_as_preview():
     speaker = tts.Speaker({"tts_engine": "piper"})
-    speaker.say_with_voice("Olá!", "supertonic:F1", engine="supertonic")
-    _text, _queued_at, voice, engine, is_preview = speaker.q.get_nowait()
-    assert voice == "supertonic:F1"
-    assert engine == "supertonic"
+    speaker.say_with_voice("Olá!", "pt_BR-faber-medium")
+    _text, _queued_at, voice, engine, is_preview, _pitch, _speed = speaker.q.get_nowait()
+    assert voice == "pt_BR-faber-medium"
+    assert engine == "piper"
     assert is_preview
 
 
 def test_local_voice_preview_is_queued_without_changing_saved_engine():
-    speaker = tts.Speaker({"tts_engine": "edge"})
-    speaker.say_with_voice("Olá!", None, engine="piper")
+    speaker = tts.Speaker({"tts_engine": "piper"})
+    speaker.say_with_voice("Olá!", None)
 
-    text, _queued_at, voice, engine, is_preview = speaker.q.get_nowait()
+    text, _queued_at, voice, engine, is_preview, _pitch, _speed = speaker.q.get_nowait()
     assert text == "Olá!"
     assert voice is None
     assert engine == "piper"
     assert is_preview
-    assert speaker.cfg["tts_engine"] == "edge"
+    assert speaker.cfg["tts_engine"] == "piper"
 
 
 def test_speaker_does_not_silently_truncate_long_answers():
@@ -40,15 +40,6 @@ def test_speaker_does_not_silently_truncate_long_answers():
 
     queued_text, _queued_at, _voice, _engine = speaker.q.get_nowait()
     assert queued_text == answer.strip()
-
-
-def test_supertonic_uses_fewer_sentence_aware_chunks_without_losing_words():
-    answer = "Esta frase de teste contém várias palavras e deve permanecer inteira. " * 45
-    chunks = tts.Speaker._speech_chunks(answer)
-
-    assert len(chunks) <= 12
-    assert all(len(chunk) <= 280 for chunk in chunks)
-    assert " ".join(" ".join(chunks).split()) == " ".join(answer.split())
 
 
 def test_speaker_routes_saved_local_engine_to_piper(monkeypatch):
@@ -67,9 +58,37 @@ def test_speaker_routes_saved_local_engine_to_piper(monkeypatch):
         def empty(self): return True
 
     speaker.q = OneItemQueue()
-    monkeypatch.setattr(speaker, "_stream_piper", lambda text, generation, voice_id=None: calls.append((text, generation, voice_id)))
+    monkeypatch.setattr(speaker, "_stream_piper", lambda text, generation, voice_id=None, **_kwargs: calls.append((text, generation, voice_id)))
     speaker.run()
     assert calls == [("resposta", 0, None)]
+
+
+def test_speaker_coalesces_backlogged_stream_chunks_without_losing_text(monkeypatch):
+    import queue
+
+    speaker = tts.Speaker({"tts_engine": "piper", "tts_voice": "faber"})
+    speaker.engine = "/usr/bin/ffplay"
+    speaker.say("Primeira frase.")
+    speaker.say("Segunda frase.")
+    speaker.say("Terceira frase.")
+    calls = []
+
+    class QueueUntilDrained:
+        def __init__(self, items): self.items = list(items)
+        def get(self, timeout):
+            if self.items: return self.items.pop(0)
+            speaker.running = False
+            raise queue.Empty
+        def get_nowait(self):
+            if self.items: return self.items.pop(0)
+            raise queue.Empty
+        def empty(self): return not self.items
+
+    speaker.q = QueueUntilDrained(list(speaker.q.queue))
+    monkeypatch.setattr(speaker, "_stream_piper", lambda text, *_args, **_kwargs: calls.append(text))
+    speaker.run()
+
+    assert calls == ["Primeira frase. Segunda frase. Terceira frase."]
 
 
 def test_local_voice_runtime_detection_is_independent_of_voice_weights(monkeypatch):

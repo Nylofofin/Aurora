@@ -53,6 +53,35 @@ def _tool_progress_label(name):
     }
     return labels.get(name,'Executando etapa')
 
+
+def _take_spoken_chunks(buffer, final=False):
+    """Release safe clauses early and preserve the final unpunctuated tail."""
+    chunks=[]
+    while buffer:
+        sentence=re.search(r'(?<=[.!?])\s+',buffer)
+        clause=re.search(r'(?<=[,;])\s+',buffer)
+        boundary=None
+        if sentence and (not clause or sentence.start() <= clause.start()):
+            boundary=sentence
+        elif clause and clause.start() >= 40:
+            boundary=clause
+        elif len(buffer) > 128:
+            # Never split a word; use a soft maximum if the model omits punctuation.
+            split=buffer.rfind(' ',0,113)
+            if split >= 72:
+                chunk=buffer[:split].strip()
+                if chunk: chunks.append(chunk)
+                buffer=buffer[split:].lstrip()
+                continue
+        if boundary is None: break
+        chunk=buffer[:boundary.start()].strip()
+        if chunk: chunks.append(chunk)
+        buffer=buffer[boundary.end():].lstrip()
+    if final and buffer.strip():
+        chunks.append(buffer.strip())
+        buffer=''
+    return chunks,buffer
+
 class Inference(QThread):
     phrase=Signal(str); sentence=Signal(str); state=Signal(str); approval=Signal(str,object); result=Signal(str); error=Signal(str); search=Signal(str,str); progress=Signal(object)
     def __init__(self, cfg, prompt, model=None, use_tools=False, history=None, system_prompt=None,response_language='Português brasileiro'): super().__init__(); self.cfg=cfg; self.prompt=prompt; self.model=model or cfg['model']; self.use_tools=use_tools; self.history=(history or [])[-6:]; self.system_prompt=system_prompt; self.response_language=response_language; self.cancelled=False; self.active_response=None
@@ -151,18 +180,14 @@ class Inference(QThread):
                                 first_response_logged=True
                             if part:
                                 content+=part; complete+=part; spoken+=part
-                                pieces=re.split(r'(?<=[.!?])\s+',spoken)
-                                if len(pieces)>1:
-                                    for item in pieces[:-1]:
-                                        item=item.strip()
-                                        if item:
-                                            needs_translation=self._needs_translation(item)
-                                            if defer_stream or needs_translation:
-                                                # Do not start a second Ollama request while this stream is still open.
-                                                defer_stream=True; deferred_sentences.append((item,needs_translation))
-                                            else:
-                                                spoken_parts.append(item); self.sentence.emit(item)
-                                    spoken=pieces[-1]
+                                chunks,spoken=_take_spoken_chunks(spoken)
+                                for item in chunks:
+                                    needs_translation=self._needs_translation(item)
+                                    if defer_stream or needs_translation:
+                                        # Do not start a second Ollama request while this stream is still open.
+                                        defer_stream=True; deferred_sentences.append((item,needs_translation))
+                                    else:
+                                        spoken_parts.append(item); self.sentence.emit(item)
                             if m.get('tool_calls'): calls.extend(m['tool_calls'])
                     finally: self.active_response=None
                 log_voice_timing('llm_turn',elapsed_ms(turn_started))
@@ -198,8 +223,8 @@ class Inference(QThread):
                 if action_only_turn and not other_tool_used:
                     break
             if not (action_results and not other_tool_used):
-                tail=spoken.strip()
-                if tail and re.search(r'[.!?][\"”’\')\]]*$',tail):
+                tail_chunks,spoken=_take_spoken_chunks(spoken,final=True)
+                for tail in tail_chunks:
                     if self._needs_translation(tail): tail=self._translate_before_speaking(tail)
                     spoken_parts.append(tail); self.sentence.emit(tail)
             if action_results and not other_tool_used:

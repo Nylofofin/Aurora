@@ -135,12 +135,11 @@ def transcribe_pcm(pcm: bytes, sample_rate: int = SAMPLE_RATE, assistant_name: s
     # conversion in one copy to avoid retaining microphone buffers.
     audio = samples.astype(np.float32) / 32768.0
     safe_name = " ".join(str(assistant_name or "Aurora").split())[:48]
+    # A compact prompt gives Whisper the locale/name hint without making every
+    # short command decode dozens of unrelated example tokens first.
     initial_prompt = (
-        "Transcrição de fala informal em português brasileiro. "
-        "Comandos curtos e perguntas do dia a dia. Gírias, contrações e sotaque brasileiro são comuns. "
-        "Exemplos: 'que horas são', 'coloca pra tocar', 'qual a temperatura hoje', 'me fala sobre', "
-        "'quanto custa', 'como tá o tempo', 'pode repetir', 'toca uma música'. "
-        f"A assistente chama {safe_name}."
+        "Português brasileiro informal. Comandos curtos do computador e perguntas cotidianas. "
+        f"Nome da assistente: {safe_name}."
     )
     with _TRANSCRIBE_LOCK:
         segments = _get_model().transcribe(
@@ -156,6 +155,9 @@ def transcribe_pcm(pcm: bytes, sample_rate: int = SAMPLE_RATE, assistant_name: s
             print_realtime=False,
             suppress_nst=True,
             temperature=0.0,
+            # Skip Whisper's retry-temperature sweep on low-resource CPUs.
+            temperature_inc=0.0,
+            greedy={"best_of": 1},
             initial_prompt=initial_prompt,
         )
     return " ".join(str(segment.text).strip() for segment in segments if segment.text.strip()).strip()

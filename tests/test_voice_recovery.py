@@ -49,7 +49,6 @@ def test_voice_recovery_counter_resets_after_capture_device_is_ready():
     class Service:
         _voice_recovery_attempts = 3
         _voice_error_announced = True
-        def _mobile_audio_owned(self): return False
 
     service = Service()
     AuroraService.voice_state(service, "ready")

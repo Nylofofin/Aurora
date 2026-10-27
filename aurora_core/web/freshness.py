@@ -61,9 +61,14 @@ def _has_stale_url_date(url,window='30d',now=None):
     days={'1d':1,'7d':7,'30d':30}.get(window)
     if not days: return False
     cutoff=(now-timedelta(days=days)).date()
-    for year,month,day in re.findall(r'\b(20\d{2})[-/](\d{1,2})[-/](\d{1,2})\b',str(url)):
+    # Many publishers encode only year/month in their archive paths
+    # (e.g. /noticias/2022/08/...). Treat that month as the earliest possible
+    # publication date so a feed's misleading fresh timestamp cannot revive
+    # an old article.
+    for year,month,day in re.findall(r'(?<!\d)(20\d{2})[-/](\d{1,2})(?:[-/](\d{1,2}))?(?!\d)',str(url)):
         try:
-            if datetime(int(year),int(month),int(day)).date()<cutoff: return True
+            dated=datetime(int(year),int(month),int(day or 1)).date()
+            if dated<cutoff: return True
         except ValueError: pass
     return False
 

@@ -530,7 +530,6 @@ def test_clarification_keeps_the_one_shot_session_listening_until_reply(monkeypa
         orb = Orb()
         inf = None
         def weather_busy(self): return False
-        def _mobile_audio_owned(self): return False
 
     stub = ServiceStub()
     service_module.AuroraService.schedule_dismiss(stub, 900)
@@ -601,7 +600,6 @@ def test_new_wake_defaults_response_language_to_brazilian_portuguese():
         voice = Voice()
         orb = Orb()
         feedback = Feedback()
-        def _mobile_audio_owned(self): return False
 
     stub = ServiceStub()
     service_module.AuroraService.wake(stub)
@@ -693,7 +691,6 @@ def test_completed_one_shot_request_dismisses_the_orb_by_default(monkeypatch):
         inf = None
         background_requests = []
         def weather_busy(self): return False
-        def _mobile_audio_owned(self): return False
         def listen_once(self): calls.append("listen_once")
 
     service_module.AuroraService.schedule_dismiss(ServiceStub(), 0)

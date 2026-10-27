@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-only
-"""Catalog of the retained Faber Piper voice and local Supertonic voice styles."""
+"""Catalog and downloader for the local Faber Piper voice."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -29,7 +29,6 @@ class Voice:
     config_file: str
     license_note: str
     engine: str = "piper"
-    model_voice: str = ""
     relative_path: str = ""
 
     @property
@@ -62,9 +61,6 @@ def voice_files(voice_id: str) -> tuple[Path, Path]:
 
 
 def voice_available(voice_id: str) -> bool:
-    voice = VOICE_BY_KEY.get(str(voice_id or ""))
-    if voice and voice.engine == "supertonic":
-        return _supertonic_marker(voice).is_file()
     try:
         model, config = voice_files(voice_id)
         return model.is_file() and config.is_file() and model.stat().st_size > 1_000_000
@@ -77,13 +73,9 @@ def voice_runtime_available(voice_id: str) -> bool:
     if voice is None:
         return False
     try:
-        return importlib.util.find_spec("supertonic" if voice.engine == "supertonic" else "piper") is not None
+        return importlib.util.find_spec("piper") is not None
     except (ImportError, ValueError, OSError):
         return False
-
-
-def _supertonic_marker(voice: Voice) -> Path:
-    return VOICE_ROOT / ".supertonic" / f"{voice.model_voice}.ready"
 
 
 def _download(url: str, destination: Path, maximum: int = 100 * 1024 * 1024,
@@ -147,21 +139,6 @@ def ensure_voice(voice_id: str, progress=None) -> Path:
     voice = VOICE_BY_KEY.get(str(voice_id or ""))
     if voice is None:
         raise ValueError("Voz local desconhecida.")
-    if voice.engine == "supertonic":
-        marker = _supertonic_marker(voice)
-        if marker.is_file():
-            return marker
-        try:
-            from supertonic import TTS
-            synthesizer = TTS(auto_download=True)
-            synthesizer.get_voice_style(voice_name=voice.model_voice)
-        except Exception as exc:
-            raise RuntimeError(f"Não consegui preparar Supertonic: {exc}") from exc
-        marker.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        os.chmod(marker.parent, 0o700)
-        marker.write_text("supertonic-3\n", encoding="utf-8")
-        os.chmod(marker, 0o600)
-        return marker
     model, config = voice.model_path, voice.config_path
     if voice_available(voice.key):
         return model

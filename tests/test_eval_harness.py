@@ -10,7 +10,6 @@ def test_eval_service_starts_with_one_shot_request_active():
     assert service.voice.request_active.is_set()
     assert not service.voice.interrupt_active.is_set()
     assert service.response_language == "Português brasileiro"
-    assert service._mobile_audio_owned() is False
 
 
 def test_eval_service_captures_speech_without_audio_output():

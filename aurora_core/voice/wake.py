@@ -5,7 +5,6 @@ from PySide6.QtCore import QThread, Signal
 from array import array
 import json, queue, re, sys, threading, time, traceback
 import math
-from concurrent.futures import Future, TimeoutError as FutureTimeout
 from ..config import VOSK_PATH
 from ..system.files import normalize_words
 from ..system.text import strip_wake_word
@@ -93,7 +92,7 @@ def wake_grammar_phrases(name):
 class LocalVoice(QThread):
     transcript=Signal(str); status=Signal(str); unavailable=Signal(str); wake=Signal(); cancel_control=Signal(); barge_in=Signal(); audio_level=Signal(float)
     def __init__(self,cfg):
-        super().__init__(); self.cfg=cfg; self.running=True; self.one_shot=threading.Event(); self.request_active=threading.Event(); self.interrupt_active=threading.Event(); self.cancel_control_active=threading.Event(); self.mobile_owned=threading.Event(); self.speaking=False; self.mobile_audio_queue=queue.Queue(maxsize=12)
+        super().__init__(); self.cfg=cfg; self.running=True; self.one_shot=threading.Event(); self.request_active=threading.Event(); self.interrupt_active=threading.Event(); self.cancel_control_active=threading.Event(); self.speaking=False
     def request_once(self): self.one_shot.set()
     def begin_request(self): self.request_active.set(); self.interrupt_active.clear()
     def end_request(self): self.request_active.clear(); self.one_shot.clear(); self.interrupt_active.clear()
@@ -193,9 +192,15 @@ class LocalVoice(QThread):
             try:
                 from .stt import transcribe_pcm
                 command=transcribe_pcm(pcm,SAMPLE_RATE,self.cfg.get('assistant_name','Aurora'))
+                fallback_command=self.strip_wake_word(fallback,self.cfg.get('assistant_name','Aurora'))
                 if not command:
                     print('[voice] Whisper retornou texto vazio; fallback local para Vosk',file=sys.stderr,flush=True)
                     command=fallback; outcome='vosk_fallback'
+                elif len(normalize_words(command)) <= 1 and len(normalize_words(fallback_command)) > 1:
+                    # Reject one-token decoder glitches when Vosk recovered a
+                    # substantive phrase; never let a one-letter hallucination
+                    # replace a usable local transcript.
+                    command=fallback; outcome='vosk_recovery'
             except Exception as exc:
                 # Preserve command usability if the larger local decoder fails;
                 # this fallback is still Vosk on-device and never sends audio out.
@@ -208,36 +213,6 @@ class LocalVoice(QThread):
         command=self.strip_wake_word(command,self.cfg.get('assistant_name','Aurora'))
         if not command: command=self.strip_wake_word(fallback,self.cfg.get('assistant_name','Aurora'))
         return command
-    def feed_mobile_audio(self,block,timeout=1.5):
-        """Feed a short PCM frame from the paired phone to the existing local wake model."""
-        if not self.mobile_owned.is_set() or not isinstance(block,bytes) or len(block)%2 or not 0<len(block)<=32000:
-            return False
-        result=Future()
-        try: self.mobile_audio_queue.put((block,result),timeout=.2)
-        except queue.Full: return False
-        try: return bool(result.result(timeout=timeout))
-        except FutureTimeout: return False
-    def _drain_mobile_audio(self,wake_rec):
-        """Vosk stays on its owning QThread; HTTP workers only enqueue PCM frames."""
-        while self.running and self.mobile_owned.is_set():
-            try: block,result=self.mobile_audio_queue.get(timeout=.12)
-            except queue.Empty: continue
-            try:
-                finalized=wake_rec.AcceptWaveform(block)
-                detected=False
-                if finalized:
-                    text=parse_vosk_result(wake_rec.Result(),'wake mobile').get('text','').strip()
-                    wake_rec.Reset()
-                    detected=self.is_final_wake_phrase(text,True,self.cfg.get('assistant_name','Aurora'))
-                result.set_result(detected)
-                if detected:
-                    self.status.emit('listening')
-            except Exception as exc:
-                if not result.done(): result.set_exception(exc)
-        while True:
-            try: _block,result=self.mobile_audio_queue.get_nowait()
-            except queue.Empty: break
-            if not result.done(): result.set_result(False)
     def run(self):
         try:
             import sounddevice as sd
@@ -247,25 +222,19 @@ class LocalVoice(QThread):
             assistant_name=' '.join(str(self.cfg.get('assistant_name','Aurora') or 'Aurora').split()) or 'Aurora'
             wake_phrases=wake_grammar_phrases(assistant_name)
             wake_rec=KaldiRecognizer(model,16000,json.dumps(wake_phrases,ensure_ascii=False)); wake_rec.SetWords(False)
-            # A constrained grammar can fail for a valid custom name when a
-            # small model's grammar graph is stale or under-pronounces it.
-            # For custom names only, keep an unconstrained recognizer as a
-            # fallback and still require an exact final phrase below.
-            # Keep an unconstrained recognizer alongside the short grammar.
-            # Some Vosk builds fail to finalize a one-word grammar after a
-            # reconfiguration even though the same audio is recognized by the
-            # normal decoder.  The exact phrase gate below still prevents
-            # arbitrary speech from waking Aurora.
-            wake_fallback_rec = KaldiRecognizer(model,16000)
-            # Unlike the constrained wake grammar, this decoder must provide
-            # per-word confidence before it can authorize an activation.
-            wake_fallback_rec.SetWords(True)
             wake_profile = self.cfg.get('wake_profile') if normalize_words(assistant_name) != 'aurora' else None
+            # A custom name may be absent from Vosk's vocabulary even after
+            # enrollment. Keep a free-form decoder only for custom names, and
+            # feed it only during detected speech; its endpoint lets Whisper
+            # verify the actual phrase after the acoustic profile raises a
+            # candidate. Without it, an OOV name could match acoustically but
+            # never reach the local phrase-confirmation step.
+            wake_fallback_rec = None
+            if normalize_words(assistant_name) != 'aurora':
+                wake_fallback_rec = KaldiRecognizer(model,16000)
+                wake_fallback_rec.SetWords(True)
             cancel_rec=KaldiRecognizer(model,16000,'["para", "pare", "parar", "cancele", "cancela", "cancelar", "interrompa", "interrompe", "interromper", "chega", "espera", "calma", "calma para", "pera", "pera aí", "deixa", "deixa pra lá", "para agora", "para com isso", "não", "não para", "não calma para", "não espera", "corta"]'); cancel_rec.SetWords(False)
             while self.running:
-                while self.running and self.mobile_owned.is_set():
-                    self.status.emit('hidden')
-                    self._drain_mobile_audio(wake_rec)
                 wake_rec.Reset()
                 if wake_fallback_rec is not None: wake_fallback_rec.Reset()
                 q=queue.Queue(maxsize=8)
@@ -281,15 +250,11 @@ class LocalVoice(QThread):
                     # signal to reset its bounded recovery counter.
                     self.status.emit('ready')
                     self.status.emit('hidden')
-                    active=False; started=0.0; buffer=[]; wake_audio=[]; profile_checked_at=0.0; profile_cooldown_until=0.0; profile_hit_streak=0; barge_frames=0
+                    active=False; started=0.0; buffer=[]; wake_audio=[]; profile_checked_at=0.0; profile_cooldown_until=0.0; profile_hit_streak=0; barge_frames=0; fallback_speech_until=0.0
                     profile_candidate=False; profile_candidate_audio=bytearray()
-                    while self.running and not self.mobile_owned.is_set():
+                    while self.running:
                         try: block=q.get(timeout=.25)
                         except queue.Empty: continue
-                        if self.mobile_owned.is_set():
-                            if active:
-                                active=False; buffer=[]; wake_audio=[]; rec.Reset(); wake_rec.Reset(); self.status.emit('hidden')
-                            continue
                         if not self.request_active.is_set() and active:
                             active=False; buffer=[]; wake_audio=[]; rec.Reset(); wake_rec.Reset(); self.status.emit('hidden')
                         if self.speaking:
@@ -367,13 +332,13 @@ class LocalVoice(QThread):
                                     # speech and delays local STT.
                                     profile_candidate_audio=bytearray(b''.join(wake_audio[-40:]))
                             if self.one_shot.is_set():
-                                self.one_shot.clear(); profile_candidate=False; profile_candidate_audio.clear(); profile_hit_streak=0; active=True; buffer=[]; wake_audio=[]; started=time.monotonic(); self.status.emit('listening'); rec.Reset(); wake_rec.Reset(); continue
+                                self.one_shot.clear(); profile_candidate=False; profile_candidate_audio.clear(); profile_hit_streak=0; active=True; buffer=[]; wake_audio=[]; started=time.monotonic(); self._last_speech_at=started; self.status.emit('listening'); rec.Reset(); wake_rec.Reset(); continue
                         else:
                             buffer.append(block)
                             if len(buffer)>240: buffer=buffer[-240:]
                             self.audio_level.emit(self.normalized_audio_level(block))
                             # --- Voice-activity-based early endpoint ---
-                            # If the user has stopped talking for 1.2 s after at
+                            # If the user has stopped talking for 0.65 s after at
                             # least 0.8 s of real speech, force Vosk to finalize
                             # immediately rather than waiting for its own silence
                             # detector (which can lag 0.5–1.5 s on quiet rooms).
@@ -384,10 +349,10 @@ class LocalVoice(QThread):
                                     self._last_speech_at = time.monotonic()
                                 if recent_level > 0.04:
                                     self._last_speech_at = time.monotonic()
-                                elif (time.monotonic() - self._last_speech_at > 1.2
-                                        and len(buffer) >= 16
+                                elif (time.monotonic() - self._last_speech_at > 0.65
+                                        and len(buffer) >= 10
                                         and time.monotonic() - started > 0.8):
-                                    # Force endpoint: flush Vosk result now
+                                    # Force endpoint after a compact, natural pause.
                                     rec.Reset()
                                     pcm = b''.join(buffer[-200:])
                                     active = False; buffer = []; wake_audio = []
@@ -404,7 +369,17 @@ class LocalVoice(QThread):
                                     continue
                         active_rec=rec if active else wake_rec
                         finalized=active_rec.AcceptWaveform(block)
-                        fallback_finalized = bool(not active and wake_fallback_rec.AcceptWaveform(block))
+                        fallback_finalized = False
+                        if not active and wake_fallback_rec is not None:
+                            now=time.monotonic()
+                            if self.normalized_audio_level(block) > 0.018:
+                                fallback_speech_until=now+1.25
+                            if now <= fallback_speech_until:
+                                fallback_finalized=bool(wake_fallback_rec.AcceptWaveform(block))
+                            elif fallback_speech_until:
+                                # Discard a stale partial instead of joining
+                                # separate bits of speech from the room.
+                                wake_fallback_rec.Reset(); fallback_speech_until=0.0
                         wake_finalized = finalized or fallback_finalized
                         candidate_texts=[]
                         fallback_payload={}
@@ -468,7 +443,7 @@ class LocalVoice(QThread):
                                 print('[voice] wake confirmada; captura do comando iniciada',file=sys.stderr,flush=True)
                                 self.begin_request()
                                 self.wake.emit(); self.status.emit('listening')
-                                active=True; buffer=list(wake_audio); wake_audio=[]; started=time.monotonic(); rec.Reset(); wake_rec.Reset()
+                                active=True; buffer=list(wake_audio); wake_audio=[]; started=time.monotonic(); self._last_speech_at=started; rec.Reset(); wake_rec.Reset()
                             elif profile_candidate:
                                 profile_candidate=False
                                 candidate_pcm=bytes(profile_candidate_audio)
@@ -495,8 +470,6 @@ class LocalVoice(QThread):
                                     wake_audio=[]; profile_hit_streak=0
                             else:
                                 wake_audio=[]
-                if self.mobile_owned.is_set():
-                    self.status.emit('hidden')
 
         except Exception as e:
             # Keep the underlying PortAudio/Vosk exception: the old UI only

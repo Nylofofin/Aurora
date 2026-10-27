@@ -162,7 +162,6 @@ def test_service_announces_due_agenda_event_when_idle(monkeypatch):
     spoken = []
     modes = []
     stub = SimpleNamespace(
-        _mobile_audio_owned=lambda: False,
         session_unlock_monitor=SimpleNamespace(active=False),
         voice=SimpleNamespace(request_active=Event()),
         speaker=SimpleNamespace(active=False, q=queue.Queue(), say=spoken.append),

@@ -115,6 +115,28 @@ def test_research_card_keeps_untrusted_labels_as_plain_text(monkeypatch):
     app.processEvents()
 
 
+def test_research_card_keeps_candidates_visible_when_none_are_verified(monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    card = ResearchCard()
+    monkeypatch.setattr(card, "_show_near", lambda _anchor: None)
+    card.begin(18, "Notícias atuais sobre tecnologia", None)
+    card.update_progress(18, {
+        "stage": "searching", "tasks": ["Google Notícias"], "workers": 1,
+        "sources": [{"title": "Possível manchete", "host": "noticias.example",
+                     "url": "https://noticias.example/2022/08/noticia",
+                     "published": "27/10/2026"}],
+    })
+
+    card.mark_unverified(18)
+
+    assert card.source_heading.text() == "Candidatos sem confirmação"
+    candidate_cards = [item.widget() for item in (card.source_layout.itemAt(i) for i in range(card.source_layout.count()))]
+    assert any("Possível manchete" in " ".join(label.text() for label in widget.findChildren(QLabel))
+               for widget in candidate_cards if widget)
+    card.hide()
+    app.processEvents()
+
+
 def test_card_summary_preview_stops_at_sentence_or_word_boundary():
     first_sentence = "Esta frase termina com sentido."
     text = first_sentence + " " + ("Uma segunda frase longa sem pausa " * 20)

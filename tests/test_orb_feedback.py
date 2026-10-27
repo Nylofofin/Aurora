@@ -24,7 +24,7 @@ def test_missing_ffplay_reports_voice_error_without_linux_speech_fallback(monkey
         def get(self, timeout):
             if not self.read:
                 self.read = True
-                return ("teste", 0.0)
+                return ("teste", 0.0, None, "piper")
             speaker.running = False
             raise __import__("queue").Empty
         def empty(self): return True

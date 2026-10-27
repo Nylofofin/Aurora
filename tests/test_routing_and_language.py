@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-only
 import threading
-from concurrent.futures import Future
 
 import aurora
 import aurora_core.routing as routing
@@ -69,6 +68,9 @@ def test_non_cancelled_active_inference_still_blocks_duplicate_transcript(monkey
 def test_small_talk_and_personal_advice_do_not_trigger_web_search():
     for prompt in (
         "Como você tá?",
+        "Como você está hoje?",
+        "Como você?",
+        "E aí?",
         "Como foi seu dia?",
         "O que você acha disso?",
         "Quem é você?",
@@ -77,6 +79,18 @@ def test_small_talk_and_personal_advice_do_not_trigger_web_search():
         "O que eu faço agora?",
     ):
         assert not aurora.factual_web_intent(prompt), prompt
+
+
+def test_stable_factual_questions_are_not_automatically_web_searches():
+    for prompt in (
+        "O que é fotossíntese?",
+        "Me explica como funciona memória RAM",
+        "Quem foi Ada Lovelace?",
+        "Como funciona a gravidade?",
+    ):
+        assert not aurora.factual_web_intent(prompt), prompt
+        assert not aurora.current_search_window(prompt), prompt
+    assert aurora.guided_learning_intent("Como você instala o Ollama?")
 
 
 def test_arithmetic_questions_do_not_trigger_web_search():
@@ -153,6 +167,12 @@ def test_local_action_language_takes_precedence_over_automatic_factual_search(mo
         inference, _ = service.started
         assert inference.kwargs["model"] == "gemma4:e2b", prompt
         assert inference.kwargs["use_tools"] is True, prompt
+
+    for prompt in ("O que é fotossíntese?", "Como você está hoje?", "Me explica como funciona memória RAM"):
+        routing.route_request(service, prompt)
+        inference, _ = service.started
+        assert inference.kwargs["model"] == "gemma3:1b", prompt
+        assert inference.kwargs["use_tools"] is False, prompt
 
 
 def test_agent_action_cue_does_not_mistake_topic_nouns_for_commands():
