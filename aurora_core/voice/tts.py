@@ -164,6 +164,10 @@ class Speaker(QThread):
                     log_voice_timing('tts_first_audio',elapsed_ms(started))
                     self.playing=True; self.audio_started.emit()
                 self.speech_level.emit(.42)
+            # Send 180ms of silence padding to prevent ffplay from clipping the final syllables on pipe close
+            silence_samples = int(sr * 0.18)
+            player.stdin.write(b'\x00\x00' * silence_samples)
+            player.stdin.flush()
             if player.stdin and not player.stdin.closed: player.stdin.close()
             if player.wait(timeout=60)!=0: raise RuntimeError('ffplay failed')
         except BaseException:

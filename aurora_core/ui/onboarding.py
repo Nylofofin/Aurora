@@ -982,45 +982,34 @@ class PersonalizationWizard(QDialog):
 
     def _build_voice(self):
         frame, layout = self._panel(
-            "Escolha uma voz local",
-            "Deslize pelas vozes com as setas; os nomes acompanham o movimento. A bolha mantém a aparência escolhida.",
+            "Personalize a Voz",
+            "Ajuste o tom (pitch) e a velocidade para criar a voz ideal para a sua assistente, de grave a feminina.",
         )
-        self._voice_index = next((i for i, item in enumerate(VOICES) if item.key == self._selected_voice), 0)
+        self._voice_index = 0
         self._voice_step_pending = False
         self._voice_transition_group = None
         self.voice_stage = _OrbCarouselStage()
-        self.voice_stage.setFixedHeight(222)
-        self.voice_side_left = _AnimatedOrb(self._selected_style, self.voice_stage, opacity=.45)
+        self.voice_stage.setFixedHeight(180)
+        self.voice_side_left = _AnimatedOrb(self._selected_style, self.voice_stage, opacity=0.0)
         self.voice_orb = _AnimatedOrb(self._selected_style, self.voice_stage)
-        self.voice_side_right = _AnimatedOrb(self._selected_style, self.voice_stage, opacity=.45)
-        for orb in (self.voice_side_left, self.voice_orb, self.voice_side_right):
-            orb.setFixedSize(166, 166)
-        self.voice_side_left.displayScale = .50
-        self.voice_side_right.displayScale = .50
-        voices_count = len(VOICES)
-        self.voice_name_left = QLabel(VOICES[(self._voice_index-1) % voices_count].name, self.voice_stage)
-        self.voice_name_left.setObjectName("voiceCarouselSideName")
-        self.voice_title = QLabel(VOICES[self._voice_index].name, self.voice_stage)
+        self.voice_side_right = _AnimatedOrb(self._selected_style, self.voice_stage, opacity=0.0)
+        self.voice_side_left.hide(); self.voice_side_right.hide()
+        self.voice_orb.setFixedSize(150, 150)
+        self.voice_name_left = QLabel("", self.voice_stage); self.voice_name_left.hide()
+        self.voice_title = QLabel(VOICES[0].name, self.voice_stage)
         self.voice_title.setObjectName("voiceCarouselName")
-        self.voice_name_right = QLabel(VOICES[(self._voice_index+1) % voices_count].name, self.voice_stage)
-        self.voice_name_right.setObjectName("voiceCarouselSideName")
-        for name in (self.voice_name_left, self.voice_title, self.voice_name_right):
-            name.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            name.setFixedSize(138, 24)
+        self.voice_name_right = QLabel("", self.voice_stage); self.voice_name_right.hide()
+        self.voice_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.voice_title.setFixedSize(138, 24)
         self.voice_stage.resized.connect(self._position_voice_orbs)
         layout.addWidget(self.voice_stage)
         self.voice_detail = QLabel(); self.voice_detail.setObjectName("cardDetail"); self.voice_detail.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.voice_position = QLabel(); self.voice_position.setObjectName("carouselPosition"); self.voice_position.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.voice_detail); layout.addWidget(self.voice_position)
-        voice_nav = QHBoxLayout(); voice_nav.addStretch(1)
-        self.voice_prev = QPushButton("‹"); self.voice_prev.setObjectName("carouselArrow"); self.voice_prev.setFixedSize(40, 40)
-        self.voice_prev.clicked.connect(lambda: self._step_voice(-1))
-        self.voice_next = QPushButton("›"); self.voice_next.setObjectName("carouselArrow"); self.voice_next.setFixedSize(40, 40)
-        self.voice_next.clicked.connect(lambda: self._step_voice(1))
-        if len(VOICES) < 2:
-            self.voice_prev.hide(); self.voice_next.hide()
-        voice_nav.addWidget(self.voice_prev); voice_nav.addSpacing(20); voice_nav.addWidget(self.voice_next); voice_nav.addStretch(1)
-        layout.addLayout(voice_nav)
+        self.voice_position.hide()
+        layout.addWidget(self.voice_detail)
+        voice_nav = QHBoxLayout()
+        self.voice_prev = QPushButton("‹"); self.voice_prev.hide()
+        self.voice_next = QPushButton("›"); self.voice_next.hide()
         # Pitch & Speed controls
         tuning_layout = QHBoxLayout()
         tuning_layout.setSpacing(16)
@@ -1525,61 +1514,31 @@ class PersonalizationWizard(QDialog):
     def _position_voice_orbs(self):
         if not hasattr(self, "voice_orb") or self._voice_step_pending:
             return
-        anchors = self._carousel_positions(self.voice_stage)
-        labels = tuple(QPoint(point.x()+14, self.voice_stage.height()-27) for point in anchors)
-        for orb, position, scale, opacity in zip(
-            (self.voice_side_left, self.voice_orb, self.voice_side_right),
-            anchors, (.50, 1.0, .50), (.45, 1.0, .45)):
-            orb.move(position); orb.displayScale = scale; orb.displayOpacity = opacity
-        for label, position in zip((self.voice_name_left, self.voice_title, self.voice_name_right), labels):
-            label.move(position)
-
-    def _style_voice_name_roles(self):
-        for label, object_name in ((self.voice_name_left, "voiceCarouselSideName"),
-                                   (self.voice_title, "voiceCarouselName"),
-                                   (self.voice_name_right, "voiceCarouselSideName")):
-            label.setObjectName(object_name)
-            label.style().unpolish(label); label.style().polish(label); label.update()
-
-    def _apply_voice_step(self, index):
-        self._voice_index = index
-        self._selected_voice = VOICES[index].key
-        self._selected_tts_engine = VOICES[index].engine
-        self._refresh_voice_carousel()
-        self._refresh_tts_choices()
+        cx = (self.voice_stage.width() - self.voice_orb.width()) // 2
+        cy = (self.voice_stage.height() - self.voice_orb.height() - 20) // 2
+        self.voice_orb.move(cx, max(0, cy))
+        self.voice_title.move((self.voice_stage.width() - self.voice_title.width()) // 2, self.voice_stage.height() - 26)
 
     def _refresh_voice_carousel(self):
         if not hasattr(self, "voice_orb"):
             return
-        count = len(VOICES); index = self._voice_index % count
-        voice = VOICES[index]
+        voice = VOICES[0]
         self._selected_voice = voice.key
         self._selected_tts_engine = voice.engine
-        for voice_orb in (self.voice_side_left, self.voice_orb, self.voice_side_right):
-            voice_orb.set_style(self._selected_style)
+        self.voice_orb.set_style(self._selected_style)
         self.voice_title.setText(voice.name)
-        self.voice_name_left.setText(VOICES[(index-1) % count].name)
-        self.voice_name_right.setText(VOICES[(index+1) % count].name)
-        self.voice_detail.setText(f"{voice.gender}  ·  Português (Brasil)  ·  {voice.detail}")
-        self.voice_position.setText(f"{index + 1:02d}  /  {count:02d}")
+        self.voice_detail.setText("Piper VITS · 100% local · ajuste o tom e a velocidade abaixo")
         self.voice_license.setText(voice.license_note)
         self.voice_preview_button.setText("▶  Ouvir prévia" if voice_available(voice.key) else "↓  Baixar e ouvir prévia")
 
     def _refresh_tts_choices(self):
         if not hasattr(self, "voice_preview_button"):
             return
-        selected = next((item for item in VOICES if item.key == self._selected_voice), VOICES[0])
+        selected = VOICES[0]
         self.voice_license.setText(selected.license_note)
         self.voice_preview_button.setText("▶  Ouvir prévia" if voice_available(selected.key) else "↓  Baixar e ouvir prévia")
         if voice_available(selected.key):
-            if selected.engine == "edge":
-                self.voice_status.setText("Voz neural · pronta. Requer internet para síntese.")
-            else:
-                self.voice_status.setText("Voz pronta. A Aurora mantém apenas um motor/modelo de síntese carregado por vez.")
-        elif selected.engine == "edge":
-            self.voice_status.setText("Voz neural Microsoft Edge · realista e expressiva · requer internet para síntese.")
-        elif selected.engine == "supertonic":
-            self.voice_status.setText("Supertonic 3 · dez estilos em português do Brasil, síntese local por CPU. O modelo compartilhado (cerca de 400 MB) é baixado no primeiro preview.")
+            self.voice_status.setText("Voz Faber pronta · Síntese em ~0.4s local via CPU.")
         else:
             self.voice_status.setText("Voz local · o modelo é instalado apenas quando você pede a prévia.")
 

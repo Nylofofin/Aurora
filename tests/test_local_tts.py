@@ -114,7 +114,7 @@ def test_local_piper_streams_pcm_chunks_to_ffplay(monkeypatch):
 
     speaker._stream_piper("Olá, mundo.", speaker.cancel_generation)
 
-    assert bytes(written) == b"\x01\x02\x03\x04"
+    assert bytes(written).startswith(b"\x01\x02\x03\x04")
     assert player.args[player.args.index("-ar") + 1] == "22050"
     assert player.args[player.args.index("-ch_layout") + 1] == "mono"
     assert levels[-1] == 0.0
