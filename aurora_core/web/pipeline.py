@@ -119,7 +119,10 @@ def _search_public_web_uncached(query,freshness=None,news_only=None,progress=Non
                 news_terms={min(_search_term_forms(term),key=len) for term in topic_terms}
                 news_query=' '.join(sorted(news_terms)) or agent_search
                 if latest_version:
-                    news_query=f'{news_query} latest release'
+                    # For version queries, use "versão" not "latest release" –
+                    # News feeds with "latest release" return clickbait about
+                    # pre-releases and snapshots, not stable release articles.
+                    news_query=f'{news_query} versão'
                 jobs_to_submit.append((agent_name,'Bing Notícias','bing-news',news_query,agent_relevance))
                 if news_only and 'brasil' not in news_query.split() and not international_news_only(agent_relevance):
                     jobs_to_submit.append((agent_name+' · Brasil','Bing Notícias','bing-news',f'{news_query} Brasil',agent_relevance))

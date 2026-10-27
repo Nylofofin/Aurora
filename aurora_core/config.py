@@ -27,8 +27,8 @@ DEFAULTS = {
     'num_thread':4,
     'num_gpu':99,
     'keep_alive':-1,
-    'tts_voice':'pt_BR-faber-medium',
-    'tts_engine':'piper',
+    'tts_voice':'pt-BR-ThalitaMultilingualNeural',
+    'tts_engine':'edge',
     'feedback_theme':'boreal',
     'user_name':'',
     'profile_configured':False,
@@ -133,15 +133,15 @@ def settings_load():
     if custom_instructions != result.get('custom_instructions'):
         result['custom_instructions']=custom_instructions
         should_save=True
-    # This developer build uses local speech synthesis only. Migrate legacy
-    # Edge selections once so normal responses cannot silently use the web.
+    # Normalise voice engine and voice key
     current_voice = str(result.get('tts_voice', ''))
     current_engine = str(result.get('tts_engine', '')).casefold()
-    valid_piper = current_engine == 'piper' and current_voice == 'pt_BR-faber-medium'
+    valid_edge = current_engine == 'edge' and (current_voice.startswith('pt-BR-') or current_voice == 'edge:thalita')
+    valid_piper = current_engine == 'piper' and (current_voice in {'pt_BR-faber-medium', 'piper:dii', 'pt_BR-cadu-medium', 'pt_BR-jeff-medium', 'pt_BR-edresson-low'})
     valid_supertonic = current_engine == 'supertonic' and current_voice.startswith('supertonic:')
-    if not (valid_piper or valid_supertonic):
-        result['tts_engine'] = 'piper'
-        result['tts_voice'] = 'pt_BR-faber-medium'
+    if not (valid_edge or valid_piper or valid_supertonic):
+        result['tts_engine'] = 'edge'
+        result['tts_voice'] = 'pt-BR-ThalitaMultilingualNeural'
         should_save = True
     if not APP_CONFIG.exists() or should_save: settings_save(result)
     return result

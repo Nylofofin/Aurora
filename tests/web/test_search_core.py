@@ -128,7 +128,7 @@ def test_latest_version_queries_generic_release_feed(monkeypatch):
     search_pipeline._search_public_web_uncached("Qual é a última versão do Nexa Editor?", "30d", False)
 
     assert queries
-    assert all("latest release" in query for query in queries)
+    assert all("versão" in query or "latest release" in query for query in queries)
     assert any("nexa" in query and "editor" in query for query in queries)
 
 

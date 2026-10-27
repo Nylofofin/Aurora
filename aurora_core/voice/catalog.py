@@ -46,7 +46,18 @@ class Voice:
 
 
 VOICES = (
-    # --- VOZES PIPER (Ultra-rápidas, leves e cristalinas via VITS) ---
+    # --- VOZES NEURAIS EDGE (Ultra-realistas, fluídas e expressivas) ---
+    Voice("pt-BR-ThalitaMultilingualNeural", "Thalita (Luna)", "Feminina", "Neural · natural, expressiva e feminina",
+          "", "", "", "", "Microsoft Edge Neural Voice.",
+          engine="edge"),
+    Voice("pt-BR-FranciscaNeural", "Francisca", "Feminina", "Neural · elegante, clara e profissional",
+          "", "", "", "", "Microsoft Edge Neural Voice.",
+          engine="edge"),
+    Voice("pt-BR-AntonioNeural", "Antônio", "Masculina", "Neural · formal e clara",
+          "", "", "", "", "Microsoft Edge Neural Voice.",
+          engine="edge"),
+
+    # --- VOZES PIPER (Ultra-rápidas, leves e 100% locais via VITS) ---
     Voice("pt_BR-faber-medium", "Faber", "Masculina", "Piper · natural e encorpada",
           "rhasspy/piper-voices", "v1.0.0", "pt_BR-faber-medium.onnx",
           "pt_BR-faber-medium.onnx.json", "Voz aberta rhasspy/piper-voices.",
@@ -99,6 +110,8 @@ def voice_files(voice_id: str) -> tuple[Path, Path]:
 
 def voice_available(voice_id: str) -> bool:
     voice = VOICE_BY_KEY.get(str(voice_id or ""))
+    if voice and voice.engine == "edge":
+        return True
     if voice and voice.engine == "supertonic":
         return _supertonic_marker(voice).is_file()
     try:
@@ -112,6 +125,11 @@ def voice_runtime_available(voice_id: str) -> bool:
     voice = VOICE_BY_KEY.get(str(voice_id or ""))
     if voice is None:
         return False
+    if voice.engine == "edge":
+        try:
+            return importlib.util.find_spec("edge_tts") is not None
+        except (ImportError, ValueError, OSError):
+            return False
     try:
         return importlib.util.find_spec("supertonic" if voice.engine == "supertonic" else "piper") is not None
     except (ImportError, ValueError, OSError):
@@ -183,6 +201,8 @@ def ensure_voice(voice_id: str, progress=None) -> Path:
     voice = VOICE_BY_KEY.get(str(voice_id or ""))
     if voice is None:
         raise ValueError("Voz local desconhecida.")
+    if voice.engine == "edge":
+        return Path("/dev/null")
     if voice.engine == "supertonic":
         marker = _supertonic_marker(voice)
         if marker.is_file():

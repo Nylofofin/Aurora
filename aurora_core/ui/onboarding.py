@@ -1526,17 +1526,16 @@ class PersonalizationWizard(QDialog):
         self.voice_license.setText(selected.license_note)
         self.voice_preview_button.setText("▶  Ouvir prévia" if voice_available(selected.key) else "↓  Baixar e ouvir prévia")
         if voice_available(selected.key):
-            self.voice_status.setText("Voz pronta. Só o modelo selecionado fica carregado na memória.")
-        elif selected.engine == "supertonic":
-            self.voice_status.setText("Supertonic 3 · dez estilos locais pt-BR. O primeiro uso baixa o modelo compartilhado (cerca de 400 MB); depois, todos os estilos usam o mesmo modelo.")
-        else:
-            self.voice_status.setText("Faber ainda não está instalada. Clique em “Baixar e ouvir” para instalar somente esse modelo.")
-        if voice_available(selected.key):
-            self.voice_status.setText("Voz pronta. A Aurora mantém apenas um motor/modelo de síntese carregado por vez.")
+            if selected.engine == "edge":
+                self.voice_status.setText("Voz neural · pronta. Requer internet para síntese.")
+            else:
+                self.voice_status.setText("Voz pronta. A Aurora mantém apenas um motor/modelo de síntese carregado por vez.")
+        elif selected.engine == "edge":
+            self.voice_status.setText("Voz neural Microsoft Edge · realista e expressiva · requer internet para síntese.")
         elif selected.engine == "supertonic":
             self.voice_status.setText("Supertonic 3 · dez estilos em português do Brasil, síntese local por CPU. O modelo compartilhado (cerca de 400 MB) é baixado no primeiro preview.")
         else:
-            self.voice_status.setText("Faber · Piper medium em português do Brasil. O modelo é instalado apenas quando você pede a prévia.")
+            self.voice_status.setText("Voz local · o modelo é instalado apenas quando você pede a prévia.")
 
     def _preview_feedback(self, theme, direction=None):
         entry = self._feedback_sfx.get(f"{theme}:entrada")
@@ -1778,10 +1777,11 @@ class PersonalizationWizard(QDialog):
                 return
             self._set_page(self._current_page + 1)
         elif self._current_page == 5:
-            if not voice_runtime_available(self._selected_voice):
+            selected_item = next((v for v in VOICES if v.key == self._selected_voice), None)
+            if selected_item and selected_item.engine != "edge" and not voice_runtime_available(self._selected_voice):
                 self.voice_status.setText("O runtime desta voz não está instalado. Execute setup-voice.sh e tente novamente.")
                 return
-            if not voice_available(self._selected_voice):
+            if selected_item and selected_item.engine != "edge" and not voice_available(self._selected_voice):
                 self.voice_status.setText("Ouça/baixe a voz selecionada antes de finalizar. Nenhum modelo será baixado automaticamente.")
                 return
             self._apply()
