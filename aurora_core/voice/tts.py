@@ -128,43 +128,6 @@ class Speaker(QThread):
         from .telemetry import log_voice_timing
         log_voice_timing('tts_model_load',elapsed_ms(started))
         return synthesizer, style
-    def _stream_edge(self,text,generation,voice_id=None):
-        """Synthesize using Edge TTS neural voices with live streaming to ffplay."""
-        import asyncio
-        import edge_tts
-        from .telemetry import elapsed_ms, log_voice_timing
-        started=time.perf_counter(); first_audio=False; player=None
-        voice=str(voice_id or self.cfg.get('tts_voice','pt-BR-ThalitaMultilingualNeural'))
-        try:
-            player=subprocess.Popen([self.engine,'-nodisp','-autoexit','-loglevel','quiet',
-                '-threads','1','-i','pipe:0'],
-                stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-            self.current_player=player
-
-            async def _pipe_audio():
-                nonlocal first_audio
-                # Use standard rate to keep natural syllable cadence and clarity
-                comm = edge_tts.Communicate(text, voice)
-                async for chunk in comm.stream():
-                    if generation != self.cancel_generation: raise RuntimeError('speech interrupted')
-                    if chunk.get('type') == 'audio' and chunk.get('data'):
-                        data = chunk['data']
-                        player.stdin.write(data); player.stdin.flush()
-                        if not first_audio:
-                            first_audio=True
-                            log_voice_timing('tts_first_audio',elapsed_ms(started))
-                            self.playing=True; self.audio_started.emit()
-                        self.speech_level.emit(.45)
-
-            asyncio.run(_pipe_audio())
-            if player.stdin and not player.stdin.closed: player.stdin.close()
-            if player.wait(timeout=60)!=0: raise RuntimeError('ffplay failed')
-        except BaseException:
-            if player is not None and player.poll() is None: player.kill(); player.wait()
-            raise
-        finally:
-            self.speech_level.emit(0.0)
-            if player is not None and self.current_player is player: self.current_player=None
 
     def _stream_piper(self,text,generation,voice_id=None):
         """Generate and play sentence chunks locally; no text leaves this machine."""
@@ -267,9 +230,7 @@ class Speaker(QThread):
             try:
                 selected_engine=engine or self.cfg.get('tts_engine','piper')
                 selected_voice = voice or self.cfg.get('tts_voice')
-                if selected_engine == 'edge':
-                    self._stream_edge(text,generation,selected_voice)
-                elif selected_engine == 'piper':
+                if selected_engine == 'piper':
                     self._stream_piper(text,generation,selected_voice)
                 elif selected_engine == 'supertonic':
                     self._stream_supertonic(text,generation,selected_voice)
