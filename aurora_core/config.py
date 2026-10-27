@@ -27,8 +27,10 @@ DEFAULTS = {
     'num_thread':4,
     'num_gpu':99,
     'keep_alive':-1,
-    'tts_voice':'piper:dii',
+    'tts_voice':'pt_BR-faber-medium',
     'tts_engine':'piper',
+    'tts_pitch':1.25,
+    'tts_speed':1.0,
     'feedback_theme':'boreal',
     'user_name':'',
     'profile_configured':False,
@@ -133,6 +135,16 @@ def settings_load():
     if custom_instructions != result.get('custom_instructions'):
         result['custom_instructions']=custom_instructions
         should_save=True
+    try:
+        pitch = float(result.get('tts_pitch', 1.25))
+        result['tts_pitch'] = max(0.5, min(2.0, pitch))
+    except (TypeError, ValueError):
+        result['tts_pitch'] = 1.25
+    try:
+        speed = float(result.get('tts_speed', 1.0))
+        result['tts_speed'] = max(0.5, min(2.0, speed))
+    except (TypeError, ValueError):
+        result['tts_speed'] = 1.0
     # This developer build uses local speech synthesis only.
     current_voice = str(result.get('tts_voice', ''))
     current_engine = str(result.get('tts_engine', '')).casefold()
@@ -140,7 +152,7 @@ def settings_load():
     valid_supertonic = current_engine == 'supertonic' and current_voice.startswith('supertonic:')
     if not (valid_piper or valid_supertonic):
         result['tts_engine'] = 'piper'
-        result['tts_voice'] = 'piper:dii'
+        result['tts_voice'] = 'pt_BR-faber-medium'
         should_save = True
     if not APP_CONFIG.exists() or should_save: settings_save(result)
     return result

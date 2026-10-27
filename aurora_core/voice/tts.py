@@ -34,9 +34,11 @@ class Speaker(QThread):
         # old silent 1,800-character slice made the UI show words the voice
         # could never finish.
         if text: self.q.put((text,time.perf_counter(),None,None))
-    def say_with_voice(self,text,voice,engine='piper'):
+    def say_with_voice(self,text,voice,engine='piper',pitch=None,speed=None):
         """Queue a short preview without changing the saved voice or engine."""
         text=self.clean(text); voice=str(voice or '').strip()
+        self.preview_pitch = pitch
+        self.preview_speed = speed
         if text: self.q.put((text[:500],time.perf_counter(),voice or None,engine,True))
     @staticmethod
     def clean(text):
@@ -129,14 +131,28 @@ class Speaker(QThread):
         log_voice_timing('tts_model_load',elapsed_ms(started))
         return synthesizer, style
 
-    def _stream_piper(self,text,generation,voice_id=None):
+    def _stream_piper(self,text,generation,voice_id=None,pitch=None,speed=None):
         """Generate and play sentence chunks locally; no text leaves this machine."""
         from .telemetry import elapsed_ms, log_voice_timing
         started=time.perf_counter(); first_audio=False; player=None
         voice=self._load_piper_voice(voice_id)
+        current_pitch = float(pitch if pitch is not None else self.cfg.get('tts_pitch', 1.0))
+        current_speed = float(speed if speed is not None else self.cfg.get('tts_speed', 1.0))
+        sr = voice.config.sample_rate
+        ffplay_cmd = [self.engine,'-nodisp','-autoexit','-loglevel','quiet',
+                      '-f','s16le','-ar',str(sr),'-ch_layout','mono','-i','pipe:0']
+        # Apply pitch shifting & speed tuning cleanly via audio filters if requested
+        filters = []
+        if abs(current_pitch - 1.0) > 0.01:
+            shifted_rate = int(sr * current_pitch)
+            tempo_comp = 1.0 / current_pitch
+            filters.append(f'asetrate={shifted_rate},aresample={sr},atempo={tempo_comp:.4f}')
+        if abs(current_speed - 1.0) > 0.01:
+            filters.append(f'atempo={current_speed:.4f}')
+        if filters:
+            ffplay_cmd.extend(['-af', ','.join(filters)])
         try:
-            player=subprocess.Popen([self.engine,'-nodisp','-autoexit','-loglevel','quiet',
-                '-f','s16le','-ar',str(voice.config.sample_rate),'-ch_layout','mono','-i','pipe:0'],
+            player=subprocess.Popen(ffplay_cmd,
                 stdin=subprocess.PIPE,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
             self.current_player=player
             for chunk in voice.synthesize(text):
@@ -198,8 +214,9 @@ class Speaker(QThread):
         while self.running:
             try: item=self.q.get(timeout=.3)
             except queue.Empty: continue
-            voice=None; engine=None; is_preview=False; is_warmup=False
-            if isinstance(item,tuple) and len(item)==6: text,queued_at,voice,engine,is_preview,is_warmup=item
+            voice=None; engine=None; is_preview=False; is_warmup=False; pitch=None; speed=None
+            if isinstance(item,tuple) and len(item)>=8: text,queued_at,voice,engine,is_preview,is_warmup,pitch,speed=item[:8]
+            elif isinstance(item,tuple) and len(item)==6: text,queued_at,voice,engine,is_preview,is_warmup=item
             elif isinstance(item,tuple) and len(item)==5: text,queued_at,voice,engine,is_preview=item
             elif isinstance(item,tuple) and len(item)==4: text,queued_at,voice,engine=item
             elif isinstance(item,tuple) and len(item)==3: text,queued_at,voice=item
@@ -230,8 +247,13 @@ class Speaker(QThread):
             try:
                 selected_engine=engine or self.cfg.get('tts_engine','piper')
                 selected_voice = voice or self.cfg.get('tts_voice')
+                effective_pitch = getattr(self, 'preview_pitch', None) if is_preview else None
+                effective_speed = getattr(self, 'preview_speed', None) if is_preview else None
                 if selected_engine == 'piper':
-                    self._stream_piper(text,generation,selected_voice)
+                    try:
+                        self._stream_piper(text,generation,selected_voice,pitch=effective_pitch,speed=effective_speed)
+                    except TypeError:
+                        self._stream_piper(text,generation,selected_voice)
                 elif selected_engine == 'supertonic':
                     self._stream_supertonic(text,generation,selected_voice)
                 else:

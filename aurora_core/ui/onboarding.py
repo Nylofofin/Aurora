@@ -1021,6 +1021,52 @@ class PersonalizationWizard(QDialog):
             self.voice_prev.hide(); self.voice_next.hide()
         voice_nav.addWidget(self.voice_prev); voice_nav.addSpacing(20); voice_nav.addWidget(self.voice_next); voice_nav.addStretch(1)
         layout.addLayout(voice_nav)
+        # Pitch & Speed controls
+        tuning_layout = QHBoxLayout()
+        tuning_layout.setSpacing(16)
+        
+        # Pitch control
+        pitch_box = QVBoxLayout()
+        pitch_box.setSpacing(4)
+        pitch_header = QHBoxLayout()
+        pitch_title = QLabel("Tom da Voz (Grave ↔ Agudo / Fem.)")
+        pitch_title.setObjectName("cardDetail")
+        self.pitch_val_label = QLabel(f"{int(float(self.cfg.get('tts_pitch', 1.25))*100)}%")
+        self.pitch_val_label.setObjectName("cardDetail")
+        pitch_header.addWidget(pitch_title)
+        pitch_header.addStretch(1)
+        pitch_header.addWidget(self.pitch_val_label)
+        
+        self.pitch_slider = QSlider(Qt.Orientation.Horizontal)
+        self.pitch_slider.setRange(75, 160)
+        self.pitch_slider.setValue(int(float(self.cfg.get('tts_pitch', 1.25)) * 100))
+        self.pitch_slider.valueChanged.connect(self._on_pitch_changed)
+        pitch_box.addLayout(pitch_header)
+        pitch_box.addWidget(self.pitch_slider)
+        tuning_layout.addLayout(pitch_box)
+        
+        # Speed control
+        speed_box = QVBoxLayout()
+        speed_box.setSpacing(4)
+        speed_header = QHBoxLayout()
+        speed_title = QLabel("Velocidade")
+        speed_title.setObjectName("cardDetail")
+        self.speed_val_label = QLabel(f"{int(float(self.cfg.get('tts_speed', 1.0))*100)}%")
+        self.speed_val_label.setObjectName("cardDetail")
+        speed_header.addWidget(speed_title)
+        speed_header.addStretch(1)
+        speed_header.addWidget(self.speed_val_label)
+        
+        self.speed_slider = QSlider(Qt.Orientation.Horizontal)
+        self.speed_slider.setRange(70, 140)
+        self.speed_slider.setValue(int(float(self.cfg.get('tts_speed', 1.0)) * 100))
+        self.speed_slider.valueChanged.connect(self._on_speed_changed)
+        speed_box.addLayout(speed_header)
+        speed_box.addWidget(self.speed_slider)
+        tuning_layout.addLayout(speed_box)
+        
+        layout.addLayout(tuning_layout)
+
         self.voice_preview_button = QPushButton("▶  Baixar e ouvir prévia"); self.voice_preview_button.setObjectName("previewVoice")
         self.voice_preview_button.clicked.connect(lambda: self._preview_voice(self._selected_voice))
         preview_error_signal = getattr(self.speaker, "preview_error", None)
@@ -1628,15 +1674,25 @@ class PersonalizationWizard(QDialog):
             self.voice_download_progress.setRange(0, 0)
             self.voice_status.setText(f"Baixando {filename}…")
 
+    def _on_pitch_changed(self, value):
+        self.pitch_val_label.setText(f"{value}%")
+
+    def _on_speed_changed(self, value):
+        self.speed_val_label.setText(f"{value}%")
+
     def _play_voice_preview(self, item):
         interrupt = getattr(self.speaker, "interrupt", None)
         if callable(interrupt):
             interrupt()
         self.voice_status.setText(f"Gerando prévia local de {item.name}…")
+        pitch = float(self.pitch_slider.value()) / 100.0 if hasattr(self, "pitch_slider") else None
+        speed = float(self.speed_slider.value()) / 100.0 if hasattr(self, "speed_slider") else None
         self.speaker.say_with_voice(
             f"Olá, eu sou {self._preview_name()}. Estou pronta para ajudar.",
             item.key,
             engine=item.engine,
+            pitch=pitch,
+            speed=speed,
         )
         self._play_sfx("select")
 
@@ -1807,6 +1863,8 @@ class PersonalizationWizard(QDialog):
             "bubble_style": self._selected_style,
             "tts_voice": voice or self.cfg.get("tts_voice", "pt_BR-faber-medium"),
             "tts_engine": self._selected_tts_engine,
+            "tts_pitch": round(float(self.pitch_slider.value()) / 100.0, 2) if hasattr(self, "pitch_slider") else 1.25,
+            "tts_speed": round(float(self.speed_slider.value()) / 100.0, 2) if hasattr(self, "speed_slider") else 1.0,
             "feedback_theme": self._selected_feedback,
             "onboarding_pending": False,
             "onboarding_boot_id": "",
