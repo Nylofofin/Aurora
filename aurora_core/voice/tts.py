@@ -46,6 +46,19 @@ class Speaker(QThread):
         text=re.sub(r'[\U0001F000-\U0001FAFF\U00002600-\U000026FF\U00002700-\U000027BF\u200d\ufe0f\u20e3]', ' ',text)
         text=re.sub(r'\b(?:(?:um|uma)\s+)?(?:emoji\s+(?:de\s+)?)?(?:rosto\s+sorridente(?:\s+com\s+olhos\s+sorridentes)?|rosto\s+sorrindo(?:\s+com\s+olhos\s+sorridentes)?|carinha\s+sorridente)\b',' ',text,flags=re.I)
         text=re.sub(r'\b(?:slightly smiling face|smiling face(?:\s+(?:with|and)\s+smiling eyes)?|smiling eyes|grinning face|face with tears of joy|rosto sorridente(?:\s+com olhos sorridentes)?)(?:\s*,\s*(?:smiling eyes|eyes smiling))?\s*(?:emoji)?\b',' ',text,flags=re.I)
+        # Convert DD/MM/YYYY into natural spoken Portuguese (e.g. 26 de outubro de 2026)
+        months={'01':'janeiro','02':'fevereiro','03':'março','04':'abril','05':'maio','06':'junho',
+                '07':'julho','08':'agosto','09':'setembro','10':'outubro','11':'novembro','12':'dezembro'}
+        def _replace_date(m):
+            d, mon, y = m.group(1), m.group(2), m.group(3)
+            return f'{int(d)} de {months.get(mon, mon)} de {y}'
+        text=re.sub(r'\b(0?[1-9]|[12]\d|3[01])/(0[1-9]|1[0-2])/((?:19|20)\d{2})\b', _replace_date, text)
+        # Convert HH:MM into natural spoken Portuguese
+        def _replace_time(m):
+            h, mn = int(m.group(1)), int(m.group(2))
+            h_str = f'{h} hora' if h == 1 else f'{h} horas'
+            return h_str if mn == 0 else f'{h_str} e {mn} minutos'
+        text=re.sub(r'\b([01]?\d|2[0-3]):([0-5]\d)\b', _replace_time, text)
         text=re.sub(r'\s+([,.;:!?])',r'\1',text)
         text=re.sub(r'[,;:]+([.!?])',r'\1',text).strip(' ,;:')
         text=re.sub(r'([.!?])(?:\s*[.!?])+',r'\1',text)

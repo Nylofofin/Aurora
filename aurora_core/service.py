@@ -80,8 +80,7 @@ def _format_latest_version_answer(items,now=None):
     for host,excerpt in page_texts:
         if host in hosts and re.search(r'(?<![\w.])v?'+re.escape(version)+r'(?!\w|\.\d)',excerpt,re.I) and host not in source_names:
             source_names.append(host)
-    checked=(now or datetime.now().astimezone()).strftime('%d/%m/%Y %H:%M %Z')
-    answer=f'A versão mais recente que confirmei é {version}, presente nas páginas de {" e ".join(source_names)}. Consultei essas páginas em {checked}.'
+    answer=f'A versão mais recente confirmada é a {version}, de acordo com {" e ".join(source_names)}.'
     prerelease=re.compile(r'(?<![\w.])(\d+\.\d+(?:\.\d+){1,2})\s+(Release Candidate\s+\d+|RC\s*\d*|Beta\s*\d*|Alpha\s*\d*)',re.I)
     seen=set()
     for host,excerpt in page_texts:

@@ -289,11 +289,7 @@ def _search_public_web_uncached(query,freshness=None,news_only=None,progress=Non
     today=datetime.now().astimezone().date()
     found.sort(key=lambda item:_candidate_rank(item,freshness,news_only,today,window_days,query),reverse=True)
     if not found:
-        counts='; '.join(f'{name}: {stats["extraidos"]} extraídos, {stats["relevantes"]} relacionados' for name,stats in provider_counts.items()) or 'nenhum resultado extraído'
-        drops=', '.join(f'{name} {count}' for name,count in rejected.items() if count)
-        reason=(' provedores indisponíveis: '+'; '.join(dict.fromkeys(failures))+'.') if failures else ''
-        filtered=(' descartes por '+drops+'.') if drops else ''
-        return f'Não confirmei fontes para essa pergunta. Resultados de busca ({counts}).{filtered}{reason} Não vou completar por memória.'
+        return 'Não encontrei informações confirmadas e recentes sobre esse assunto nas buscas.'
     # Keep a small reserve of independent candidates. Some publishers block the
     # reader or expose no text; a failed first choice must not hide the next
     # current source.
