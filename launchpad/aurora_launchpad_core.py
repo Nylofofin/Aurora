@@ -130,7 +130,40 @@ class InstallationHealth:
     repairable: bool
 
 
-def _rpm_version_key(value: str) -> tuple[int, ...] | None:
+def _aurora_version_key(value: str, *, prerelease: bool | None = None):
+    """Parse an Aurora version into a SemVer-like sortable key.
+
+    GitHub's prerelease flag is authoritative for release tags. Installed
+    version.py values carry the conventional ``-beta.2`` suffix themselves.
+    Compact stable project tags such as ``3.0.0e`` remain stable.
+    """
+    match = re.fullmatch(
+        r"v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?",
+        str(value or "").strip(), re.IGNORECASE,
+    )
+    if not match:
+        # Historical compact stable tags (for example v3.0.0e).
+        compact = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)[A-Za-z][A-Za-z0-9.-]*", str(value or "").strip(), re.IGNORECASE)
+        if not compact:
+            return None
+        return (*map(int, compact.groups()), (1,))
+    major, minor, patch = map(int, match.groups()[:3])
+    suffix = match.group(4)
+    is_prerelease = bool(suffix) if prerelease is None else prerelease
+    if not is_prerelease:
+        return major, minor, patch, (1,)
+    if not suffix:
+        return None
+    identifiers = []
+    for part in suffix.split("."):
+        if not part:
+            return None
+        identifiers.append((0, int(part)) if part.isdigit() else (1, part.casefold()))
+    return major, minor, patch, (0, *identifiers)
+
+
+def _rpm_version_key(value: str) -> tuple[int, int, int] | None:
+    """Parse the numeric Launchpad package version independently of Aurora."""
     match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", str(value or "").strip())
     return tuple(int(part) for part in match.groups()) if match else None
 
@@ -187,7 +220,7 @@ def newer_aurora_releases(
     releases, installed_version: str, limit: int = 3, *, stable_only: bool = False
 ) -> tuple[dict, ...]:
     """Return published Aurora builds newer than installed, optionally stable-only."""
-    current = _rpm_version_key(installed_version)
+    current = _aurora_version_key(installed_version)
     if current is None or not isinstance(limit, int) or limit < 1:
         return ()
     candidates: list[tuple[tuple[int, ...], str, dict]] = []
@@ -198,13 +231,15 @@ def newer_aurora_releases(
         # Keep the project's compact e-suffixed stable identity (for example
         # v3.0.0e) installable alongside conventional prerelease suffixes.
         match = re.fullmatch(
-            r"v?(\d+)\.(\d+)\.(\d+)(?:[-+]?[A-Za-z][A-Za-z0-9.-]*)?",
+            r"v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?|\d+\.\d+\.\d+[A-Za-z][A-Za-z0-9.-]*)",
             str(tag or ""), re.IGNORECASE)
         published = str(release.get("published_at") or "")
         prerelease = release.get("prerelease")
         if not match or not isinstance(prerelease, bool) or (stable_only and prerelease):
             continue
-        version = tuple(int(part) for part in match.groups())
+        version = _aurora_version_key(match.group(1), prerelease=prerelease)
+        if version is None:
+            continue
         if version <= current:
             continue
         candidates.append((version, published, release))

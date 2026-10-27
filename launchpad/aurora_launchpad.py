@@ -57,7 +57,7 @@ from aurora_launchpad_core import (
 
 
 APP_ID = "com.nylofofin.AuroraLaunchpad"
-INSTALLER_VERSION = "0.5.1"
+INSTALLER_VERSION = "0.5.2"
 PKEXEC = "/usr/bin/pkexec"
 SYSTEMCTL = "/usr/bin/systemctl"
 DNF = "/usr/bin/dnf"
@@ -172,7 +172,10 @@ def installed_aurora_version(root: Path) -> str:
         text = version_file.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return "0.0.0"
-    match = re.search(r'^__version__\s*=\s*["\'](\d+\.\d+\.\d+)', text, re.MULTILINE)
+    match = re.search(
+        r'^__version__\s*=\s*["\'](\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?(?:\+[A-Za-z0-9.-]+)?)',
+        text, re.MULTILINE,
+    )
     return match.group(1) if match else "0.0.0"
 
 
