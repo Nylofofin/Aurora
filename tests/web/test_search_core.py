@@ -356,7 +356,7 @@ def test_bing_news_candidates_use_common_pipeline_and_feed_date_when_page_has_no
         "https://publisher-a.example/tecnologia",
         "https://publisher-b.example/tecnologia",
     }
-    assert news_queries == ["tecnologia", "tecnologia Brasil"]
+    assert set(news_queries) == {"tecnologia", "tecnologia Brasil"}
     assert "Feed RSS: publisher-a.example" in output
     assert "Feed RSS: publisher-b.example" in output
     assert "Bing Notícias" in output

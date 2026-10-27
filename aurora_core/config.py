@@ -50,10 +50,6 @@ DEFAULTS = {
     'obs_host':'127.0.0.1',
     'obs_port':4455,
     'screen_control_apps':[],
-    # The Android companion is archived; do not expose an HTTPS listener on
-    # the LAN unless the user explicitly opts in.
-    'companion_enabled':False,
-    'companion_port':8765,
     'system_routine_enabled':True,
     'conversation_mode_enabled':True,
     'conversation_idle_seconds':18,

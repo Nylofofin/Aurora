@@ -133,7 +133,8 @@ def test_local_action_language_takes_precedence_over_automatic_factual_search(mo
         activity_generation = 0
         request_generation = 0
         response_language = "Português brasileiro"
-        companion_request = {"future": Future()}
+        voice = type("VoiceStub", (), {"request_active": threading.Event()})()
+        voice.request_active.set()
 
         def start_background_request(self, _request):
             raise AssertionError("A pergunta de ação local não deve abrir a busca web")
@@ -189,7 +190,8 @@ def test_local_hardware_question_bypasses_model_acknowledgement(monkeypatch):
         activity_generation = 0
         request_generation = 0
         response_language = "Português brasileiro"
-        companion_request = None
+        voice = type("VoiceStub", (), {"request_active": threading.Event()})()
+        voice.request_active.set()
 
         def run_local_action(self, name, args): self.action = (name, args)
         def start_inference(self, *_args): raise AssertionError("hardware lookup must skip Gemma")

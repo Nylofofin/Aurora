@@ -129,8 +129,8 @@ class Inference(QThread):
         try:
             while turns<5 and not self.cancelled:
                 turns+=1
-                agent_ctx=max(int(self.cfg.get('num_ctx',1024)),int(self.cfg.get('agent_num_ctx',2048))) if self.use_tools else int(self.cfg['num_ctx'])
-                budget=int(self.cfg.get('agent_num_predict',384)) if self.use_tools else (160 if guided_learning_intent(self.prompt) or re.search(r'\b(explique|detalhe|passo a passo|por que|como funciona|compare|lista)\b',normalize_words(self.prompt)) else 96)
+                agent_ctx=int(self.cfg.get('agent_num_ctx',2048)) if self.use_tools else int(self.cfg['num_ctx'])
+                budget=int(self.cfg.get('agent_num_predict',384)) if self.use_tools else (256 if guided_learning_intent(self.prompt) or re.search(r'\b(explique|detalhe|passo a passo|por que|como funciona|compare|lista)\b',normalize_words(self.prompt)) else 160)
                 payload={'model':self.model,'messages':msgs,'stream':True,'keep_alive':self.cfg['keep_alive'],
                     'think':False,'options':{'num_ctx':agent_ctx,'num_thread':int(self.cfg['num_thread']),'num_gpu':int(self.cfg['num_gpu']),'temperature':0.25,'num_batch':128,'num_predict':budget}}
                 if self.use_tools: payload['tools']=TOOLS

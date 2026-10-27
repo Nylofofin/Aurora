@@ -55,10 +55,6 @@ def test_settings_load_uses_defaults_when_json_root_is_not_an_object(monkeypatch
     assert loaded["model"] == config.DEFAULTS["model"]
 
 
-def test_companion_server_is_disabled_for_new_default_settings():
-    assert config.DEFAULTS["companion_enabled"] is False
-
-
 def test_first_run_settings_have_custom_identity_and_bubble_defaults():
     assert config.DEFAULTS["assistant_name"] == "Aurora"
     assert config.DEFAULTS["user_name"] == ""

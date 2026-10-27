@@ -46,13 +46,17 @@ class Speaker(QThread):
         text=re.sub(r'[\U0001F000-\U0001FAFF\U00002600-\U000026FF\U00002700-\U000027BF\u200d\ufe0f\u20e3]', ' ',text)
         text=re.sub(r'\b(?:(?:um|uma)\s+)?(?:emoji\s+(?:de\s+)?)?(?:rosto\s+sorridente(?:\s+com\s+olhos\s+sorridentes)?|rosto\s+sorrindo(?:\s+com\s+olhos\s+sorridentes)?|carinha\s+sorridente)\b',' ',text,flags=re.I)
         text=re.sub(r'\b(?:slightly smiling face|smiling face(?:\s+(?:with|and)\s+smiling eyes)?|smiling eyes|grinning face|face with tears of joy|rosto sorridente(?:\s+com olhos sorridentes)?)(?:\s*,\s*(?:smiling eyes|eyes smiling))?\s*(?:emoji)?\b',' ',text,flags=re.I)
-        # Convert DD/MM/YYYY into natural spoken Portuguese (e.g. 26 de outubro de 2026)
+        # Convert DD/MM/YYYY and DD/MM into natural spoken Portuguese (e.g. 26 de outubro de 2026 / 27 de outubro)
         months={'01':'janeiro','02':'fevereiro','03':'março','04':'abril','05':'maio','06':'junho',
                 '07':'julho','08':'agosto','09':'setembro','10':'outubro','11':'novembro','12':'dezembro'}
         def _replace_date(m):
             d, mon, y = m.group(1), m.group(2), m.group(3)
             return f'{int(d)} de {months.get(mon, mon)} de {y}'
         text=re.sub(r'\b(0?[1-9]|[12]\d|3[01])/(0[1-9]|1[0-2])/((?:19|20)\d{2})\b', _replace_date, text)
+        def _replace_day_month(m):
+            d, mon = m.group(1), m.group(2)
+            return f'{int(d)} de {months.get(mon, mon)}'
+        text=re.sub(r'\b(0?[1-9]|[12]\d|3[01])/(0[1-9]|1[0-2])\b', _replace_day_month, text)
         # Convert HH:MM into natural spoken Portuguese
         def _replace_time(m):
             h, mn = int(m.group(1)), int(m.group(2))
@@ -149,7 +153,7 @@ class Speaker(QThread):
         from .telemetry import elapsed_ms, log_voice_timing
         started=time.perf_counter(); first_audio=False; player=None
         voice=self._load_piper_voice(voice_id)
-        current_pitch = float(pitch if pitch is not None else self.cfg.get('tts_pitch', 1.0))
+        current_pitch = float(pitch if pitch is not None else self.cfg.get('tts_pitch', 1.25))
         current_speed = float(speed if speed is not None else self.cfg.get('tts_speed', 1.0))
         sr = voice.config.sample_rate
         ffplay_cmd = [self.engine,'-nodisp','-autoexit','-loglevel','quiet',
@@ -182,7 +186,7 @@ class Speaker(QThread):
             player.stdin.write(b'\x00\x00' * silence_samples)
             player.stdin.flush()
             if player.stdin and not player.stdin.closed: player.stdin.close()
-            if player.wait(timeout=60)!=0: raise RuntimeError('ffplay failed')
+            if player.wait(timeout=15)!=0: raise RuntimeError('ffplay failed')
         except BaseException:
             if player is not None and player.poll() is None: player.kill(); player.wait()
             raise

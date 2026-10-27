@@ -18,7 +18,7 @@ _REQUIRED_MODULES = (
     ("Whisper.cpp local", "pywhispercpp"),
     ("sounddevice", "sounddevice"),
     ("Vosk", "vosk"),
-    ("Edge TTS", "edge_tts"),
+    ("Piper TTS", "piper"),
     ("certifi", "certifi"),
 )
 

@@ -61,7 +61,7 @@ def _local_context_intent(normalized_prompt):
 
 
 def route_request(self,prompt):
-    if not self.voice.request_active.is_set() and not getattr(self,'companion_request',None): return
+    if not self.voice.request_active.is_set(): return
     prompt=prompt.strip()
     self.current_turn_kind='action'
     if not prompt:
@@ -85,25 +85,13 @@ def route_request(self,prompt):
     calculation=calculate_local_expression(prompt)
     if calculation:
         self.quick_summary_done(calculation,self.request_generation); return
-    lower_prompt = prompt.lower().strip()
-    if re.search(r'\b(mostre|mostrar|abrir|ver|espelhar)\s+(meu\s+)?(computador|pc|desktop|tela)\b', lower_prompt):
-        if getattr(self, 'screen_stream', None):
-            self.screen_stream.start()
-        self.quick_summary_done("Abrindo o desktop remoto. Você já pode visualizar e controlar a tela do computador com toque pelo celular.", self.request_generation)
-        return
-    if re.search(r'\b(sair\s+do\s+desktop|fechar\s+(o\s+)?desktop|encerrar\s+(o\s+)?desktop|fechar\s+tela)\b', lower_prompt):
-        if getattr(self, 'screen_stream', None):
-            self.screen_stream.stop()
-        self.quick_summary_done("Encerrando a transmissão do desktop e voltando ao modo live normal.", self.request_generation)
-        return
     normalized=normalize_words(prompt)
     asks_hardware_temperature=bool(re.search(r'\b(cpu|gpu|processador|placa de video|computador|pc|hardware|placa grafica)\b',normalized))
     if not asks_hardware_temperature and re.search(r'\b(tempo|clima|previs[aã]o|temperatura|vai chover|chove)\b',prompt,re.I):
         self.orb.set_mode('weather')
         generation=self.request_generation
-        if not self._mobile_audio_owned():
-            self.research_card.begin(generation,prompt,self.orb.frameGeometry())
-            self.research_card.update_progress(generation,{"stage":"searching","tasks":[prompt],"workers":1,"completed":0,"total":1})
+        self.research_card.begin(generation,prompt,self.orb.frameGeometry())
+        self.research_card.update_progress(generation,{"stage":"searching","tasks":[prompt],"workers":1,"completed":0,"total":1})
         self.weather=WeatherRequest(self.cfg,prompt)
         self.weather.result.connect(lambda text,g=generation: self.weather_done(text,g))
         self.weather.error.connect(lambda message,g=generation: self.weather_error(message,g))
@@ -137,13 +125,12 @@ def route_request(self,prompt):
         request=SearchRequest(query,freshness,news_search_intent(prompt))
         self.quick_search=request
         self.orb.set_mode('searching')
-        if not self._mobile_audio_owned():
-            self.research_card.begin(generation,prompt,self.orb.frameGeometry())
+        self.research_card.begin(generation,prompt,self.orb.frameGeometry())
         request.progress.connect(lambda event,g=generation:self.research_progress(event,g),Qt.ConnectionType.QueuedConnection)
         request.result.connect(lambda q,out,g=generation:self.quick_search_done(q,out,g),Qt.ConnectionType.QueuedConnection)
         request.error.connect(lambda q,message,g=generation:self.quick_search_error(q,message,g),Qt.ConnectionType.QueuedConnection)
         self.start_background_request(self.quick_search); return
-    if agent_intent and not getattr(self, '_mobile_audio_owned', lambda: False)():
+    if agent_intent:
         card=getattr(self,'research_card',None)
         if card:
             generation=self.request_generation
