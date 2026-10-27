@@ -17,7 +17,8 @@ _LAST_MALFORMED_RESULT_LOG = {}
 def _log_malformed_vosk(stage, detail):
     """Keep a malformed decoder from filling the persistent log on every frame."""
     now=time.monotonic()
-    if now-_LAST_MALFORMED_RESULT_LOG.get(stage,0.0) < 60.0:
+    last_logged=_LAST_MALFORMED_RESULT_LOG.get(stage)
+    if last_logged is not None and now-last_logged < 60.0:
         return
     _LAST_MALFORMED_RESULT_LOG[stage]=now
     print(f'[voice] JSON Vosk inválido em {stage}; {detail}',file=sys.stderr,flush=True)

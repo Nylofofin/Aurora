@@ -75,3 +75,12 @@ def test_vosk_malformed_metadata_recovers_only_valid_word_confidences(capsys):
 def test_vosk_invalid_result_without_text_is_nonfatal(capsys):
     assert parse_vosk_result('{not-json}', "wake") == {"text": "", "result": []}
     assert "sem texto recuperável" in capsys.readouterr().err
+
+
+def test_first_malformed_vosk_diagnostic_is_not_suppressed_during_cold_start(monkeypatch, capsys):
+    wake._LAST_MALFORMED_RESULT_LOG.clear()
+    monkeypatch.setattr(wake.time, "monotonic", lambda: 10.0)
+
+    parse_vosk_result("{not-json}", "cold-start")
+
+    assert "sem texto recuperável" in capsys.readouterr().err
