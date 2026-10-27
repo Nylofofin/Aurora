@@ -9,7 +9,7 @@ from aurora_core.voice import tts
 
 def test_default_voice_engine_is_local_piper():
     assert DEFAULTS["tts_engine"] == "piper"
-    assert DEFAULTS["tts_voice"] in {"pt_BR-faber-medium", "piper:dii"}
+    assert DEFAULTS["tts_voice"] == "pt_BR-faber-medium"
 
 
 def test_local_supertonic_voice_preview_is_marked_as_preview():

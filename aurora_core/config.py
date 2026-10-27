@@ -145,14 +145,10 @@ def settings_load():
         result['tts_speed'] = max(0.5, min(2.0, speed))
     except (TypeError, ValueError):
         result['tts_speed'] = 1.0
-    # This developer build uses local speech synthesis only.
-    current_voice = str(result.get('tts_voice', ''))
-    current_engine = str(result.get('tts_engine', '')).casefold()
-    valid_piper = current_engine == 'piper' and (current_voice in {'pt_BR-faber-medium', 'piper:dii', 'pt_BR-cadu-medium', 'pt_BR-jeff-medium', 'pt_BR-edresson-low'})
-    valid_supertonic = current_engine == 'supertonic' and current_voice.startswith('supertonic:')
-    if not (valid_piper or valid_supertonic):
-        result['tts_engine'] = 'piper'
-        result['tts_voice'] = 'pt_BR-faber-medium'
+    # Standardize on Faber with pitch/speed customization
+    result['tts_engine'] = 'piper'
+    result['tts_voice'] = 'pt_BR-faber-medium'
+    if result.get('tts_voice') != 'pt_BR-faber-medium' or result.get('tts_engine') != 'piper':
         should_save = True
     if not APP_CONFIG.exists() or should_save: settings_save(result)
     return result

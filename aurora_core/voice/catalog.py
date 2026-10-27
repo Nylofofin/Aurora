@@ -46,46 +46,10 @@ class Voice:
 
 
 VOICES = (
-    # --- VOZES PIPER (Ultra-rápidas, leves e 100% locais via VITS) ---
-    Voice("piper:dii", "Dii", "Feminina", "Piper · feminina, leve e expressiva · 100% local",
-          "OpenVoiceOS/pipertts_pt-BR_dii", "main", "dii_pt-BR.onnx",
-          "dii_pt-BR.onnx.json", "OpenVoiceOS pt-BR Dii (CC BY-NC-ND 4.0).",
-          engine="piper", relative_path=""),
-    Voice("pt_BR-faber-medium", "Faber", "Masculina", "Piper · natural e encorpada · 100% local",
+    Voice("pt_BR-faber-medium", "Faber", "Customizável", "Piper VITS · alta fidelidade · 100% local",
           "rhasspy/piper-voices", "v1.0.0", "pt_BR-faber-medium.onnx",
           "pt_BR-faber-medium.onnx.json", "Voz aberta rhasspy/piper-voices.",
           engine="piper", relative_path="pt/pt_BR/faber/medium"),
-    Voice("pt_BR-cadu-medium", "Cadu", "Masculina", "Piper · jovem e dinâmica · 100% local",
-          "rhasspy/piper-voices", "v1.0.0", "pt_BR-cadu-medium.onnx",
-          "pt_BR-cadu-medium.onnx.json", "Voz aberta rhasspy/piper-voices.",
-          engine="piper", relative_path="pt/pt_BR/cadu/medium"),
-    Voice("pt_BR-jeff-medium", "Jeff", "Masculina", "Piper · suave e descontraída · 100% local",
-          "rhasspy/piper-voices", "v1.0.0", "pt_BR-jeff-medium.onnx",
-          "pt_BR-jeff-medium.onnx.json", "Voz aberta rhasspy/piper-voices.",
-          engine="piper", relative_path="pt/pt_BR/jeff/medium"),
-    Voice("pt_BR-edresson-low", "Edresson", "Masculina", "Piper · compacta e direta · 100% local",
-          "rhasspy/piper-voices", "v1.0.0", "pt_BR-edresson-low.onnx",
-          "pt_BR-edresson-low.onnx.json", "Voz aberta rhasspy/piper-voices.",
-          engine="piper", relative_path="pt/pt_BR/edresson/low"),
-
-    # --- PERFIS SUPERTONIC 3 (CPU local com difusão leve) ---
-    *(Voice(f"supertonic:{name}", title, gender,
-            f"Supertonic 3 · perfil {name} · CPU local",
-            "Supertone/supertonic-3", "", "", "",
-            "Modelo OpenRAIL-M: requer atribuição e restrições de uso upstream.",
-            engine="supertonic", model_voice=name)
-      for name, title, gender in (
-          ("F1", "Soreli", "Feminina"),
-          ("F2", "Averin", "Feminina"),
-          ("F3", "Neriva", "Feminina"),
-          ("F4", "Velune", "Feminina"),
-          ("F5", "Calira", "Feminina"),
-          ("M1", "Jorven", "Masculina"),
-          ("M2", "Orvel", "Masculina"),
-          ("M3", "Tavren", "Masculina"),
-          ("M4", "Kaelor", "Masculina"),
-          ("M5", "Zevran", "Masculina"),
-      )),
 )
 VOICE_BY_KEY = {voice.key: voice for voice in VOICES}
 
