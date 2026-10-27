@@ -79,7 +79,9 @@ class _AnimatedOrb(QWidget):
         self.setFixedSize(126, 126)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self._timer = QTimer(self)
-        self._timer.setInterval(16)
+        # 33ms (30 FPS) for side preview orbs cuts idle rendering load in half,
+        # while keeping full 60 FPS (16ms) for the prominent center orb.
+        self._timer.setInterval(16 if opacity >= 0.9 else 33)
         self._timer.timeout.connect(self._tick)
 
     def _get_display_scale(self):

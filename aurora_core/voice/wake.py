@@ -342,7 +342,9 @@ class LocalVoice(QThread):
                                 profile_checked_at = time.monotonic()
                                 try:
                                     profile_pcm = b''.join(wake_audio[-12:])
-                                    profile_hit = profile_matches(wake_profile, profile_pcm, threshold=0.84)
+                                    # 0.76 provides a robust match across casual voice distances while
+                                    # requiring consecutive hits to prevent false positives.
+                                    profile_hit = profile_matches(wake_profile, profile_pcm, threshold=0.76)
                                 except Exception:
                                     profile_hit = False
                                 # One noisy 1.2s window is not enough to
