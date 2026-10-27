@@ -8,6 +8,9 @@
 - Corrige a etapa final do onboarding para exibir a tela de preparação antes de iniciar a assistente.
 - Adiciona um GIF longo e original que percorre o fluxo completo de personalização.
 - Inclui o Aurora Studio 0.4.9 como RPM para Fedora Workstation.
+- Remove o cliente Android, o servidor Companion e a síntese Edge TTS do produto desktop.
+- Mantém a voz Faber/Piper e migra preferências antigas de voz para a opção local ativa.
+- Corrige a persistência de configurações inválidas e de opções removidas durante a migração.
 
 ## Aurora Desktop 3.1.1 — Eris Skin Cleanup, 2026-10-25 (patch estável)
 

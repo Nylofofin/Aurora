@@ -110,9 +110,16 @@ def settings_load():
         except Exception: data={}
         if not isinstance(data,dict): data={}
         if data: settings_save(data)
-    except Exception: data={}
-    if not isinstance(data,dict): data={}
-    data.pop('hands_free',None); data.pop('wake_enabled',None)
+    except Exception:
+        data={}
+        should_save=True
+    if not isinstance(data,dict):
+        data={}
+        should_save=True
+    for retired_key in ('hands_free', 'wake_enabled', 'companion_enabled', 'companion_port'):
+        if retired_key in data:
+            data.pop(retired_key, None)
+            should_save = True
     result={**DEFAULTS,**data}
     if result.get('assistant_personality') not in {'companion','direct','playful','formal'}:
         result['assistant_personality']='companion'
@@ -133,19 +140,26 @@ def settings_load():
         should_save=True
     try:
         pitch = float(result.get('tts_pitch', 1.25))
-        result['tts_pitch'] = max(0.5, min(2.0, pitch))
+        normalized_pitch = max(0.5, min(2.0, pitch))
     except (TypeError, ValueError):
-        result['tts_pitch'] = 1.25
+        normalized_pitch = 1.25
+    if normalized_pitch != result.get('tts_pitch'):
+        should_save=True
+    result['tts_pitch'] = normalized_pitch
     try:
         speed = float(result.get('tts_speed', 1.0))
-        result['tts_speed'] = max(0.5, min(2.0, speed))
+        normalized_speed = max(0.5, min(2.0, speed))
     except (TypeError, ValueError):
-        result['tts_speed'] = 1.0
-    # Standardize on Faber with pitch/speed customization
-    result['tts_engine'] = 'piper'
-    result['tts_voice'] = 'pt_BR-faber-medium'
+        normalized_speed = 1.0
+    if normalized_speed != result.get('tts_speed'):
+        should_save=True
+    result['tts_speed'] = normalized_speed
+    # Standardize on the retained local Faber voice. Compare before replacing
+    # values so old Edge/Supertonic preferences are persisted as a migration.
     if result.get('tts_voice') != 'pt_BR-faber-medium' or result.get('tts_engine') != 'piper':
         should_save = True
+    result['tts_engine'] = 'piper'
+    result['tts_voice'] = 'pt_BR-faber-medium'
     if not APP_CONFIG.exists() or should_save: settings_save(result)
     return result
 

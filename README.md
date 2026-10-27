@@ -44,12 +44,12 @@ As animações abaixo foram capturadas dos próprios componentes do onboarding: 
 ## O que ela faz
 
 - Ativação e transcrição de fala locais com Vosk e Whisper.cpp.
-- Conversa e síntese de voz locais com Ollama, Piper ou Supertonic; apenas a voz selecionada é preparada.
+- Conversa local com Ollama e síntese local com Piper usando a voz Faber.
 - Pesquisa web quando pedida, com fontes reunidas em um resumo.
 - Ações no desktop e rotinas locais, com confirmação antes de operações que alteram o sistema.
 - Perfil, nome de ativação, aparência, voz, sons e dados de uso mantidos no computador.
 
-A pesquisa web precisa de internet. Modelos e pesos de voz são baixados quando necessários e têm licenças próprias. Consulte os detalhes de [vozes e modelos](assets/voices/README.md) e das [fontes dos sons](assets/audio/SOURCES.md).
+A pesquisa web precisa de internet. O modelo Whisper e os pesos Piper são baixados quando necessários e têm licenças próprias. Consulte os detalhes da [voz local](assets/voices/README.md) e das [fontes dos sons](assets/audio/SOURCES.md).
 
 ## Instalação
 
@@ -59,7 +59,7 @@ Instruções de empacotamento e instalação manual estão em [`packaging/rpm/RE
 
 ## Privacidade e segurança
 
-Áudio, transcrição, inferência e perfil são processados localmente. Quando você pede uma pesquisa, o texto da consulta é enviado a serviços web para obter resultados; o áudio não é enviado. Modelos e vozes escolhidos são baixados quando necessário. Ações que alteram o sistema pedem confirmação. Pesos de modelos não são incluídos no repositório ou no RPM.
+Áudio, transcrição, inferência, síntese de voz e perfil são processados localmente. Quando você pede uma pesquisa, o texto da consulta é enviado a serviços web para obter resultados; o áudio não é enviado. Os modelos de linguagem, Whisper e Piper são baixados quando necessários. Ações que alteram o sistema pedem confirmação. Pesos de modelos não são incluídos no repositório ou no RPM.
 
 ## Aurora Project e licença
 
