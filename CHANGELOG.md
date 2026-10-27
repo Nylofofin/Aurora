@@ -1,5 +1,17 @@
 # Histórico de versões
 
+## Aurora Desktop 3.2.0-beta.2 — Vega Signal, 2026-10-27 (pré-release)
+
+- Aprimora a ativação por nome personalizado: a gravação captura uma janela maior, descarta silêncios das bordas e compara referências acústicas normalizadas, sem guardar o áudio.
+- Corrige o caminho de confirmação para nomes fora do vocabulário Vosk; o perfil acústico sinaliza um candidato e o Whisper local confirma o nome falado.
+- Mantém compatibilidade com perfis de ativação criados em builds anteriores.
+- Reorganiza o onboarding em etapas menores: identidade, preferências de conversa, ativação, aparência, voz e sons.
+- Diferencia falha ao carregar o modelo Vosk de um nome ausente do vocabulário, evitando oferecer treinamento quando o modelo não está disponível.
+- Reduz a demora percebida de fala e transcrição, preservando o conteúdo completo enviado à voz local.
+- Melhora o roteamento entre conversa e pesquisa, o andamento do cartão de pesquisa e a avaliação da busca.
+- Atualiza o site do Aurora Project para apresentar o fluxo de personalização e o perfil local de ativação.
+- Anexa o RPM atual do Aurora Launchpad, versão 0.5.1, compatível com Fedora 44.
+
 ## Aurora Desktop 3.2.0-beta.1 — Callisto Persona Studio, 2026-10-25
 
 - Apresenta o Aurora Studio, com escolhas locais de personalidade, tom, nível de detalhe e preferência de resposta.
@@ -8,19 +20,6 @@
 - Corrige a etapa final do onboarding para exibir a tela de preparação antes de iniciar a assistente.
 - Adiciona um GIF longo e original que percorre o fluxo completo de personalização.
 - Inclui o Aurora Studio 0.4.9 como RPM para Fedora Workstation.
-
-## Próxima atualização — em desenvolvimento
-
-- Remove o cliente Android, o servidor Companion e a síntese Edge TTS do produto desktop.
-- Mantém a voz Faber/Piper e migra preferências antigas de voz para a opção local ativa.
-- Corrige a persistência de configurações inválidas e de opções removidas durante a migração.
-- Remove rotas inativas de Supertonic e áudio móvel do serviço de voz e dos testes associados.
-- Refina o reconhecimento de nomes personalizados: gravações passam a capturar uma janela maior, remover silêncio das bordas e comparar uma referência acústica local com duração normalizada; a transcrição local ainda confirma o nome falado, e perfis anteriores continuam compatíveis.
-- Separa o onboarding em etapas para identidade, preferências de conversa e ativação, com instruções de gravação mais claras e progresso visível.
-- Trata falhas ao carregar o Vosk como erro de configuração, sem encaminhar indevidamente a pessoa para o treinamento de nome.
-- Ajusta o fim de fala, a transmissão de frases ao TTS e a recuperação do reconhecimento local.
-- Distingue melhor conversa de pesquisa, atualiza o cartão de pesquisa e corrige a avaliação da busca.
-- Atualiza o site para explicar o perfil local de ativação e a experiência de personalização.
 
 ## Aurora Desktop 3.1.1 — Eris Skin Cleanup, 2026-10-25 (patch estável)
 

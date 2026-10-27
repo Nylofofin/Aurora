@@ -1,6 +1,6 @@
 # Aurora Project
 
-**Versão:** `3.2.0-beta.1` · **Canal:** Pré-release beta · **Codinome:** `Callisto Persona Studio` · **Build:** `aurora-project-3.2.0-beta.1-callisto-persona-studio`
+**Versão:** `3.2.0-beta.2` · **Canal:** Pré-release beta · **Codinome:** `Vega Signal` · **Build:** `aurora-project-3.2.0-beta.2-vega-signal`
 
 **Uma assistente de voz para Linux, com uma presença pequena na tela e o processamento principal no próprio computador.** A Aurora desperta por voz, entende pedidos cotidianos, conversa em uma sessão contínua e pode pesquisar na web ou executar ações locais.
 
