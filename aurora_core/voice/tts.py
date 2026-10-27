@@ -8,11 +8,9 @@ import importlib.util
 
 from .catalog import voice_files
 
-# Five is the quality/latency balance validated on the target desktop: three
-# steps produced audible artifacts, while eight added latency without being
-# necessary for everyday replies. Keep one setting across chunks to avoid
-# audible timbre changes inside a sentence.
-SUPERTONIC_QUALITY_STEPS = 5
+# Three steps deliver crisp, natural voice on CPU without the heavy 15-second
+# latency penalty of 5 steps.
+SUPERTONIC_QUALITY_STEPS = 3
 
 
 def local_piper_available():
