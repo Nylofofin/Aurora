@@ -175,6 +175,81 @@ def test_local_action_language_takes_precedence_over_automatic_factual_search(mo
         assert inference.kwargs["use_tools"] is False, prompt
 
 
+def test_external_research_request_stays_local(monkeypatch):
+    monkeypatch.setattr(routing, "parse_local_command", lambda _prompt: None)
+    monkeypatch.setattr(routing, "local_datetime_answer", lambda _prompt: "")
+    monkeypatch.setattr(routing, "calculate_local_expression", lambda _prompt: None)
+    monkeypatch.setattr(routing, "current_search_window", lambda _prompt: None)
+    monkeypatch.setattr(routing, "search_intent", lambda _prompt: "energia")
+
+    class Voice:
+        def __init__(self):
+            self.request_active = threading.Event()
+            self.request_active.set()
+            self.speaking = False
+
+    class Orb:
+        def isVisible(self): return True
+        def set_mode(self, _mode): pass
+        def reveal(self, _mode): pass
+
+    class Service:
+        voice = Voice()
+        orb = Orb()
+        inf = None
+        cfg = {"model": "gemma3:1b"}
+        context_history = []
+        activity_generation = 0
+        request_generation = 0
+        response_language = "Português brasileiro"
+
+        def start_background_request(self, _request):
+            raise AssertionError("pesquisa externa não deve ser iniciada")
+        def quick_summary_done(self, text, generation):
+            self.answer = (text, generation)
+
+    service = Service()
+    routing.route_request(service, "Pesquise notícias sobre energia")
+
+    assert "não consulto a internet" in service.answer[0]
+    assert service.answer[1] == 1
+
+
+def test_direct_website_request_does_not_open_external_browser(monkeypatch):
+    monkeypatch.setattr(
+        routing, "parse_local_command",
+        lambda _prompt: ("open_url", {"url": "https://example.com"}),
+    )
+
+    class Voice:
+        def __init__(self):
+            self.request_active = threading.Event()
+            self.request_active.set()
+
+    class Orb:
+        def isVisible(self): return True
+        def set_mode(self, _mode): pass
+
+    class Service:
+        voice = Voice()
+        orb = Orb()
+        inf = None
+        context_history = []
+        activity_generation = 0
+        request_generation = 0
+        response_language = "Português brasileiro"
+
+        def run_local_action(self, *_args):
+            raise AssertionError("URL externa não deve ser aberta")
+        def quick_summary_done(self, text, generation):
+            self.answer = (text, generation)
+
+    service = Service()
+    routing.route_request(service, "Abra o site")
+
+    assert "não abro sites" in service.answer[0]
+
+
 def test_agent_action_cue_does_not_mistake_topic_nouns_for_commands():
     assert routing._agent_action_intent("como abro o terminal")
     assert routing._agent_action_intent("quero abrir o navegador")

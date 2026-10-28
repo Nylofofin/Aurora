@@ -18,7 +18,8 @@ from .llm.warmup import ModelWarmup
 from .llm.prompts import _verified_fx_answer, ensure_current_source_attribution, ground_search_answer, search_answer_prompts
 from .memory import user_memory_update
 from .routing import route_request
-from .conversation import is_conversation_closing
+from .conversation import session_closing_intent
+from .session import ConversationSession
 from .system.apps import close_application, launch_application
 from .system.actions import execute_action as dispatch_action
 from .system.audit import audit_action
@@ -175,7 +176,19 @@ class AuroraService(QObject):
         self._voice_recovery_attempts=0
         self._voice_error_announced=False
         self.critical_error_requested.connect(self._present_critical_error,Qt.ConnectionType.QueuedConnection)
-        self.response_summary=''; self.response_finished=False; self.response_language='Português brasileiro'; self.activity_generation=0; self.request_generation=0; self.last_wake=0.0; self.background_requests=[]; self.context_history=[]; self.current_prompt=''; self.active_search_context=''
+        self.session_store=ConversationSession()
+        try:
+            self.context_history=self.session_store.load()
+            if not self.session_store.data['active']:
+                self.session_store.start_new()
+        except (OSError,ValueError) as exc:
+            self.session_store=None
+            self.context_history=[]
+            self.session_storage_error=str(exc)
+            print(f'[session] {exc}',file=sys.stderr,flush=True)
+        self.session_prompt_context=(self.session_store.prompt_context()
+                                     if self.session_store is not None else '')
+        self.response_summary=''; self.response_finished=False; self.response_language='Português brasileiro'; self.activity_generation=0; self.request_generation=0; self.last_wake=0.0; self.background_requests=[]; self.current_prompt=''; self.active_search_context=''
         self.continuous_mode=False; self.conversation_turns=0; self.conversation_token=0; self.current_turn_kind='action'
         self.pending_clarification=None; self.clarification_listening=False
         self.system_routine_check=None; self.system_update_worker=None; self.system_routine_pending=None
@@ -621,13 +634,28 @@ class AuroraService(QObject):
         print('[voice] reabrindo captura local',file=sys.stderr,flush=True)
         voice.start()
     def ask(self,prompt):
-        if self._handle_system_routine_confirmation(prompt): return
-        if getattr(self,'continuous_mode',False) and is_conversation_closing(prompt):
-            self.continuous_mode=False; self.conversation_token=getattr(self,'conversation_token',0)+1; self.voice.end_request()
-            self.context_history.clear()
-            self.response_finished=True; self.response_summary='Tudo bem. Até a próxima.'
+        closing=session_closing_intent(prompt)
+        if closing=='close':
+            if self.system_routine_pending:
+                self.system_routine_generation+=1
+                self.system_routine_pending=None
+                self.system_routine_after_speech=None
+            if self.speaker.active:
+                self.speaker.interrupt()
+            self._close_conversation_session()
+            return
+        if closing=='ambiguous':
+            if self.system_routine_pending:
+                self.system_routine_generation+=1
+                self.system_routine_pending=None
+                self.system_routine_after_speech=None
+            self.pending_clarification={'kind':'session_close'}
+            self.current_turn_kind='conversation'
+            self.response_finished=True
+            self.response_summary='Você quer encerrar a sessão inteira ou fechar um aplicativo ou janela?'
             self.speak_in_selected_language(self.response_summary)
             return
+        if self._handle_system_routine_confirmation(prompt): return
         # Keep the short local interrupt recognizer available while the
         # clarification answer is routed or its selected action is performed.
         self.voice.interrupt_active.set()
@@ -659,6 +687,19 @@ class AuroraService(QObject):
         pending=self.pending_clarification
         if not pending: return False
         answer=' '.join(str(prompt).split()).strip(' .,!?:;')
+        if pending.get('kind')=='session_close':
+            normalized=normalize_words(answer)
+            self.pending_clarification=None
+            if (session_closing_intent(answer)=='close'
+                    or normalized in {'sim','sim encerra','a sessao','sessao','isso','pode encerrar'}):
+                self._close_conversation_session()
+            elif normalized in {'nao','nao obrigado','nao obrigada','deixa','continua'}:
+                self.response_summary='Tudo bem, continuo por aqui.'
+                self.response_finished=True
+                self.speak_in_selected_language(self.response_summary)
+            else:
+                route_request(self,answer)
+            return True
         if pending.get('kind')=='agent':
             self.pending_clarification=None
             self.clarification_listening=False
@@ -671,6 +712,31 @@ class AuroraService(QObject):
         self.pending_clarification=None
         self.clarification_listening=False
         return False
+    def _close_conversation_session(self):
+        self.continuous_mode=False
+        self.conversation_token=getattr(self,'conversation_token',0)+1
+        self.pending_clarification=None
+        pending=getattr(self,'pending',None)
+        if pending:
+            self.pending=None
+            self.orb.pending=False
+            pending['result']='Sessão encerrada; ação cancelada.'
+            pending['event'].set()
+        for inference in tuple(getattr(self,'inferences',())):
+            if inference.isRunning(): inference.cancel()
+        cancel_event=getattr(self,'action_cancel_event',None)
+        if cancel_event is not None: cancel_event.set()
+        self.voice.end_request()
+        self.context_history.clear()
+        try:
+            if self.session_store is not None:
+                self.session_store.close()
+        except OSError as exc:
+            self.session_storage_error=f'Não consegui salvar o encerramento da sessão local: {exc}'
+            print(f'[session] {self.session_storage_error}',file=sys.stderr,flush=True)
+        self.response_finished=True
+        self.response_summary='Tudo bem. Até logo.'
+        self.speak_in_selected_language(self.response_summary)
     def queue_sentence(self,text,generation):
         # Streaming: enqueue each sentence to TTS as soon as the LLM emits it,
         # so the first audio chunk starts playing while the LLM is still
@@ -729,6 +795,14 @@ class AuroraService(QObject):
         if user_text and assistant_text:
             self.context_history.extend(({'role':'user','content':user_text},{'role':'assistant','content':assistant_text}))
             self.context_history=self.context_history[-6:]
+            store=getattr(self,'session_store',None)
+            if store is not None:
+                try:
+                    store.record_exchange(user_text,assistant_text)
+                    self.session_prompt_context=store.prompt_context()
+                except OSError as exc:
+                    self.session_storage_error=f'Não consegui salvar a sessão local: {exc}'
+                    print(f'[session] {self.session_storage_error}',file=sys.stderr,flush=True)
     def complete_direct_action(self,result):
         self.continuous_mode=False; self.conversation_token=getattr(self,'conversation_token',0)+1; self.current_turn_kind='action'
         self.response_summary=' '.join(str(result).split()); self.response_finished=True
@@ -997,9 +1071,33 @@ class AuroraService(QObject):
                           lambda pending=detail:self.expire_approval(pending))
         if self.orb.isVisible(): self.orb.set_mode('approval')
         else: self.orb.reveal('approval')
-        a=detail['args']; what={'open_url':f'abrir {a.get("url", "este endereço")}', 'open_application':f'abrir {a.get("command", "o aplicativo")}', 'close_application':f'fechar {a.get("application", "o aplicativo")}', 'manage_window':f'{a.get("action", "alterar")} a janela {a.get("target", "atual")}', 'take_screenshot':'capturar a tela e salvar a imagem', 'obs_record':'iniciar a gravação da tela no OBS', 'focus_accessible_window':f'focar a janela {a.get("window", "")} em {a.get("application", "")}', 'type_accessible_text':f'digitar texto no campo {a.get("field", "")} de {a.get("application", "")}' }
+        a=detail['args']; what={
+            'open_url':f'abrir {a.get("url", "este endereço")}',
+            'open_application':f'abrir {a.get("command", "o aplicativo")}',
+            'close_application':f'fechar {a.get("application", "o aplicativo")}',
+            'manage_window':f'{a.get("action", "alterar")} a janela {a.get("target", "atual")}',
+            'take_screenshot':'capturar a tela e salvar a imagem',
+            'obs_record':f'{"iniciar" if a.get("action")=="start" else "parar"} a gravação no OBS',
+            'focus_accessible_window':f'focar a janela {a.get("window", "")} em {a.get("application", "")}',
+            'type_accessible_text':f'digitar texto no campo {a.get("field", "")} de {a.get("application", "")}',
+            'create_file':f'criar o arquivo {a.get("filename", "")} em {a.get("location", "local escolhido")}',
+            'remember_preference':'salvar esta preferência na memória local',
+            'forget_preference':'remover esta preferência da memória local',
+            'agenda_add':'adicionar este compromisso à agenda',
+            'agenda_cancel':f'cancelar o compromisso {a.get("event_id", "")}',
+            'agenda_clear':'apagar todos os compromissos da agenda',
+            'volume_control':f'alterar o volume ({a.get("action", "ajustar")})',
+        }
         cancel_tip='Diga “parar” ou clique com o botão direito para negar.'
-        self.speak_in_selected_language(f'Preciso da sua autorização para {what.get(name,"executar uma ação")}. Toque na bolha para autorizar. {cancel_tip}')
+        risk={
+            'agenda_clear':' Isso apagará todos os compromissos e não pode ser desfeito.',
+            'agenda_cancel':' Isso removerá o compromisso selecionado.',
+            'close_application':' O aplicativo pode conter trabalho não salvo.',
+            'forget_preference':' Isso removerá a preferência da memória local.',
+        }.get(name,'')
+        if name=='manage_window' and a.get('action')=='close':
+            risk=' A janela pode conter trabalho não salvo.'
+        self.speak_in_selected_language(f'Preciso da sua autorização para {what.get(name,"executar uma ação")}.{risk} Toque na bolha para autorizar. {cancel_tip}')
     def expire_approval(self,detail):
         if self.pending is not detail: return
         self.pending=None

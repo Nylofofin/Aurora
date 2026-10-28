@@ -5,6 +5,8 @@ import stat
 import pytest
 
 import aurora_core.memory as memory
+from aurora_core.llm import tools as llm_tools
+from aurora_core.system import actions
 
 
 def test_loading_existing_memory_restricts_permissions(tmp_path, monkeypatch):
@@ -56,3 +58,26 @@ def test_memory_update_preserves_corrupted_json(tmp_path, monkeypatch):
 
     assert path.read_bytes() == original
     assert not path.with_suffix(".tmp").exists()
+
+
+@pytest.mark.parametrize("dispatcher", ["llm", "action"])
+@pytest.mark.parametrize("operation", ["remember_preference", "forget_preference"])
+def test_memory_dispatch_reports_update_error_without_changing_file(
+    tmp_path, monkeypatch, dispatcher, operation
+):
+    path = tmp_path / "aurora-memory.json"
+    original = b'{"preferences": ['
+    path.write_bytes(original)
+    monkeypatch.setattr(memory, "MEMORY_FILE", path)
+    monkeypatch.setattr(llm_tools, "audit_action", lambda *_args, **_kwargs: None)
+
+    if dispatcher == "llm":
+        result = llm_tools.execute_local_tool(operation, {"preference": "Respostas curtas"})
+    else:
+        result = actions.execute_action(
+            object(), operation, {"preference": "Respostas curtas"}
+        )
+
+    assert result.startswith("Não consegui atualizar a memória local:")
+    assert "arquivo foi preservado" in result
+    assert path.read_bytes() == original

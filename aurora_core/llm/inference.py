@@ -10,13 +10,12 @@ from .tools import TOOLS, execute_local_tool
 from ..system.files import normalize_words
 from ..system.commands import parse_local_command
 from ..web.language import likely_english, likely_portuguese, likely_spanish
-from ..web.intent import _is_historical_query, current_search_window, guided_learning_intent
-from ..web.fetch import read_public_page
-from ..web.pipeline import search_public_web
+from ..web.intent import guided_learning_intent
 from ..web.orchestra import local_parallel_tool_calls, local_worker_limit
+from ..system.approval import requires_user_approval
 
 ACTION_TOOL_NAMES = {
-    'open_url', 'take_screenshot', 'obs_record',
+    'take_screenshot', 'obs_record',
     'open_application', 'close_application', 'manage_window',
     'inspect_accessible_windows', 'focus_accessible_window',
     'type_accessible_text', 'volume_control', 'get_system_info',
@@ -84,7 +83,7 @@ def _take_spoken_chunks(buffer, final=False):
 
 class Inference(QThread):
     phrase=Signal(str); sentence=Signal(str); state=Signal(str); approval=Signal(str,object); result=Signal(str); error=Signal(str); search=Signal(str,str); progress=Signal(object)
-    def __init__(self, cfg, prompt, model=None, use_tools=False, history=None, system_prompt=None,response_language='Português brasileiro'): super().__init__(); self.cfg=cfg; self.prompt=prompt; self.model=model or cfg['model']; self.use_tools=use_tools; self.history=(history or [])[-6:]; self.system_prompt=system_prompt; self.response_language=response_language; self.cancelled=False; self.active_response=None
+    def __init__(self, cfg, prompt, model=None, use_tools=False, history=None, system_prompt=None,response_language='Português brasileiro',session_context=''): super().__init__(); self.cfg=cfg; self.prompt=prompt; self.model=model or cfg['model']; self.use_tools=use_tools; self.history=(history or [])[-6:]; self.system_prompt=system_prompt; self.response_language=response_language; self.session_context=session_context; self.cancelled=False; self.active_response=None
     def cancel(self):
         self.cancelled=True
         response=self.active_response
@@ -146,7 +145,8 @@ class Inference(QThread):
                                 'completed':0,'total':1})
         system=self.system_prompt or assistant_system_prompt(
             self.use_tools,self.response_language,self.cfg.get('assistant_name','Aurora'),
-            self.cfg.get('user_name',''),preferences=self.cfg)
+            self.cfg.get('user_name',''),preferences=self.cfg,
+            session_context=self.session_context)
         if self.system_prompt and 'tradutor' not in self.system_prompt.casefold():
             from .prompts import assistant_style_instructions
             style=assistant_style_instructions(self.cfg)
@@ -322,34 +322,22 @@ class Inference(QThread):
             executor.shutdown(wait=not self.cancelled,cancel_futures=True)
 
     def execute_tool(self,name,args):
-        local_result=execute_local_tool(name,args,self.cfg)
-        if local_result is not None: return local_result
-        if name=='read_web_page':
-            self.progress.emit({'mode':'web','stage':'reading','tasks':['Abrindo página solicitada'],
-                                'workers':1,'completed':0,'total':1})
-            try: result=read_public_page(str(args.get('url','')))
-            except Exception as exc: result=f'Página não lida: {exc}'
-            self.progress.emit({'mode':'web','stage':'reading','tasks':['Abrindo página solicitada'],
-                                'workers':1,'completed':1,'total':1})
-            return result
-        if name=='web_search':
-            query=str(args.get('query','')).strip()
-            self.search.emit(query,'')
-            freshness=current_search_window(self.prompt) or current_search_window(query)
-            if not freshness and _is_historical_query(self.prompt): freshness=False
-            try:
-                output=search_public_web(
-                    query, freshness,
-                    progress=lambda event: self.progress.emit({'mode':'web', **event}),
-                )
-            except Exception as exc: output=f'Busca não concluída: {exc}'
-            self.search.emit(query,output)
-            return output
-        if name not in ('close_application','manage_window','open_url','take_screenshot','obs_record','focus_accessible_window','type_accessible_text','agenda_clear'): return 'Ferramenta indisponível.'
+        if name in ('web_search','read_web_page','open_url'):
+            return 'Para manter tudo local, a Aurora não acessa a internet nem abre páginas externas.'
         parsed_request=parse_local_command(self.prompt)
         explicit_request=bool(parsed_request and parsed_request[0]==name)
         if name=='obs_record' and explicit_request:
             explicit_request=parsed_request[1].get('action')==args.get('action')
+        if requires_user_approval(name,args,explicit_user_request=explicit_request):
+            detail={'name':name,'args':args,'event':threading.Event(),'result':'Ação recusada.',
+                    'explicit_user_request':explicit_request}
+            self.approval.emit(name,detail)
+            if not detail['event'].wait(90): return 'Autorização expirou; ação cancelada.'
+            if self.cancelled: return 'Ação cancelada porque Aurora está encerrando.'
+            return str(detail['result'])
+        local_result=execute_local_tool(name,args,self.cfg)
+        if local_result is not None: return local_result
+        if name not in ('close_application','manage_window','take_screenshot','obs_record','focus_accessible_window','type_accessible_text','agenda_clear'): return 'Ferramenta indisponível.'
         detail={'name':name,'args':args,'event':threading.Event(),'result':'Ação recusada.',
                 'explicit_user_request':explicit_request}
         self.approval.emit(name,detail)

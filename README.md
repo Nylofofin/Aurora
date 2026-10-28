@@ -1,8 +1,8 @@
 # Aurora Project
 
-**Versão:** `3.2.0-beta.5` · **Canal:** Pré-release beta · **Codinome:** `Vela Vigil` · **Build:** `aurora-project-3.2.0-beta.5-vela-vigil`
+**Versão:** `3.2.0-beta.6` · **Canal:** Pré-release beta · **Codinome:** `Polaris Continuum` · **Build:** `aurora-project-3.2.0-beta.6-polaris-continuum`
 
-**Uma assistente de voz para Linux, com uma presença pequena na tela e o processamento principal no próprio computador.** A Aurora desperta por voz, entende pedidos cotidianos, conversa em uma sessão contínua e pode pesquisar na web ou executar ações locais.
+**Uma assistente de voz para Linux, com uma presença pequena na tela e processamento de conversa no próprio computador.** A Aurora desperta por voz, entende pedidos cotidianos, preserva contexto entre sessões e executa ações locais após confirmação. Nesta pré-release, pesquisa e leitura de páginas externas ficam desativadas.
 
 <p align="center">
   <img src="docs/media/bubble-enter.gif" width="360" alt="A bolha real da Aurora entrando com a animação de escuta">

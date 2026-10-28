@@ -57,23 +57,42 @@ def test_short_spanish_and_english_voice_lines_are_detected():
     assert likely_english("Recording started.")
 
 
-def test_web_tool_forwards_pipeline_progress_to_research_card(monkeypatch):
+def test_web_tool_is_disabled_in_local_only_mode(monkeypatch):
     cfg = {"endpoint": "http://localhost:11434", "model": "gemma4:test",
            "keep_alive": "5m", "num_ctx": 1024, "agent_num_ctx": 1024,
            "agent_num_predict": 96, "num_thread": 4, "num_gpu": 99}
     worker = inference_module.Inference(cfg, "Pesquise uma documentação", use_tools=True)
-    pipeline_events = []
-    ui_events = []
-    monkeypatch.setattr(inference_module, "search_public_web", lambda _query, _freshness, progress: (
-        pipeline_events.append(progress), progress({"stage": "searching", "tasks": ["DuckDuckGo Lite"]}), "resultado"
-    )[-1])
-    worker.progress.connect(ui_events.append)
+    monkeypatch.setattr(
+        inference_module.urllib.request, "urlopen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("internet access attempted")),
+    )
 
     result = worker.execute_tool("web_search", {"query": "documentação"})
 
-    assert result == "resultado"
-    assert pipeline_events and ui_events[0]["mode"] == "web"
-    assert ui_events[0]["stage"] == "searching"
+    assert "não acessa a internet" in result
+
+
+def test_mutating_local_tool_waits_for_confirmation_before_execution(monkeypatch):
+    cfg = {"endpoint": "http://localhost:11434", "model": "gemma4:test",
+           "keep_alive": "5m", "num_ctx": 1024, "agent_num_ctx": 1024,
+           "agent_num_predict": 96, "num_thread": 4, "num_gpu": 99}
+    worker = inference_module.Inference(cfg, "Crie um arquivo", use_tools=True)
+    executed = []
+    monkeypatch.setattr(
+        inference_module, "execute_local_tool",
+        lambda *args: executed.append(args) or "arquivo criado",
+    )
+
+    class Approval:
+        def emit(self, _name, detail):
+            detail["result"] = "Ação recusada pelo usuário."
+            detail["event"].set()
+
+    worker.approval = Approval()
+    result = worker.execute_tool("create_file", {"filename": "nota.txt"})
+
+    assert result == "Ação recusada pelo usuário."
+    assert executed == []
 
 
 def test_failed_translation_never_returns_the_foreign_original(monkeypatch):

@@ -48,8 +48,13 @@ def execute_action(self,name,args):
     if name=='create_file':
         try: return create_user_file(args.get('filename',''),args.get('location',''),args.get('content',''))
         except Exception as exc: return f'Não criei o arquivo: {exc}'
-    if name=='remember_preference': return user_memory_update(args.get('preference',''))
-    if name=='forget_preference': return user_memory_update(args.get('preference',''),forget=True)
+    if name in ('remember_preference','forget_preference'):
+        try:
+            return user_memory_update(
+                args.get('preference',''), forget=name=='forget_preference'
+            )
+        except ValueError as exc:
+            return f'Não consegui atualizar a memória local: {exc}'
     if name=='open_url':
         url=str(args.get('url','')).strip(); u=urlparse(url)
         if u.scheme not in ('http','https') or not u.hostname: return 'URL rejeitada por formato inválido.'

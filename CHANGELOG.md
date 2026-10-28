@@ -1,5 +1,13 @@
 # Histórico de versões
 
+## Aurora Desktop 3.2.0-beta.6 — Polaris Continuum, 2026-10-28 (pré-release)
+
+- Persiste localmente a sessão, o histórico recente, resumos curtos, fatos declarados e temas recorrentes, com permissões privadas e limites de armazenamento.
+- Recupera o contexto ao iniciar e permite encerrar a sessão por voz, esclarecendo o pedido ambíguo “fecha”.
+- Desativa pesquisas, leitura de páginas e abertura de sites externos no fluxo da Aurora.
+- Exige confirmação antes de alterações no desktop, arquivos, agenda, memória e configurações; avisa sobre ações irreversíveis.
+- Inclui o RPM Fedora do Aurora Studio e `SHA256SUMS` nos assets desta pré-release.
+
 ## Aurora Desktop 3.2.0-beta.5 — Vela Vigil, 2026-10-27 (pré-release)
 
 - Faz o Launchpad identificar quando o modelo local Whisper ou os arquivos essenciais do Vosk estão ausentes ou incompletos.

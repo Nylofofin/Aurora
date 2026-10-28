@@ -7,13 +7,11 @@ from .llm.inference import Inference
 from .system.commands import parse_local_command
 from .system.calculator import calculate_local_expression
 from .system.files import normalize_words
-from .voice.wake import LocalVoice
 from .web.intent import (
-    contextual_followup, contextual_source_request, current_search_window,
-    conversational_intent, local_datetime_answer, news_search_intent,
-    requested_response_language, research_request_intent, search_intent,
+    contextual_followup, contextual_source_request, conversational_intent,
+    current_search_window, local_datetime_answer,
+    requested_response_language, search_intent,
 )
-from .web.requests import FXRequest, SearchRequest, WeatherRequest
 
 _AGENT_ACTION = re.compile(
     r'\b(abr(?:a|e|em|o|imos|ir|iu|iram)|inici(?:a|e|am|o|amos|ar|ou|aram)|'
@@ -78,6 +76,13 @@ def route_request(self,prompt):
     source_followup=bool(self.context_history and contextual_source_request(prompt))
     direct=None if source_followup else parse_local_command(prompt)
     if direct:
+        if direct[0]=='open_url':
+            self.current_turn_kind='research'
+            self.quick_summary_done(
+                'Para manter tudo local, não abro sites nem acesso serviços externos.',
+                self.request_generation,
+            )
+            return
         self.run_local_action(*direct); return
     local_answer=local_datetime_answer(prompt)
     if local_answer:
@@ -87,53 +92,28 @@ def route_request(self,prompt):
         self.quick_summary_done(calculation,self.request_generation); return
     normalized=normalize_words(prompt)
     asks_hardware_temperature=bool(re.search(r'\b(cpu|gpu|processador|placa de video|computador|pc|hardware|placa grafica)\b',normalized))
-    if not asks_hardware_temperature and re.search(r'\b(tempo|clima|previs[aã]o|temperatura|vai chover|chove)\b',prompt,re.I):
-        self.orb.set_mode('weather')
-        generation=self.request_generation
-        self.research_card.begin(generation,prompt,self.orb.frameGeometry())
-        self.research_card.update_progress(generation,{"stage":"searching","tasks":[prompt],"workers":1,"completed":0,"total":1})
-        self.weather=WeatherRequest(self.cfg,prompt)
-        self.weather.result.connect(lambda text,g=generation: self.weather_done(text,g))
-        self.weather.error.connect(lambda message,g=generation: self.weather_error(message,g))
-        self.start_background_request(self.weather); return
+    asks_weather=not asks_hardware_temperature and bool(
+        re.search(r'\b(tempo|clima|previs[aã]o|temperatura|vai chover|chove)\b',normalized)
+    )
     fx_intent=aurora_fx.detect_fx_intent(prompt)
-    if fx_intent:
-        self.orb.set_mode('searching')
-        generation=self.request_generation
-        self.fx_request=FXRequest(fx_intent,prompt)
-        self.fx_request.result.connect(lambda lookup,g=generation: self.fx_lookup_done(lookup,g),Qt.ConnectionType.QueuedConnection)
-        self.fx_request.error.connect(lambda message,g=generation: self.quick_search_error(prompt,message,g),Qt.ConnectionType.QueuedConnection)
-        self.start_background_request(self.fx_request); return
     freshness=current_search_window(prompt)
     query=search_intent(prompt)
-    is_followup=bool(self.context_history and contextual_followup(prompt))
-    relative_reference=bool(re.search(r'\b(isso|disso|nisso|desse|dessa|dele|dela|essa fonte|esse resultado|essa noticia|essa resposta|a primeira fonte|o primeiro resultado|a segunda fonte|o segundo resultado|a terceira fonte|o terceiro resultado)\b',normalized))
-    needs_context_search=bool(is_followup and relative_reference and (query or freshness))
-    if needs_context_search: query=''
-    refers_to_source=bool(self.context_history and re.search(r'\b(fonte|link|noticia|artigo|resultado)\b',normalized))
-    agent_intent=(source_followup or refers_to_source or needs_context_search
-                  or _agent_action_intent(normalized)
-                  or (not query and _local_context_intent(normalized)))
-    # Search only when the user explicitly asks for research, asks for a
-    # clearly time-sensitive answer, or requests a research format (news or a
-    # tutorial). Broad openers like "o que é" and "me explica" are normal
-    # conversation by default; a factual-looking sentence alone is not proof
-    # that the user wants Google.
-    explicit_research = bool(query or research_request_intent(prompt))
-    automatic_freshness = bool(freshness and not needs_context_search and not conversational_intent(prompt))
-    if not query and not agent_intent and (explicit_research or automatic_freshness) and not is_followup:
-        query=LocalVoice.strip_wake_word(prompt,self.cfg.get('assistant_name','Aurora')).strip(' \t,.:;!?')
-    if query:
+    external_search = bool(query or (freshness and not conversational_intent(prompt)))
+    if asks_weather or fx_intent or (external_search and not _local_context_intent(normalized)):
         self.current_turn_kind='research'
-        generation=self.request_generation
-        request=SearchRequest(query,freshness,news_search_intent(prompt))
-        self.quick_search=request
-        self.orb.set_mode('searching')
-        self.research_card.begin(generation,prompt,self.orb.frameGeometry())
-        request.progress.connect(lambda event,g=generation:self.research_progress(event,g),Qt.ConnectionType.QueuedConnection)
-        request.result.connect(lambda q,out,g=generation:self.quick_search_done(q,out,g),Qt.ConnectionType.QueuedConnection)
-        request.error.connect(lambda q,message,g=generation:self.quick_search_error(q,message,g),Qt.ConnectionType.QueuedConnection)
-        self.start_background_request(self.quick_search); return
+        self.quick_summary_done(
+            'Para manter tudo local, não consulto a internet nem serviços externos. '
+            'Posso ajudar com informações já salvas no computador ou com o conhecimento do modelo local.',
+            self.request_generation,
+        )
+        return
+    is_followup=bool(self.context_history and contextual_followup(prompt))
+    refers_to_source=bool(self.context_history and re.search(
+        r'\b(fonte|link|noticia|artigo|resultado)\b',normalized
+    ))
+    agent_intent=(source_followup or refers_to_source or is_followup
+                  or _agent_action_intent(normalized)
+                  or _local_context_intent(normalized))
     if agent_intent:
         card=getattr(self,'research_card',None)
         if card:
@@ -143,6 +123,10 @@ def route_request(self,prompt):
                                              'workers':1,'completed':0,'total':1})
     self.current_turn_kind='action' if agent_intent else 'conversation'
     model=self.cfg.get('agent_model','qwen2.5:1.5b') if agent_intent else self.cfg['model']
-    inference=Inference(self.cfg,prompt,model=model,use_tools=agent_intent,history=self.context_history[-6:],response_language=self.response_language)
+    inference=Inference(
+        self.cfg,prompt,model=model,use_tools=agent_intent,history=self.context_history[-6:],
+        response_language=self.response_language,
+        session_context=getattr(self,'session_prompt_context',''),
+    )
     generation=self.request_generation
     inference.sentence.connect(lambda text,g=generation:self.queue_sentence(text,g)); inference.search.connect(lambda q,out,g=generation:self.search_update(q,out) if g==self.request_generation else None,Qt.ConnectionType.QueuedConnection); inference.progress.connect(lambda event,g=generation:self.research_progress(event,g),Qt.ConnectionType.QueuedConnection); inference.approval.connect(lambda name,detail,g=generation:self.request_approval(name,detail) if g==self.request_generation else None); inference.error.connect(lambda message,g=generation:self.answer_error(message,g)); inference.result.connect(lambda text,g=generation:self.answer_done(text,g)); self.start_inference(inference,generation)

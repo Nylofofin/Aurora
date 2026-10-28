@@ -218,35 +218,55 @@ def test_screen_approval_explains_voice_cancellation(monkeypatch):
     assert "clique com o botão direito" in stub.spoken
 
 
-def test_screenshot_does_not_request_a_second_aurora_confirmation():
+def test_state_changing_actions_always_require_aurora_confirmation(monkeypatch):
     from aurora_core.system.approval import requires_user_approval
     assert requires_user_approval("take_screenshot", {})
-    assert not requires_user_approval("take_screenshot", {}, explicit_user_request=True)
+    assert requires_user_approval("take_screenshot", {}, explicit_user_request=True)
     assert requires_user_approval("open_url", {"url": "https://example.com"})
-    assert not requires_user_approval("open_url", {"url": "https://example.com"}, explicit_user_request=True)
+    assert requires_user_approval("open_url", {"url": "https://example.com"}, explicit_user_request=True)
     assert requires_user_approval("close_application", {"application": "Editor"})
     assert requires_user_approval("obs_record", {"action": "start"})
     assert requires_user_approval("obs_record", {"action": "stop"})
-    assert not requires_user_approval("obs_record", {"action": "stop"}, explicit_user_request=True)
+    assert requires_user_approval("obs_record", {"action": "stop"}, explicit_user_request=True)
+    assert requires_user_approval("create_file", {"filename": "nota.txt"})
+    assert requires_user_approval("remember_preference", {})
+    assert requires_user_approval("agenda_cancel", {"event_id": 4})
+    assert requires_user_approval("agenda_clear", {})
+    assert requires_user_approval("timer_cancel", {"timer_id": 4})
+    assert requires_user_approval("volume_control", {"action": "set"})
+    assert not requires_user_approval("volume_control", {"action": "status"})
+    assert not requires_user_approval("agenda_list", {})
+    assert not requires_user_approval("inspect_accessible_windows", {})
 
     class Orb:
         pending = False
+        def isVisible(self): return True
         def set_mode(self, _mode): pass
+
+    class Speaker:
+        def __init__(self): self.messages = []
+        def say(self, text): self.messages.append(text)
 
     class ServiceStub:
         pending = None
         orb = Orb()
-        def _start_screenshot_action(self, detail):
-            self.executed = detail["name"] == "take_screenshot"
-            detail["event"].set()
+        speaker = Speaker()
+        response_language = "Português brasileiro"
+        def speak_in_selected_language(self, text): self.speaker.say(text)
 
     detail = {"name": "take_screenshot", "args": {}, "event": threading.Event(),
               "explicit_user_request": True}
     stub = ServiceStub()
+    monkeypatch.setattr(service_module.QTimer, "singleShot", lambda *_args: None)
     service_module.AuroraService.request_approval(stub, detail["name"], detail)
-    assert stub.executed
-    assert detail["event"].is_set()
-    assert stub.pending is None
+    assert stub.pending is detail
+    assert not detail["event"].is_set()
+    assert "Preciso da sua autorização" in stub.speaker.messages[0]
+
+    irreversible = {"name": "agenda_clear", "args": {}, "event": threading.Event()}
+    stub.pending = None
+    service_module.AuroraService.request_approval(stub, "agenda_clear", irreversible)
+    assert "não pode ser desfeito" in stub.speaker.messages[-1]
 
 
 def test_approved_model_screenshot_uses_async_portal_worker():
@@ -361,11 +381,16 @@ def test_direct_screenshot_runs_off_the_gui_thread_and_uses_natural_confirmation
             QObject.__init__(self)
             self.orb = Orb()
             self.voice = Voice()
+            self.speaker = type("Speaker", (), {"active": False, "q": __import__("queue").Queue()})()
             self.action_workers = []
             self.obs_details = {}
             self.action_cancel_event = threading.Event()
             self.request_generation = 3
             self.cfg = {}
+            self.pending = None
+        def request_approval(self, _name, detail):
+            self.pending = detail
+            service_module.AuroraService.resolve_approval(self, True)
         def complete_direct_action(self, text): self.completed = text
 
     stub = ServiceStub()
