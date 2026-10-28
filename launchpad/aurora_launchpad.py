@@ -46,6 +46,7 @@ from aurora_launchpad_core import (
     GITHUB_REPOSITORY,
     MAX_RELEASE_ARCHIVE_BYTES,
     inspect_installation,
+    voice_assets_ready,
     is_official_github_download_url,
     latest_launchpad_update,
     newer_aurora_releases,
@@ -57,7 +58,7 @@ from aurora_launchpad_core import (
 
 
 APP_ID = "com.nylofofin.AuroraLaunchpad"
-INSTALLER_VERSION = "0.5.2"
+INSTALLER_VERSION = "0.5.3"
 PKEXEC = "/usr/bin/pkexec"
 SYSTEMCTL = "/usr/bin/systemctl"
 DNF = "/usr/bin/dnf"
@@ -387,7 +388,13 @@ class Launchpad(Adw.Application):
             [SYSTEMCTL, "--user", "is-active", "--quiet", "aurora.service"],
             timeout=5,
         ).returncode == 0
-        return inspect_installation(MANAGED_APP, unit, service_active=active)
+        data_root = Path(os.environ.get("XDG_DATA_HOME", str(Path.home()/".local/share"))) / "aurora"
+        return inspect_installation(
+            MANAGED_APP,
+            unit,
+            service_active=active,
+            whisper_model=data_root / "models/ggml-base-q5_1.bin",
+        )
 
     def on_activate(self, _app):
         if self.window:
@@ -1119,10 +1126,8 @@ class Launchpad(Adw.Application):
         return {
             "venv_present": old_venv.is_file(),
             "voice_requirements_changed": same_file(old_voice, new_voice) is False,
-            "voice_assets_present": (
-                all((MANAGED_APP / "assets/vosk-model" / name).is_file()
-                    for name in ("final.mdl", "Gr.fst", "HCLr.fst", "mfcc.conf"))
-                and (data_root / "models/ggml-base-q5_1.bin").is_file()
+            "voice_assets_present": voice_assets_ready(
+                source, data_root / "models/ggml-base-q5_1.bin"
             ),
         }
 
@@ -1406,13 +1411,18 @@ class Launchpad(Adw.Application):
 
     def _repair_worker(self):
         try:
-            self._set_stage("1/3 · Parando a Aurora", "Encerrando o serviço atual antes de corrigir a unidade.", .20)
+            self._set_stage("1/4 · Parando a Aurora", "Encerrando o serviço atual antes de corrigir a instalação.", .15)
             stop = subprocess.run([SYSTEMCTL, "--user", "stop", "aurora.service"], capture_output=True, text=True, timeout=30)
             if stop.returncode:
                 raise RuntimeError((stop.stderr or stop.stdout or "Não consegui parar aurora.service.").strip())
-            self._set_stage("2/3 · Reinstalando o serviço", "Recriando o arquivo do serviço a partir da instalação gerenciada.", .55)
+            data_root = Path(os.environ.get("XDG_DATA_HOME", str(Path.home()/".local/share"))) / "aurora"
+            whisper_model = data_root / "models/ggml-base-q5_1.bin"
+            if not voice_assets_ready(MANAGED_APP, whisper_model):
+                self._set_stage("2/4 · Reparando reconhecimento de voz", "Conferindo o Vosk e restaurando o modelo Whisper local ausente.", .40)
+                run_process([str(MANAGED_APP / "setup-voice.sh")], self._stream_line, cwd=MANAGED_APP, timeout=1800)
+            self._set_stage("3/4 · Reinstalando o serviço", "Recriando o arquivo do serviço a partir da instalação gerenciada.", .65)
             run_process([str(MANAGED_APP / "install-desktop.sh")], self._stream_line, cwd=MANAGED_APP, timeout=180)
-            self._set_stage("3/3 · Confirmando", "Aguardando o serviço ficar ativo.", .85)
+            self._set_stage("4/4 · Confirmando", "Aguardando o serviço ficar ativo.", .85)
             active = subprocess.run([SYSTEMCTL, "--user", "is-active", "--quiet", "aurora.service"], timeout=15).returncode == 0
             if not active:
                 raise RuntimeError("O serviço foi reparado, mas não ficou ativo; confira o status e o journal.")

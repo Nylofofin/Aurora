@@ -1,5 +1,11 @@
 # Histórico de versões
 
+## Aurora Desktop 3.2.0-beta.5 — Vela Vigil, 2026-10-27 (pré-release)
+
+- Faz o Launchpad identificar quando o modelo local Whisper ou os arquivos essenciais do Vosk estão ausentes ou incompletos.
+- Amplia o reparo do Launchpad: restaura os componentes de voz ausentes antes de reconfigurar e iniciar o serviço, sem tocar nas preferências pessoais.
+- Inclui o Aurora Studio 0.5.3 em RPM e SHA256SUMS nos assets desta pré-release.
+
 ## Aurora Desktop 3.2.0-beta.4 — Sirius Drift, 2026-10-27 (pré-release)
 
 - Expande o catálogo para dez aparências circulares e adiciona Pulso de Quasar, com núcleo e jatos de luz, e Mar de Prata, com relevo craterado e terminador móvel.

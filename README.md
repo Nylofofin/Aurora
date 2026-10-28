@@ -1,6 +1,6 @@
 # Aurora Project
 
-**Versão:** `3.2.0-beta.4` · **Canal:** Pré-release beta · **Codinome:** `Sirius Drift` · **Build:** `aurora-project-3.2.0-beta.4-sirius-drift`
+**Versão:** `3.2.0-beta.5` · **Canal:** Pré-release beta · **Codinome:** `Vela Vigil` · **Build:** `aurora-project-3.2.0-beta.5-vela-vigil`
 
 **Uma assistente de voz para Linux, com uma presença pequena na tela e o processamento principal no próprio computador.** A Aurora desperta por voz, entende pedidos cotidianos, conversa em uma sessão contínua e pode pesquisar na web ou executar ações locais.
 

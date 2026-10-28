@@ -39,7 +39,14 @@ if [ -e "$MODEL_DIR" ] || [ -L "$MODEL_DIR" ]; then
     exit 1
   fi
 fi
-if [ ! -d "$MODEL_DIR" ]; then
+VOSK_READY=1
+for required in final.mdl Gr.fst HCLr.fst mfcc.conf; do
+  if [ ! -f "$MODEL_DIR/$required" ] || [ -L "$MODEL_DIR/$required" ]; then
+    VOSK_READY=0
+    break
+  fi
+done
+if [ "$VOSK_READY" -ne 1 ]; then
   TMP_DIR="$(mktemp -d)"
   TMP_DIRS+=("$TMP_DIR")
   curl -L --fail --silent --show-error 'https://alphacephei.com/vosk/models/vosk-model-small-pt-0.3.zip' -o "$TMP_DIR/model.zip"
@@ -56,7 +63,14 @@ PYCODE
       exit 1
     fi
   done
-  mv "$MODEL_SOURCE" "$MODEL_DIR"
+  if [ -d "$MODEL_DIR" ]; then
+    mv "$MODEL_DIR" "$TMP_DIR/incomplete-vosk"
+  fi
+  if ! mv "$MODEL_SOURCE" "$MODEL_DIR"; then
+    if [ -d "$TMP_DIR/incomplete-vosk" ]; then mv "$TMP_DIR/incomplete-vosk" "$MODEL_DIR"; fi
+    printf 'Não consegui instalar o modelo Vosk validado.\n' >&2
+    exit 1
+  fi
 fi
 printf 'Modelo Vosk pronto em %s\n' "$MODEL_DIR"
 if [ -L "$DATA_ROOT" ] || [ -L "$STT_MODEL_DIR" ]; then

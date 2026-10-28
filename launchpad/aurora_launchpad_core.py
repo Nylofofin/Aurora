@@ -254,7 +254,31 @@ def release_channel_label(release: dict) -> str:
     return "Pré-release · experimental" if release["prerelease"] else "Release · estável"
 
 
-def inspect_installation(managed_app: Path, unit_path: Path, *, service_active: bool) -> InstallationHealth:
+def voice_assets_ready(managed_app: Path, whisper_model: Path | None = None) -> bool:
+    """Check the minimum local STT assets without loading either decoder."""
+    managed_app = Path(managed_app)
+    vosk = managed_app / "assets/vosk-model"
+    required_vosk = ("final.mdl", "Gr.fst", "HCLr.fst", "mfcc.conf")
+    if not vosk.is_dir() or vosk.is_symlink() or any(
+        not (vosk / name).is_file() or (vosk / name).is_symlink() for name in required_vosk
+    ):
+        return False
+    if whisper_model is None:
+        return True
+    model = Path(whisper_model)
+    try:
+        return model.is_file() and not model.is_symlink() and model.stat().st_size >= 20_000_000
+    except OSError:
+        return False
+
+
+def inspect_installation(
+    managed_app: Path,
+    unit_path: Path,
+    *,
+    service_active: bool,
+    whisper_model: Path | None = None,
+) -> InstallationHealth:
     """Classify an installation without starting processes or changing files."""
     managed_app = Path(managed_app)
     unit_path = Path(unit_path)
@@ -265,6 +289,8 @@ def inspect_installation(managed_app: Path, unit_path: Path, *, service_active: 
         return InstallationHealth("missing", ("A pasta gerenciada da Aurora não existe.",), False)
     if missing:
         details.append("Arquivos ausentes: " + ", ".join(missing) + ".")
+    if not voice_assets_ready(managed_app, whisper_model):
+        details.append("Componentes locais de reconhecimento de voz ausentes ou incompletos; o Whisper pode cair no Vosk.")
     if not unit_path.is_file():
         details.append("O serviço aurora.service não está configurado.")
     else:

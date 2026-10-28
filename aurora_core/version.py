@@ -3,8 +3,8 @@ from __future__ import annotations
 
 """Release identity for the Aurora local desktop build."""
 
-__version__ = "3.2.0-beta.4"
+__version__ = "3.2.0-beta.5"
 
-CODENAME = "SIRIUS DRIFT"
+CODENAME = "VELA VIGIL"
 
-BUILD_ID = "aurora-project-3.2.0-beta.4-sirius-drift"
+BUILD_ID = "aurora-project-3.2.0-beta.5-vela-vigil"

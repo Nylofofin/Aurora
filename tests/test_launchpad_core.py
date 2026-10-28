@@ -11,6 +11,7 @@ from launchpad.aurora_launchpad_core import (
     OLLAMA_INSTALLER_SHA256,
     assess_environment,
     inspect_installation,
+    voice_assets_ready,
     is_official_github_download_url,
     latest_launchpad_update,
     newer_aurora_releases,
@@ -78,6 +79,44 @@ def test_installation_health_detects_stopped_service_as_repairable(tmp_path: Pat
     assert health.state == "repairable"
     assert health.repairable
     assert any("não está ativo" in detail for detail in health.details)
+
+
+def test_installation_health_marks_missing_whisper_model_repairable(tmp_path: Path):
+    app = tmp_path / "aurora"
+    vosk = app / "assets/vosk-model"
+    vosk.mkdir(parents=True)
+    for name in ("final.mdl", "Gr.fst", "HCLr.fst", "mfcc.conf"):
+        (vosk / name).write_text("ready", encoding="utf-8")
+    for name in ("aurora.py", "run.sh", "start-alpha.sh", "install-desktop.sh"):
+        (app / name).write_text("# test", encoding="utf-8")
+    unit = tmp_path / "aurora.service"
+    unit.write_text(f"WorkingDirectory={app}\nExecStart={app}/start-alpha.sh\n", encoding="utf-8")
+
+    health = inspect_installation(
+        app,
+        unit,
+        service_active=True,
+        whisper_model=tmp_path / "models" / "ggml-base-q5_1.bin",
+    )
+
+    assert health.state == "repairable"
+    assert any("reconhecimento de voz" in detail for detail in health.details)
+
+
+def test_voice_assets_ready_rejects_small_or_symlinked_whisper_model(tmp_path: Path):
+    app = tmp_path / "aurora"
+    vosk = app / "assets/vosk-model"
+    vosk.mkdir(parents=True)
+    for name in ("final.mdl", "Gr.fst", "HCLr.fst", "mfcc.conf"):
+        (vosk / name).write_text("ready", encoding="utf-8")
+    model = tmp_path / "ggml-base-q5_1.bin"
+    model.write_bytes(b"small")
+    assert not voice_assets_ready(app, model)
+    model.write_bytes(b"0" * 20_000_000)
+    assert voice_assets_ready(app, model)
+    link = tmp_path / "linked-model.bin"
+    link.symlink_to(model)
+    assert not voice_assets_ready(app, link)
 
 
 def test_installation_health_rejects_missing_payload(tmp_path: Path):
