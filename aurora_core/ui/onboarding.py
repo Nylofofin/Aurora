@@ -30,6 +30,8 @@ BUBBLE_STYLES = (
     ("ocean", "Falha Prismática", "Placas ciano · fratura ramificada · faces de gelo"),
     ("titan", "Névoa Violeta", "Véus lilás · profundidade escura · luz difusa"),
     ("triton", "Calota Glacial", "Gelo azul profundo · pluma polar · estrias gravadas"),
+    ("quasar", "Pulso de Quasar", "Núcleo elétrico · jatos opostos · halo violeta"),
+    ("lunar", "Mar de Prata", "Relevo craterado · terminador móvel · poeira luminosa"),
 )
 BUBBLE_STYLE_KEYS = {key for key, _title, _detail in BUBBLE_STYLES}
 
@@ -42,6 +44,9 @@ FEEDBACK_THEMES = (
     ("prisma", "Prisma", "Sinos de vidro", "✧   ◇   ✧"),
     ("marea", "Maré", "Gotas líquidas", "◦   〜   ◦"),
     ("lumen", "Lúmen", "Farol harmônico", "◖   ●   ◗"),
+    ("aether", "Éter", "Sopro etéreo", "≈   ✦   ≈"),
+    ("quasar", "Quasar", "Pulso estelar", "✦   ⇧   ✦"),
+    ("ember", "Brasa", "Metal incandescente", "◈   ·   ◈"),
 )
 FEEDBACK_THEME_KEYS = {item[0] for item in FEEDBACK_THEMES}
 
@@ -155,6 +160,8 @@ class _AnimatedOrb(QWidget):
             "ocean": ("#eaffff", "#58cfc6", "#1d678e"),
             "titan": ("#f4efff", "#76658f", "#30233f"),
             "triton": ("#eaf0ff", "#3c65b0", "#101d4b"),
+            "quasar": ("#f8f3ff", "#a27bea", "#321451"),
+            "lunar": ("#f8f7f2", "#9a9ca8", "#333846"),
         }
         return tuple(QColor(color) for color in palette.get(style, palette["boreal"]))
 
@@ -257,6 +264,14 @@ class _AnimatedOrb(QWidget):
             for stop, color in ((0.0, "#eaf0ff"), (.25, "#a6b9ee"),
                                 (.50, "#3c65b0"), (.76, "#243e82"), (1.0, "#101d4b")):
                 gradient.setColorAt(stop, QColor(color))
+        elif self.style == "quasar":
+            gradient = QLinearGradient(size*.12, 0, size*.83, size)
+            for stop, color in ((0.0, "#f8f3ff"), (.26, "#d6c0ff"), (.48, "#a27bea"), (.74, "#59318a"), (1.0, "#321451")):
+                gradient.setColorAt(stop, QColor(color))
+        elif self.style == "lunar":
+            gradient = QLinearGradient(size*.12, size*.08, size*.84, size*.95)
+            for stop, color in ((0.0, "#f8f7f2"), (.28, "#d2d2d0"), (.53, "#9a9ca8"), (.78, "#555b6b"), (1.0, "#333846")):
+                gradient.setColorAt(stop, QColor(color))
         else:
             gradient.setColorAt(0, QColor("#effaff"))
             gradient.setColorAt(.58, QColor("#6ca9ec"))
@@ -273,6 +288,8 @@ class _AnimatedOrb(QWidget):
             "crimson": ((.32, .20), "#ffffff", 78, .62),
             "titan": ((.72, .72), "#c7a6f5", 104, .82),
             "triton": ((.30, .74), "#d8ffff", 118, .82),
+            "quasar": ((.50, .48), "#e4c7ff", 128, .60),
+            "lunar": ((.28, .28), "#ffffff", 105, .70),
         }
         if self.style in radial_fields:
             (cx, cy), color, alpha, radius = radial_fields[self.style]
@@ -286,12 +303,17 @@ class _AnimatedOrb(QWidget):
 
         # CSS's fixed radial highlight and blurred top sheen. Two faint soft
         # ellipses approximate the 6px CSS blur without adding a new motion.
-        shine = QRadialGradient(size*.32, size*.19, size*.42)
+        # A very slow, narrow refraction pass adds movement to every finish
+        # without making the glass look like a looping sticker.
+        shine_x = size*(.32 + math.sin(self.phase*.28)*.035)
+        shine_y = size*(.19 + math.cos(self.phase*.23)*.018)
+        shine = QRadialGradient(shine_x, shine_y, size*.42)
         shine.setColorAt(0, QColor(255, 255, 255, 250))
         shine.setColorAt(.15, QColor(255, 255, 255, 168))
         shine.setColorAt(1, QColor(255, 255, 255, 0))
         painter.fillPath(circle, shine)
-        sheen = QLinearGradient(size*.5, size*.09, size*.5, size*.42)
+        sheen = QLinearGradient(size*(.46 + math.sin(self.phase*.22)*.02), size*.09,
+                                size*(.54 + math.sin(self.phase*.22)*.02), size*.42)
         sheen.setColorAt(0, QColor(255, 255, 255, 52))
         sheen.setColorAt(.65, QColor(255, 255, 255, 12))
         sheen.setColorAt(1, QColor(255, 255, 255, 0))
@@ -484,6 +506,34 @@ class _AnimatedOrb(QWidget):
             for index in range(4):
                 dot_y=plume_y-size*(.035+index*.025)
                 glint(plume_x+size*math.sin(self.phase*.4+index)*.025,dot_y,size*.005,int(80+pulse*75),(232,249,255))
+        elif self.style == "quasar":
+            # A compact hot core feeds two opposing, tapered light jets.
+            # Their breathing is subtle and axial, unlike the orbital skin.
+            axis = (flow-.5)*size*.025
+            for direction, alpha in ((-1, 110), (1, 155)):
+                jet = QPainterPath()
+                jet.moveTo(size*(.5+axis/size), size*.48)
+                jet.cubicTo(size*.43, size*(.40 if direction < 0 else .58), size*.24, size*(.30 if direction < 0 else .68), size*.08, size*(.22 if direction < 0 else .78))
+                jet.cubicTo(size*.28, size*(.35 if direction < 0 else .65), size*.39, size*(.44 if direction < 0 else .56), size*.5, size*.52)
+                stroke(jet, QColor(239, 211, 255, alpha), .024 if direction < 0 else .018)
+            core = QRadialGradient(size*(.5+axis/size), size*.50, size*.105)
+            core.setColorAt(0, QColor(255,255,255,250)); core.setColorAt(.26, QColor(247,219,255,235)); core.setColorAt(1, QColor(204,126,255,0))
+            painter.setPen(Qt.PenStyle.NoPen); painter.setBrush(core)
+            painter.drawEllipse(QRectF(size*.38+axis,size*.38,size*.24,size*.24))
+            glint(size*(.5+axis/size),size*.5,size*.025,int(170+pulse*70),(255,255,255))
+        elif self.style == "lunar":
+            # Three shaded basins and a moving terminator give the metal-gray
+            # finish an unmistakable lunar relief rather than another cloud.
+            offset=(flow-.5)*size*.08
+            for x,y,r in ((.32,.38,.095),(.65,.31,.062),(.62,.65,.105),(.30,.68,.045)):
+                basin=QRadialGradient(size*(x-.02),size*(y-.02),size*r*1.7)
+                basin.setColorAt(0,QColor(44,49,62,118)); basin.setColorAt(.62,QColor(73,79,94,52)); basin.setColorAt(1,QColor(246,246,242,0))
+                painter.setPen(QPen(QColor(250,250,245,68),max(1.0,size*.004))); painter.setBrush(basin)
+                painter.drawEllipse(QRectF(size*(x-r),size*(y-r),size*r*2,size*r*2))
+            terminator=QPainterPath(); terminator.moveTo(size*(.46+offset/size),size*.08)
+            terminator.cubicTo(size*(.23+offset/size),size*.34,size*(.75+offset/size),size*.59,size*(.50+offset/size),size*.92)
+            stroke(terminator,QColor(255,255,244,int(85+pulse*55)),.009)
+            glint(size*.73,size*.48,size*.012,int(70+pulse*85),(255,255,246))
         painter.restore()
 
 
@@ -1738,7 +1788,8 @@ class PersonalizationWizard(QDialog):
             self.feedback_status.setText("Saída…")
             exit_.play()
         gap_ms = {"boreal": 980, "pulse": 800, "void": 1080,
-                  "prisma": 900, "marea": 980, "lumen": 900}.get(theme, 900)
+                  "prisma": 900, "marea": 980, "lumen": 900,
+                  "aether": 1080, "quasar": 880, "ember": 1020}.get(theme, 900)
         QTimer.singleShot(gap_ms, play_exit)
 
     def _preview_name(self):

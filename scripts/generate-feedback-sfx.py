@@ -99,6 +99,9 @@ def make(theme, direction):
         ("prisma", "entrada"): .92, ("prisma", "saida"): .86,
         ("marea", "entrada"): 1.00, ("marea", "saida"): .90,
         ("lumen", "entrada"): .86, ("lumen", "saida"): .82,
+        ("aether", "entrada"): .98, ("aether", "saida"): .86,
+        ("quasar", "entrada"): .82, ("quasar", "saida"): .76,
+        ("ember", "entrada"): .90, ("ember", "saida"): .84,
     }[(theme, direction)]
     buf = [[0.0, 0.0] for _ in range(int(RATE * duration))]
 
@@ -156,7 +159,7 @@ def make(theme, direction):
             for start, freq, pan in ((.06, 880, .26), (.28, 660, -.05), (.50, 494, -.28)):
                 drop(buf, start, .30, freq, .11, pan=pan)
             noise_bloom(buf, .08, .62, .014, seed=59, pan=-.15)
-    else:  # lumen
+    elif theme == "lumen":
         # A warm, rounded two-tone beacon with a slow, even amplitude swell.
         if direction == "entrada":
             for start, freq, gain, pan in ((.00, 392.0, .15, -.18), (.16, 523.25, .12, .12), (.34, 783.99, .10, .26)):
@@ -166,6 +169,38 @@ def make(theme, direction):
             for start, freq, gain, pan in ((.00, 783.99, .10, .24), (.18, 523.25, .12, 0), (.36, 392.0, .14, -.22)):
                 tone(buf, start, .46, freq, freq * .985, gain, pan=pan, harmonic=.28, attack=.06, release=.32)
             tone(buf, .06, .66, 392, 196, .07, pan=0, harmonic=.08, attack=.10, release=.40)
+    elif theme == "aether":
+        # A breath-like filtered noise swell opens into a suspended glass note.
+        if direction == "entrada":
+            noise_bloom(buf, .00, .74, .10, seed=83, pan=-.22)
+            tone(buf, .08, .78, 392, 784, .095, pan=.12, harmonic=.04, attack=.24, release=.48)
+            chime(buf, .37, .48, 1174.66, .075, pan=.28, decay=6.8)
+        else:
+            chime(buf, .03, .42, 1174.66, .065, pan=-.24, decay=7.0)
+            tone(buf, .12, .68, 740, 330, .09, pan=.14, harmonic=.04, attack=.18, release=.48)
+            noise_bloom(buf, .12, .62, .07, seed=89, pan=.20)
+    elif theme == "quasar":
+        # A dry low ignition, a rapid asymmetric starburst and a bright core.
+        if direction == "entrada":
+            tone(buf, .00, .30, 82, 118, .24, pan=0, harmonic=.58, attack=.003, release=.19)
+            for start, freq, pan in ((.12, 740, -.25), (.23, 1108.73, .08), (.34, 1480, .28)):
+                chime(buf, start, .37, freq, .105, pan=pan, decay=7.5)
+            tone(buf, .18, .58, 220, 880, .075, pan=-.04, harmonic=.11, attack=.025, release=.37)
+        else:
+            chime(buf, .02, .30, 1480, .075, pan=.25, decay=8.0)
+            chime(buf, .16, .34, 740, .085, pan=-.17, decay=7.3)
+            tone(buf, .08, .60, 880, 110, .19, pan=.03, harmonic=.38, attack=.008, release=.43)
+    else:  # ember
+        # Warm struck metal with a soft sub pulse; the exit cools into a single tail.
+        if direction == "entrada":
+            tone(buf, .02, .72, 146.83, 196, .13, pan=-.06, harmonic=.60, attack=.018, release=.43)
+            chime(buf, .10, .55, 587.33, .11, pan=-.18, decay=4.8)
+            chime(buf, .33, .52, 880, .065, pan=.22, decay=5.6)
+            noise_bloom(buf, .04, .36, .025, seed=97, pan=.10)
+        else:
+            chime(buf, .03, .50, 880, .085, pan=.20, decay=6.0)
+            tone(buf, .12, .68, 196, 82.41, .16, pan=-.05, harmonic=.44, attack=.02, release=.48)
+            noise_bloom(buf, .20, .50, .018, seed=101, pan=-.12)
 
     peak = max((abs(channel) for frame in buf for channel in frame), default=1.0)
     scale = min(.82 / max(peak, 1e-6), 1.8)
@@ -182,7 +217,7 @@ def make(theme, direction):
 
 
 if __name__ == "__main__":
-    for theme in ("boreal", "pulse", "void", "prisma", "marea", "lumen"):
+    for theme in ("boreal", "pulse", "void", "prisma", "marea", "lumen", "aether", "quasar", "ember"):
         for direction in ("entrada", "saida"):
             make(theme, direction)
             print(f"{direction}-{theme}.wav")

@@ -1,5 +1,13 @@
 # Histórico de versões
 
+## Aurora Desktop 3.2.0-beta.4 — Sirius Drift, 2026-10-27 (pré-release)
+
+- Expande o catálogo para dez aparências circulares e adiciona Pulso de Quasar, com núcleo e jatos de luz, e Mar de Prata, com relevo craterado e terminador móvel.
+- Atualiza onboarding, bolha em execução, carrossel do site e artes para que os novos acabamentos mantenham a mesma identidade.
+- Reforça as assinaturas existentes com animação contínua e adiciona três pares originais de sons: Éter, Quasar e Brasa.
+- Regenera a prancha oficial, os WebPs animados e as demonstrações GIF do Studio, incluindo o fluxo longo de personalização.
+- Anexa o RPM Fedora atual do Aurora Launchpad (0.5.2-1) e o arquivo SHA256SUMS.
+
 ## Aurora Desktop 3.2.0-beta.3 — Vela Nocturne, 2026-10-27 (pré-release)
 
 - Reimagina o onboarding como Aurora Studio: navegação lateral, prévia viva do perfil e etapas mais fáceis de acompanhar.

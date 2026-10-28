@@ -8,6 +8,8 @@
     {key:'ocean', name:'Falha Prismática', detail:'Placas ciano · fratura ramificada', motion:'Uma falha principal se divide em veios menores e separa planos de gelo com reflexos azulados.', color:'#43b8bd'},
     {key:'titan', name:'Névoa Violeta', detail:'Véus lilás · profundidade escura', motion:'Camadas de névoa violeta deslizam em profundidades diferentes; a luz difusa aparece e desaparece sob o vidro.', color:'#8a70ae'},
     {key:'triton', name:'Calota Glacial', detail:'Gelo azul profundo · pluma polar', motion:'Uma calota clara contrasta com o azul profundo; uma pluma sobe entre estrias gravadas no gelo.', color:'#4b8cc5'},
+    {key:'quasar', name:'Pulso de Quasar', detail:'Núcleo elétrico · jatos opostos', motion:'Dois jatos de luz partem de um núcleo compacto; o brilho central pulsa com calma sobre um campo violeta profundo.', color:'#a27bea'},
+    {key:'lunar', name:'Mar de Prata', detail:'Relevo craterado · sombra móvel', motion:'Crateras em relevo recebem luz oblíqua enquanto um terminador prateado percorre lentamente a superfície.', color:'#9a9ca8'},
   ];
   let current = 0;
   const orb = document.querySelector('#skinOrb');

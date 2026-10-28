@@ -19,10 +19,13 @@ by the Aurora project. Boreal uses airy glass-like glides, Pulse uses short
 low rhythmic impacts, Void uses a deep resonant bloom, Prisma uses inharmonic
 glass strikes, Maré uses rounded liquid blips over a soft swell, and Lúmen uses
 a warm harmonic beacon. Every exit has its own descending cadence; it is not a
-pitch-reversed copy of its entry. The cues are reproducible with
+pitch-reversed copy of its entry. Three additional pairs extend the catalog:
+`aether` is an airy filtered swell with a suspended glass note, `quasar` is a
+compact low ignition followed by a bright asymmetric starburst, and `ember`
+is warm struck metal cooling into a soft low tail. These cues are reproducible with
 [`scripts/generate-feedback-sfx.py`](../../scripts/generate-feedback-sfx.py),
 contain no samples or third-party sounds, and are released under CC0-1.0.
-Onboarding previews each pair sequentially with a short gap. The six pairs are
+Onboarding previews each pair sequentially with a short gap. The nine pairs are
 independent compositions, not simple pitch or volume variants of one sound.
 
 ## Onboarding UI cues

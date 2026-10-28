@@ -126,9 +126,11 @@ def make_skin_assets(app: QApplication) -> None:
 
 
 def make_skin_contact_sheet(app: QApplication) -> None:
-    width, height, margin, gap = 980, 864, 24, 14
+    width, margin, gap = 980, 24, 14
     cell_w = (width - 2 * margin - 2 * gap) // 3
     cell_h = 246
+    row_count_total = math.ceil(len(BUBBLE_STYLES) / 3)
+    height = 82 + row_count_total * cell_h + max(0, row_count_total - 1) * gap + margin
     image = QImage(width, height, QImage.Format.Format_ARGB32_Premultiplied)
     image.fill(QColor("#111117"))
     painter = QPainter(image)

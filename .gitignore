@@ -17,6 +17,18 @@ assets/vosk-model/
 !assets/audio/saida-pulse.wav
 !assets/audio/entrada-void.wav
 !assets/audio/saida-void.wav
+!assets/audio/entrada-prisma.wav
+!assets/audio/saida-prisma.wav
+!assets/audio/entrada-marea.wav
+!assets/audio/saida-marea.wav
+!assets/audio/entrada-lumen.wav
+!assets/audio/saida-lumen.wav
+!assets/audio/entrada-aether.wav
+!assets/audio/saida-aether.wav
+!assets/audio/entrada-quasar.wav
+!assets/audio/saida-quasar.wav
+!assets/audio/entrada-ember.wav
+!assets/audio/saida-ember.wav
 *.log
 *-preview.png
 

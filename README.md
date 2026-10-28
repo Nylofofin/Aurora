@@ -1,6 +1,6 @@
 # Aurora Project
 
-**Versão:** `3.2.0-beta.3` · **Canal:** Pré-release beta · **Codinome:** `Vela Nocturne` · **Build:** `aurora-project-3.2.0-beta.3-vela-nocturne`
+**Versão:** `3.2.0-beta.4` · **Canal:** Pré-release beta · **Codinome:** `Sirius Drift` · **Build:** `aurora-project-3.2.0-beta.4-sirius-drift`
 
 **Uma assistente de voz para Linux, com uma presença pequena na tela e o processamento principal no próprio computador.** A Aurora desperta por voz, entende pedidos cotidianos, conversa em uma sessão contínua e pode pesquisar na web ou executar ações locais.
 
@@ -15,9 +15,9 @@ Explore a Aurora em uma apresentação interativa, com carrossel de aparências,
 
 ## Veja a Aurora
 
-A esfera mantém o formato circular e muda de cor, luz, refração e detalhes conforme o estilo escolhido. As oito aparências têm assinaturas próprias: Cortina Boreal, Gelo Fraturado, Tempestade Âmbar, Órbita Índigo, Eclipse Rosé, Falha Prismática, Névoa Violeta e Calota Glacial. A Órbita Índigo tem um satélite que percorre um anel inclinado; as outras aparências usam fenômenos de superfície diferentes. O site e a prancha usam imagens exportadas pelo renderer oficial do onboarding.
+A esfera mantém o formato circular e muda de cor, luz, refração e detalhes conforme o estilo escolhido. As dez aparências têm assinaturas próprias: Cortina Boreal, Gelo Fraturado, Tempestade Âmbar, Órbita Índigo, Eclipse Rosé, Falha Prismática, Névoa Violeta, Calota Glacial, Pulso de Quasar e Mar de Prata. A Órbita Índigo tem um satélite em percurso contínuo; o Quasar cria jatos opostos a partir de um núcleo pulsante, e o acabamento Lunar traz crateras e um terminador móvel. O site e a prancha usam imagens exportadas pelo renderer oficial do onboarding.
 
-![Prancha das oito aparências circulares da Aurora: Cortina Boreal, Gelo Fraturado, Tempestade Âmbar, Órbita Índigo, Eclipse Rosé, Falha Prismática, Névoa Violeta e Calota Glacial](docs/media/bubble-skins.png)
+![Prancha das dez aparências circulares da Aurora: oito estilos originais, Pulso de Quasar e Mar de Prata](docs/media/bubble-skins.png)
 
 O Aurora Studio deixa configurar nome, personalidade, tom, nível de detalhe, preferências de resposta, palavra de ativação, aparência, voz e assinatura sonora. As escolhas montam uma camada de estilo limitada dentro do prompt local da assistente; não alteram permissões nem regras de segurança. O treinamento de um nome personalizado aparece quando necessário.
 
@@ -31,7 +31,7 @@ As animações abaixo foram capturadas dos próprios componentes do onboarding: 
 
 ### Escolha da bolha
 
-<img src="docs/media/onboarding-skins.gif" width="820" alt="Carrossel animado com oito estilos próprios da bolha e transições laterais">
+<img src="docs/media/onboarding-skins.gif" width="820" alt="Carrossel animado com dez estilos próprios da bolha e transições laterais">
 
 ### Escolha da voz
 
@@ -39,7 +39,7 @@ As animações abaixo foram capturadas dos próprios componentes do onboarding: 
 
 ### Escolha dos sons
 
-<img src="docs/media/onboarding-sounds.gif" width="820" alt="Carrossel animado de assinaturas sonoras, em tamanho legível">
+<img src="docs/media/onboarding-sounds.gif" width="820" alt="Carrossel animado de nove assinaturas sonoras originais, em tamanho legível">
 
 ## O que ela faz
 

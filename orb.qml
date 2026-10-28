@@ -52,6 +52,14 @@ Item {
         listening: "#D6E3FF", thinking: "#9DB6F2", searching: "#5E80D8",
         weather: "#C3D6FF", preparing: "#86A1E5", speaking: "#EDF3FF",
         approval: "#F4D888", controlling: "#3157A2", error: "#ED9EA8", idle: "#203C7B"
+    }) : bubbleStyle === "quasar" ? ({
+        listening: "#F1D4FF", thinking: "#D6A7FF", searching: "#B66BE8",
+        weather: "#E8C8FF", preparing: "#C78AEF", speaking: "#FAE9FF",
+        approval: "#F3D77C", controlling: "#8748B9", error: "#F29B80", idle: "#70439A"
+    }) : bubbleStyle === "lunar" ? ({
+        listening: "#F3F1E8", thinking: "#D1D1D3", searching: "#A8ACB8",
+        weather: "#E7E6DF", preparing: "#B9BBC2", speaking: "#FFFFFF",
+        approval: "#F3D77C", controlling: "#777D8B", error: "#F29B80", idle: "#737887"
     }) : ({
         listening: "#91E4F8", thinking: "#B7A4F2", searching: "#7ECDF5",
         weather: "#9DDCF0", preparing: "#C8B5F7", speaking: "#E2D2FF",
@@ -61,11 +69,11 @@ Item {
     // comes from color, refraction and small surface details inside the glass.
     readonly property string orbPath: "M 57 1 A 56 56 0 1 1 57 113 A 56 56 0 1 1 57 1 Z"
     readonly property color stateColor: statePalette[mode] || statePalette.idle
-    readonly property color styleBase: bubbleStyle === "emerald" ? "#EDFFF7" : bubbleStyle === "crimson" ? "#FFF4DF" : bubbleStyle === "amethyst" ? "#F4F2FF" : bubbleStyle === "solaris" ? "#FFF0F0" : bubbleStyle === "ocean" ? "#EAFFFF" : bubbleStyle === "titan" ? "#F4EFFF" : bubbleStyle === "triton" ? "#EAF0FF" : "#EFFAFF"
-    readonly property color styleMid: bubbleStyle === "emerald" ? "#B7EBDD" : bubbleStyle === "crimson" ? "#F2D398" : bubbleStyle === "amethyst" ? "#D0D5F4" : bubbleStyle === "solaris" ? "#EDB0BD" : bubbleStyle === "ocean" ? "#B3F0E4" : bubbleStyle === "titan" ? "#C7B9E4" : bubbleStyle === "triton" ? "#A6B9EE" : "#BFEAF5"
-    readonly property color styleLow: bubbleStyle === "emerald" ? "#70D2AE" : bubbleStyle === "crimson" ? "#D78F57" : bubbleStyle === "amethyst" ? "#9CAEE7" : bubbleStyle === "solaris" ? "#D77F98" : bubbleStyle === "ocean" ? "#58CFC6" : bubbleStyle === "titan" ? "#76658F" : bubbleStyle === "triton" ? "#3C65B0" : "#6CA9EC"
-    readonly property color styleDeep: bubbleStyle === "emerald" ? "#247D70" : bubbleStyle === "crimson" ? "#B9654B" : bubbleStyle === "amethyst" ? "#47598F" : bubbleStyle === "solaris" ? "#A94F72" : bubbleStyle === "ocean" ? "#1D678E" : bubbleStyle === "titan" ? "#504062" : bubbleStyle === "triton" ? "#243E82" : "#6961C7"
-    readonly property color styleBottom: bubbleStyle === "emerald" ? "#165A56" : bubbleStyle === "crimson" ? "#92513F" : bubbleStyle === "amethyst" ? "#2D3F70" : bubbleStyle === "solaris" ? "#552F62" : bubbleStyle === "ocean" ? "#124567" : bubbleStyle === "titan" ? "#30233F" : bubbleStyle === "triton" ? "#101D4B" : "#4B479E"
+    readonly property color styleBase: bubbleStyle === "emerald" ? "#EDFFF7" : bubbleStyle === "crimson" ? "#FFF4DF" : bubbleStyle === "amethyst" ? "#F4F2FF" : bubbleStyle === "solaris" ? "#FFF0F0" : bubbleStyle === "ocean" ? "#EAFFFF" : bubbleStyle === "titan" ? "#F4EFFF" : bubbleStyle === "triton" ? "#EAF0FF" : bubbleStyle === "quasar" ? "#F8F3FF" : bubbleStyle === "lunar" ? "#F8F7F2" : "#EFFAFF"
+    readonly property color styleMid: bubbleStyle === "emerald" ? "#B7EBDD" : bubbleStyle === "crimson" ? "#F2D398" : bubbleStyle === "amethyst" ? "#D0D5F4" : bubbleStyle === "solaris" ? "#EDB0BD" : bubbleStyle === "ocean" ? "#B3F0E4" : bubbleStyle === "titan" ? "#C7B9E4" : bubbleStyle === "triton" ? "#A6B9EE" : bubbleStyle === "quasar" ? "#D6C0FF" : bubbleStyle === "lunar" ? "#D2D2D0" : "#BFEAF5"
+    readonly property color styleLow: bubbleStyle === "emerald" ? "#70D2AE" : bubbleStyle === "crimson" ? "#D78F57" : bubbleStyle === "amethyst" ? "#9CAEE7" : bubbleStyle === "solaris" ? "#D77F98" : bubbleStyle === "ocean" ? "#58CFC6" : bubbleStyle === "titan" ? "#76658F" : bubbleStyle === "triton" ? "#3C65B0" : bubbleStyle === "quasar" ? "#A27BEA" : bubbleStyle === "lunar" ? "#9A9CA8" : "#6CA9EC"
+    readonly property color styleDeep: bubbleStyle === "emerald" ? "#247D70" : bubbleStyle === "crimson" ? "#B9654B" : bubbleStyle === "amethyst" ? "#47598F" : bubbleStyle === "solaris" ? "#A94F72" : bubbleStyle === "ocean" ? "#1D678E" : bubbleStyle === "titan" ? "#504062" : bubbleStyle === "triton" ? "#243E82" : bubbleStyle === "quasar" ? "#59318A" : bubbleStyle === "lunar" ? "#555B6B" : "#6961C7"
+    readonly property color styleBottom: bubbleStyle === "emerald" ? "#165A56" : bubbleStyle === "crimson" ? "#92513F" : bubbleStyle === "amethyst" ? "#2D3F70" : bubbleStyle === "solaris" ? "#552F62" : bubbleStyle === "ocean" ? "#124567" : bubbleStyle === "titan" ? "#30233F" : bubbleStyle === "triton" ? "#101D4B" : bubbleStyle === "quasar" ? "#321451" : bubbleStyle === "lunar" ? "#333846" : "#4B479E"
     property color animatedStateColor: stateColor
     property real tintStrength: mode === "listening" ? 0.34
         : mode === "speaking" ? 0.34
@@ -160,8 +168,8 @@ Item {
             NumberAnimation { from: 1; to: -1; duration: root.mode === "speaking" ? 2100 : 4300; easing.type: Easing.InOutSine }
         }
         NumberAnimation on orbitPhase {
-            running: root.motionEnabled && root.bubbleStyle === "amethyst"
-            from: 0; to: 360; duration: 11900
+            running: root.motionEnabled && (root.bubbleStyle === "amethyst" || root.bubbleStyle === "quasar")
+            from: 0; to: 360; duration: root.bubbleStyle === "quasar" ? 7800 : 11900
             loops: Animation.Infinite; easing.type: Easing.Linear
         }
 
@@ -435,6 +443,71 @@ Item {
             strokeColor: "#D9F6FFFF"; strokeWidth: 1.2; fillColor: "transparent"
             PathMove { x: 11; y: 34 }
             PathCubic { control1X: 5; control1Y: 21; control2X: 16; control2Y: 12; x: 11; y: 1 }
+        }
+    }
+
+    // Quasar: opposed relativistic-looking jets converge on a bright nucleus.
+    // The restrained travel follows the existing surfaceFlow oscillator.
+    Shape {
+        visible: root.bubbleStyle === "quasar"
+        x: 25; y: 35; width: 88; height: 68
+        rotation: -18 + sphere.sway * 2
+        ShapePath {
+            strokeColor: "#B9F5D7FF"; strokeWidth: 4.2; fillColor: "transparent"
+            PathMove { x: 44; y: 34 }
+            PathCubic { control1X: 32; control1Y: 23; control2X: 18; control2Y: 12; x: 2; y: 4 }
+        }
+        ShapePath {
+            strokeColor: "#8AE9BFFF"; strokeWidth: 3.0; fillColor: "transparent"
+            PathMove { x: 44; y: 34 }
+            PathCubic { control1X: 56; control1Y: 45; control2X: 70; control2Y: 56; x: 86; y: 64 }
+        }
+        ShapePath {
+            strokeColor: "#C8F2FFFF"; strokeWidth: 1.0; fillColor: "transparent"
+            PathMove { x: 44; y: 34 }
+            PathAngleArc { centerX: 44; centerY: 34; radiusX: 10; radiusY: 10; startAngle: 15; sweepAngle: 330 }
+        }
+    }
+    Shape {
+        visible: root.bubbleStyle === "quasar"
+        x: 58 + sphere.surfaceFlow * 3; y: 58 + sphere.breathing * 1.2; width: 20; height: 20
+        ShapePath {
+            strokeColor: "#DFFFFFFF"; strokeWidth: 1.0
+            fillGradient: RadialGradient {
+                centerX: 10; centerY: 10; centerRadius: 10
+                GradientStop { position: 0; color: "#FFFFFF" }
+                GradientStop { position: 0.3; color: "#F4D5FF" }
+                GradientStop { position: 1; color: "#008F42C4" }
+            }
+            PathAngleArc { centerX: 10; centerY: 10; radiusX: 9; radiusY: 9; startAngle: 0; sweepAngle: 360 }
+        }
+    }
+
+    // Lunar: compact crater relief with a slow, bright terminator.
+    Shape {
+        visible: root.bubbleStyle === "lunar"
+        x: 28; y: 30; width: 80; height: 78
+        rotation: sphere.surfaceFlow * 2 - 1
+        ShapePath {
+            strokeColor: "#6A303846"; strokeWidth: 1.2; fillColor: "#25303846"
+            PathAngleArc { centerX: 25; centerY: 24; radiusX: 9; radiusY: 8; startAngle: 0; sweepAngle: 360 }
+        }
+        ShapePath {
+            strokeColor: "#90FFFFFF"; strokeWidth: 1.1; fillColor: "#182B3340"
+            PathAngleArc { centerX: 25; centerY: 22; radiusX: 8; radiusY: 7; startAngle: 0; sweepAngle: 360 }
+        }
+        ShapePath {
+            strokeColor: "#73343B4B"; strokeWidth: 1.0; fillColor: "#1F343B4B"
+            PathAngleArc { centerX: 57; centerY: 19; radiusX: 6; radiusY: 5; startAngle: 0; sweepAngle: 360 }
+        }
+        ShapePath {
+            strokeColor: "#7AFFFFFF"; strokeWidth: 1.3; fillColor: "#19343B4B"
+            PathAngleArc { centerX: 49; centerY: 52; radiusX: 11; radiusY: 9; startAngle: 0; sweepAngle: 360 }
+        }
+        ShapePath {
+            strokeColor: "#BFFFFFFF"; strokeWidth: 1.0; fillColor: "transparent"
+            PathMove { x: 40 + sphere.surfaceFlow * 5; y: 2 }
+            PathCubic { control1X: 18; control1Y: 26; control2X: 66; control2Y: 48; x: 43; y: 76 }
         }
     }
 
