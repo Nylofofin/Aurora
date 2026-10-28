@@ -33,7 +33,7 @@ FRAME_MS = 60
 def capture(widget: PersonalizationWizard, fixed_height: int | None = None) -> Image.Image:
     size = widget.size()
     image = QImage(size.width(), fixed_height or size.height(), QImage.Format.Format_RGBA8888)
-    image.fill(QColor("#111117"))
+    image.fill(QColor("#0b0c12"))
     painter = QPainter(image)
     widget.render(painter, QPoint())
     painter.end()
@@ -188,13 +188,18 @@ def make_wizard() -> tuple[QApplication, PersonalizationWizard]:
     wizard._needs_training = True
     wizard.show()
     app.processEvents()
-    wizard._fit_current_page()
+    wizard._apply_system_theme()
     app.processEvents()
     return app, wizard
 
 
 def make_carousel_demo(app: QApplication, wizard: PersonalizationWizard) -> None:
-    wizard._set_page(3, animated=False)
+    wizard._style_index = 0
+    wizard._selected_style = BUBBLE_STYLES[0][0]
+    wizard._refresh_style_carousel()
+    wizard.welcome_orb.set_style(wizard._selected_style)
+    wizard._refresh_rail_preview()
+    wizard._set_page(4, animated=False)
     app.processEvents()
     frames: list[Image.Image] = []
     frames.extend([capture(wizard).copy()] * 7)
@@ -206,13 +211,53 @@ def make_carousel_demo(app: QApplication, wizard: PersonalizationWizard) -> None
 
 def make_transition_demo(app: QApplication, wizard: PersonalizationWizard) -> None:
     frames: list[Image.Image] = []
+    wizard._style_index = 0
+    wizard._selected_style = BUBBLE_STYLES[0][0]
+    wizard._refresh_style_carousel()
+    wizard.welcome_orb.set_style(wizard._selected_style)
+    wizard._refresh_rail_preview()
     wizard._set_page(0, animated=False)
     app.processEvents()
-    frames.extend([capture(wizard, 648).copy()] * 8)
-    for page in (1, 2, 3, 4, 5, 0):
+    frames.extend([capture(wizard).copy()] * 12)
+    for page in (1, 2, 3, 4, 5, 6, 0):
         wizard._set_page(page, animated=True)
-        animate_for(app, wizard, 420, frames, hold_ms=300, fixed_height=648)
+        animate_for(app, wizard, 450, frames, hold_ms=620)
     save_gif(frames, MEDIA / "onboarding-transitions.gif")
+
+
+def make_voice_demo(app: QApplication, wizard: PersonalizationWizard) -> None:
+    """Show the local voice page, its selected bubble, and its live tuning controls."""
+    wizard._style_index = 0
+    wizard._selected_style = BUBBLE_STYLES[0][0]
+    wizard._refresh_style_carousel()
+    wizard.welcome_orb.set_style(wizard._selected_style)
+    wizard._refresh_rail_preview()
+    wizard._set_page(5, animated=False)
+    app.processEvents()
+    frames: list[Image.Image] = []
+    animate_for(app, wizard, 700, frames, hold_ms=1600)
+    for value in (108, 118, 132, 118):
+        wizard.pitch_slider.setValue(value)
+        wizard.speed_slider.setValue(100 + (value - 118) // 3)
+        animate_for(app, wizard, 360, frames, hold_ms=420)
+    save_gif(frames, MEDIA / "onboarding-voices.gif")
+
+
+def make_sound_demo(app: QApplication, wizard: PersonalizationWizard) -> None:
+    """Show the sound carousel and the distinct entry/exit preview affordance."""
+    wizard._style_index = 0
+    wizard._selected_style = BUBBLE_STYLES[0][0]
+    wizard._refresh_style_carousel()
+    wizard.welcome_orb.set_style(wizard._selected_style)
+    wizard._refresh_rail_preview()
+    wizard._set_page(6, animated=False)
+    app.processEvents()
+    frames: list[Image.Image] = []
+    animate_for(app, wizard, 500, frames, hold_ms=1000)
+    for _ in range(len(wizard._feedback_choices)):
+        wizard._step_feedback(1)
+        animate_for(app, wizard, 460, frames, hold_ms=750)
+    save_gif(frames, MEDIA / "onboarding-sounds.gif")
 
 
 def make_studio_personalization_demo(app: QApplication, wizard: PersonalizationWizard) -> None:
@@ -222,10 +267,15 @@ def make_studio_personalization_demo(app: QApplication, wizard: PersonalizationW
     def hold(page: int, milliseconds: int, *, transition: bool = True) -> None:
         wizard._set_page(page, animated=transition)
         animate_for(app, wizard, 420 if transition else 1,
-                    frames, hold_ms=milliseconds, fixed_height=648)
+                    frames, hold_ms=milliseconds)
 
     wizard.resize(900, 640)
     wizard._needs_training = True
+    wizard._style_index = 0
+    wizard._selected_style = BUBBLE_STYLES[0][0]
+    wizard._refresh_style_carousel()
+    wizard.welcome_orb.set_style(wizard._selected_style)
+    wizard._refresh_rail_preview()
     wizard.user_name.setText("Nylo")
     wizard.assistant_name.setText("Luna")
     wizard.default_name.setChecked(False)
@@ -234,24 +284,29 @@ def make_studio_personalization_demo(app: QApplication, wizard: PersonalizationW
     wizard.tone_slider.setValue(76)
     wizard.custom_instructions.setText("Seja calorosa, direta e use exemplos quando ajudarem.")
 
-    hold(0, 780, transition=False)
-    hold(1, 900)
+    hold(0, 1300, transition=False)
+    hold(1, 1400)
     wizard.wake_training_status.setText("Perfil local criado · 4 de 4 amostras válidas")
     wizard.wake_training_button.setText("Amostras concluídas ✓")
-    hold(2, 820)
-    hold(3, 450)
+    hold(2, 1300)
+    hold(3, 1200)
+    hold(4, 900)
     wizard._step_style(1)
-    animate_for(app, wizard, 420, frames, hold_ms=240, fixed_height=648)
+    animate_for(app, wizard, 420, frames, hold_ms=600)
     wizard._step_style(1)
-    animate_for(app, wizard, 420, frames, hold_ms=420, fixed_height=648)
-    hold(4, 600)
-    wizard._step_voice(1)
-    animate_for(app, wizard, 420, frames, hold_ms=380, fixed_height=648)
-    hold(5, 500)
+    animate_for(app, wizard, 420, frames, hold_ms=800)
+    wizard._set_page(5, animated=True)
+    animate_for(app, wizard, 450, frames, hold_ms=700)
+    if len(VOICES) > 1:
+        wizard._step_voice(1)
+        animate_for(app, wizard, 420, frames, hold_ms=700)
+    hold(5, 1100)
+    wizard._set_page(6, animated=True)
+    animate_for(app, wizard, 450, frames, hold_ms=700)
     wizard._step_feedback(1)
-    animate_for(app, wizard, 420, frames, hold_ms=380, fixed_height=648)
+    animate_for(app, wizard, 420, frames, hold_ms=700)
     wizard._loading_pulse.start()
-    hold(6, 1450)
+    hold(7, 1800)
     wizard._loading_pulse.stop()
     save_gif(frames, MEDIA / "studio-personalization.gif")
 
@@ -268,6 +323,8 @@ def main() -> int:
     make_skin_contact_sheet(app)
     make_carousel_demo(app, wizard)
     make_transition_demo(app, wizard)
+    make_voice_demo(app, wizard)
+    make_sound_demo(app, wizard)
     make_studio_personalization_demo(app, wizard)
     wizard.close()
     app.processEvents()

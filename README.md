@@ -1,6 +1,6 @@
 # Aurora Project
 
-**Versão:** `3.2.0-beta.2` · **Canal:** Pré-release beta · **Codinome:** `Vega Signal` · **Build:** `aurora-project-3.2.0-beta.2-vega-signal`
+**Versão:** `3.2.0-beta.3` · **Canal:** Pré-release beta · **Codinome:** `Vela Nocturne` · **Build:** `aurora-project-3.2.0-beta.3-vela-nocturne`
 
 **Uma assistente de voz para Linux, com uma presença pequena na tela e o processamento principal no próprio computador.** A Aurora desperta por voz, entende pedidos cotidianos, conversa em uma sessão contínua e pode pesquisar na web ou executar ações locais.
 
@@ -21,7 +21,7 @@ A esfera mantém o formato circular e muda de cor, luz, refração e detalhes co
 
 O Aurora Studio deixa configurar nome, personalidade, tom, nível de detalhe, preferências de resposta, palavra de ativação, aparência, voz e assinatura sonora. As escolhas montam uma camada de estilo limitada dentro do prompt local da assistente; não alteram permissões nem regras de segurança. O treinamento de um nome personalizado aparece quando necessário.
 
-As animações abaixo foram capturadas dos próprios componentes do onboarding: a troca de páginas desliza, e as escolhas percorrem os carrosséis com o mesmo movimento usado na configuração.
+As animações abaixo foram capturadas dos próprios componentes do onboarding: as etapas deslizam lateralmente, e as escolhas percorrem os carrosséis com o mesmo movimento usado na configuração. O Aurora Studio mantém o tema escuro, mostra o perfil em tempo real e distribui as opções em cartões dimensionados para cada etapa.
 
 ![Fluxo animado do onboarding: boas-vindas, perfil, treinamento opcional do nome, aparência, voz e sons](docs/media/onboarding-transitions.gif)
 

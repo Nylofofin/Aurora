@@ -1,5 +1,13 @@
 # Histórico de versões
 
+## Aurora Desktop 3.2.0-beta.3 — Vela Nocturne, 2026-10-27 (pré-release)
+
+- Reimagina o onboarding como Aurora Studio: navegação lateral, prévia viva do perfil e etapas mais fáceis de acompanhar.
+- Mantém o tema escuro independente do tema configurado no desktop e reorganiza cartões, controles e conteúdo para ocupar o espaço com propósito.
+- Adiciona transições laterais entre etapas, easing mais suave, blur sutil nos carrosséis e prévias contínuas das aparências.
+- Refaz e amplia os GIFs oficiais de onboarding, aparências, voz e assinaturas sonoras; atualiza as demonstrações do README e do site.
+- Inclui o RPM Aurora Launchpad em todos os assets desta pré-release.
+
 ## Aurora Desktop 3.2.0-beta.2 — Vega Signal, 2026-10-27 (pré-release)
 
 - Aprimora a ativação por nome personalizado: a gravação captura uma janela maior, descarta silêncios das bordas e compara referências acústicas normalizadas, sem guardar o áudio.
