@@ -1,6 +1,6 @@
 # Aurora Project
 
-**Versão:** `3.2.0-beta.6` · **Canal:** Pré-release beta · **Codinome:** `Polaris Continuum` · **Build:** `aurora-project-3.2.0-beta.6-polaris-continuum`
+**Versão:** `3.2.0-beta.7` · **Canal:** Pré-release beta · **Codinome:** `Lyra Continuum` · **Build:** `aurora-project-3.2.0-beta.7-lyra-continuum`
 
 **Uma assistente de voz para Linux, com uma presença pequena na tela e processamento de conversa no próprio computador.** A Aurora desperta por voz, entende pedidos cotidianos, preserva contexto entre sessões e executa ações locais após confirmação. Nesta pré-release, pesquisa e leitura de páginas externas ficam desativadas.
 
@@ -45,11 +45,11 @@ As animações abaixo foram capturadas dos próprios componentes do onboarding: 
 
 - Ativação e transcrição de fala locais com Vosk e Whisper.cpp.
 - Conversa local com Ollama e síntese local com Piper usando a voz Faber.
-- Pesquisa web quando pedida, com fontes reunidas em um resumo.
+- Conversa e ações locais, sem pesquisa web ou leitura de páginas externas nesta pré-release.
 - Ações no desktop e rotinas locais, com confirmação antes de operações que alteram o sistema.
 - Perfil, nome de ativação, aparência, voz, sons e dados de uso mantidos no computador.
 
-A pesquisa web precisa de internet. O modelo Whisper e os pesos Piper são baixados quando necessários e têm licenças próprias. Consulte os detalhes da [voz local](assets/voices/README.md) e das [fontes dos sons](assets/audio/SOURCES.md).
+O modelo Whisper e os pesos Piper são baixados quando necessários e têm licenças próprias. Consulte os detalhes da [voz local](assets/voices/README.md) e das [fontes dos sons](assets/audio/SOURCES.md).
 
 ## Instalação
 
@@ -59,7 +59,7 @@ Instruções de empacotamento e instalação manual estão em [`packaging/rpm/RE
 
 ## Privacidade e segurança
 
-Áudio, transcrição, inferência, síntese de voz e perfil são processados localmente. Quando você pede uma pesquisa, o texto da consulta é enviado a serviços web para obter resultados; o áudio não é enviado. Os modelos de linguagem, Whisper e Piper são baixados quando necessários. Ações que alteram o sistema pedem confirmação. Pesos de modelos não são incluídos no repositório ou no RPM.
+Áudio, transcrição, inferência, síntese de voz e perfil são processados localmente. Nesta pré-release, o fluxo da Aurora não envia consultas a serviços web. Os modelos de linguagem, Whisper e Piper são baixados quando necessários. Ações que alteram o sistema pedem confirmação. Pesos de modelos não são incluídos no repositório ou no RPM.
 
 ## Aurora Project e licença
 

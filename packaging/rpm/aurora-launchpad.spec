@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-only
 Name:           aurora-launchpad
-Version:        0.5.3
+Version:        0.5.4
 Release:        1%{?dist}
 Summary:        Aurora Studio installer and personalization manager
 License:        GPL-3.0-only
@@ -45,6 +45,9 @@ install -Dpm0644 launchpad/aurora-launchpad.desktop %{buildroot}%{_datadir}/appl
 %{_datadir}/icons/hicolor/scalable/apps/com.nylofofin.AuroraLaunchpad.svg
 
 %changelog
+* Wed Oct 28 2026 Aurora Project <nylofofin@localhost> - 0.5.4-1
+- Handle systemctl timeouts in service status and installation health checks.
+
 * Tue Oct 27 2026 Aurora Project <nylofofin@localhost> - 0.5.3-1
 - Detect missing local speech assets and repair them from the maintenance dashboard.
 

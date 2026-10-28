@@ -54,11 +54,12 @@ from aurora_launchpad_core import (
     parse_ollama_models,
     prepare_first_boot_onboarding,
     schedule_personalization,
+    InstallationHealth,
 )
 
 
 APP_ID = "com.nylofofin.AuroraLaunchpad"
-INSTALLER_VERSION = "0.5.3"
+INSTALLER_VERSION = "0.5.4"
 PKEXEC = "/usr/bin/pkexec"
 SYSTEMCTL = "/usr/bin/systemctl"
 DNF = "/usr/bin/dnf"
@@ -366,6 +367,7 @@ class Launchpad(Adw.Application):
         self.last_uninstall_options = (False, False, False)
         self.lines: list[str] = []
         self.install_health = None
+        self.install_health_error = None
         self.health_label = None
         self.repair_button = None
         self.update_panel = None
@@ -384,10 +386,15 @@ class Launchpad(Adw.Application):
 
     def _installation_health(self):
         unit = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home()/".config"))) / "systemd/user/aurora.service"
-        active = subprocess.run(
-            [SYSTEMCTL, "--user", "is-active", "--quiet", "aurora.service"],
-            timeout=5,
-        ).returncode == 0
+        try:
+            active = subprocess.run(
+                [SYSTEMCTL, "--user", "is-active", "--quiet", "aurora.service"],
+                timeout=5,
+            ).returncode == 0
+        except subprocess.TimeoutExpired:
+            self.install_health_error = "O serviço não respondeu dentro do tempo limite."
+            return InstallationHealth("unknown", (self.install_health_error,), False)
+        self.install_health_error = None
         data_root = Path(os.environ.get("XDG_DATA_HOME", str(Path.home()/".local/share"))) / "aurora"
         return inspect_installation(
             MANAGED_APP,
@@ -826,7 +833,13 @@ class Launchpad(Adw.Application):
     def _refresh_maintenance_status(self):
         if not hasattr(self, "maintenance_status"):
             return
-        active = self._installation_health().state == "healthy"
+        health = self._installation_health()
+        if health.state == "unknown":
+            self.maintenance_status.set_text(
+                "Não consegui consultar o serviço. Tente atualizar o status novamente."
+            )
+            return
+        active = health.state == "healthy"
         self.maintenance_status.set_text(
             "Serviço ativo e instalação íntegra." if active else "Serviço ou instalação precisam de atenção."
         )
@@ -1386,7 +1399,20 @@ class Launchpad(Adw.Application):
             self.window.close()
 
     def _show_service_status(self, *_):
-        result = subprocess.run([SYSTEMCTL, "--user", "--no-pager", "--full", "status", "aurora.service"], capture_output=True, text=True, timeout=15)
+        try:
+            result = subprocess.run([SYSTEMCTL, "--user", "--no-pager", "--full", "status", "aurora.service"], capture_output=True, text=True, timeout=15)
+        except subprocess.TimeoutExpired:
+            dialog = Gtk.Dialog(title="Status indisponível", transient_for=self.window, modal=True)
+            dialog.add_button("Fechar", Gtk.ResponseType.CLOSE)
+            box = dialog.get_content_area()
+            box.set_margin_top(18); box.set_margin_bottom(18); box.set_margin_start(18); box.set_margin_end(18)
+            box.append(self._label(
+                "O serviço não respondeu dentro do tempo limite. Tente consultar o status novamente mais tarde.",
+                "status-warn", True,
+            ))
+            dialog.connect("response", lambda d, _r: d.close())
+            dialog.present()
+            return
         dialog = Gtk.Dialog(title="Status da Aurora", transient_for=self.window, modal=True)
         dialog.add_button("Fechar", Gtk.ResponseType.CLOSE)
         box = dialog.get_content_area()

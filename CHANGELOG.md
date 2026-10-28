@@ -1,5 +1,11 @@
 # Histórico de versões
 
+## Aurora Desktop 3.2.0-beta.7 — Lyra Continuum, 2026-10-28 (pré-release)
+
+- Trata timeouts do systemctl no Aurora Studio sem impedir a abertura do painel ou do diálogo de status.
+- Mostra uma mensagem clara quando não é possível consultar o estado do serviço.
+- Atualiza o Aurora Studio para 0.5.4, incluindo o RPM Fedora e `SHA256SUMS` nos assets.
+
 ## Aurora Desktop 3.2.0-beta.6 — Polaris Continuum, 2026-10-28 (pré-release)
 
 - Persiste localmente a sessão, o histórico recente, resumos curtos, fatos declarados e temas recorrentes, com permissões privadas e limites de armazenamento.

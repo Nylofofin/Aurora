@@ -3,8 +3,8 @@ from __future__ import annotations
 
 """Release identity for the Aurora local desktop build."""
 
-__version__ = "3.2.0-beta.6"
+__version__ = "3.2.0-beta.7"
 
-CODENAME = "POLARIS CONTINUUM"
+CODENAME = "LYRA CONTINUUM"
 
-BUILD_ID = "aurora-project-3.2.0-beta.6-polaris-continuum"
+BUILD_ID = "aurora-project-3.2.0-beta.7-lyra-continuum"
