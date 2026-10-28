@@ -2,6 +2,8 @@
 import json
 import stat
 
+import pytest
+
 import aurora_core.memory as memory
 
 
@@ -41,3 +43,16 @@ def test_memory_update_secures_an_existing_temporary_file(tmp_path, monkeypatch)
 
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     assert not temporary.exists()
+
+
+def test_memory_update_preserves_corrupted_json(tmp_path, monkeypatch):
+    path = tmp_path / "aurora-memory.json"
+    original = b'{"preferences": ['
+    path.write_bytes(original)
+    monkeypatch.setattr(memory, "MEMORY_FILE", path)
+
+    with pytest.raises(ValueError, match="arquivo foi preservado"):
+        memory.user_memory_update("Nova preferência")
+
+    assert path.read_bytes() == original
+    assert not path.with_suffix(".tmp").exists()

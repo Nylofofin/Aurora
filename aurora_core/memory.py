@@ -22,7 +22,12 @@ def user_memory_update(preference,forget=False):
         try:
             os.chmod(MEMORY_FILE,0o600)
             data=json.loads(MEMORY_FILE.read_text(encoding='utf-8'))
-        except Exception: data={'preferences':[]}
+        except FileNotFoundError:
+            data={'preferences':[]}
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError('Não consegui ler a memória local; o arquivo foi preservado.') from exc
+        if not isinstance(data,dict) or not isinstance(data.get('preferences',[]),list):
+            raise ValueError('A memória local está inválida; o arquivo foi preservado.')
         values=[str(x) for x in data.get('preferences',[]) if str(x).strip()]
         if forget:
             remaining=[x for x in values if unicodedata.normalize('NFKD',x).casefold()!=unicodedata.normalize('NFKD',clean).casefold()]
